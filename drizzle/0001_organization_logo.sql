@@ -1,0 +1,1 @@
+ALTER TABLE `organization` ADD `logo` varchar(100);

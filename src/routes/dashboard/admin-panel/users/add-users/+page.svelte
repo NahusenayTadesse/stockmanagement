@@ -1,0 +1,52 @@
+<script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
+	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
+	import FormCard from '@nahu/admin-kit/formComponents/FormCard.svelte';
+	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
+	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
+	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
+	import PasswordGenerator from '@nahu/admin-kit/components/PasswordGenerator.svelte';
+	import { createForm } from '@nahu/admin-kit/forms/createForm';
+	import { addUserSchema } from '$lib/schemas/users';
+
+	let { data } = $props();
+
+	// svelte-ignore state_referenced_locally
+	const { form, errors, enhance, delayed, allErrors } = createForm(data.form, addUserSchema);
+</script>
+
+<svelte:head>
+	<title>Add user</title>
+</svelte:head>
+
+<FormCard title="Add user" description="They sign in with this email and password.">
+	<form use:enhance action="?/addUser" id="main" class="flex flex-col gap-4" method="POST">
+		<Errors allErrors={$allErrors} />
+		<InputComp {form} {errors} name="name" label="Name" required />
+		<InputComp {form} {errors} name="email" type="email" label="Email" required />
+		<InputComp {form} {errors} name="password" type="password" label="Password" required />
+		<div class="max-w-sm">
+			<PasswordGenerator bind:password={$form.password} />
+		</div>
+		<InputComp
+			{form}
+			{errors}
+			name="role"
+			type="select"
+			label="Role"
+			items={data.roleList}
+			required
+		/>
+		<InputComp
+			{form}
+			{errors}
+			name="branchId"
+			type="select"
+			label="Branch"
+			items={data.branchList}
+		/>
+		<Button type="submit" form="main">
+			{#if $delayed}<LoadingBtn name="Adding user" />{:else}<Plus /> Add user{/if}
+		</Button>
+	</form>
+</FormCard>

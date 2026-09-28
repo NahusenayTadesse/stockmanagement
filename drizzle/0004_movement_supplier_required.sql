@@ -1,0 +1,1 @@
+ALTER TABLE `stock_movement` MODIFY COLUMN `supplier_id` int NOT NULL;

@@ -1,0 +1,107 @@
+import { message, setError, superValidate } from 'sveltekit-superforms';
+import { zod4 } from 'sveltekit-superforms/adapters';
+import { redirect } from 'sveltekit-flash-message/server';
+import { and, eq, isNull } from 'drizzle-orm';
+import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
+import { localToday } from '@nahu/admin-kit/time';
+import { db } from '$lib/server/db';
+import { location, purchaseOrder, supplier } from '$lib/server/db/schema';
+import { orgIdOf } from '$lib/server/tenant';
+import { locationOptions, supplierOptions } from '$lib/server/options';
+import { orderList } from '$lib/server/purchasing';
+import { orderHeader } from '$lib/schemas/purchasing';
+import { supplierSchema } from '$lib/schemas/suppliers';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ locals }) => {
+	const orgId = orgIdOf(locals);
+	const canManage = hasPermission(locals, 'purchasing.manage');
+	const [orders, suppliers, locations, form] = await Promise.all([
+		orderList(orgId),
+		supplierOptions(orgId),
+		locationOptions(orgId),
+		superValidate({ orderDate: localToday() }, zod4(orderHeader), { errors: false })
+	]);
+	return {
+		orders,
+		suppliers,
+		locations,
+		form,
+		supplierForm:
+			canManage && hasPermission(locals, 'suppliers.manage')
+				? await superValidate(zod4(supplierSchema))
+				: undefined,
+		canManage
+	};
+};
+
+export const actions: Actions = {
+	create: async (event) => {
+		requirePermission(event.locals, 'purchasing.manage');
+		const orgId = orgIdOf(event.locals);
+		const form = await superValidate(event.request, zod4(orderHeader));
+		if (!form.valid)
+			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+
+		const [[sup], [loc]] = await Promise.all([
+			db
+				.select({ id: supplier.id })
+				.from(supplier)
+				.where(
+					and(
+						eq(supplier.id, form.data.supplierId),
+						eq(supplier.orgId, orgId),
+						eq(supplier.isActive, true),
+						isNull(supplier.deletedAt)
+					)
+				),
+			db
+				.select({ id: location.id, branchId: location.branchId })
+				.from(location)
+				.where(
+					and(
+						eq(location.id, form.data.locationId),
+						eq(location.orgId, orgId),
+						isNull(location.deletedAt)
+					)
+				)
+		]);
+		if (!sup) {
+			setError(form, 'supplierId', 'Choose a supplier from the list.');
+			return message(
+				form,
+				{ type: 'error', text: 'Choose a supplier from the list.' },
+				{ status: 400 }
+			);
+		}
+		if (!loc) {
+			setError(form, 'locationId', 'Choose a location from the list.');
+			return message(
+				form,
+				{ type: 'error', text: 'Choose a location from the list.' },
+				{ status: 400 }
+			);
+		}
+
+		const [row] = await db
+			.insert(purchaseOrder)
+			.values({
+				orgId,
+				branchId: loc.branchId,
+				supplierId: sup.id,
+				locationId: loc.id,
+				orderDate: form.data.orderDate,
+				expectedDate: form.data.expectedDate || null,
+				reference: form.data.reference || null,
+				note: form.data.note || null,
+				createdBy: event.locals.user?.id
+			})
+			.$returningId();
+
+		redirect(
+			`/dashboard/purchasing/${row.id}`,
+			{ type: 'success', message: 'Draft order created — add the lines' },
+			event.cookies
+		);
+	}
+};

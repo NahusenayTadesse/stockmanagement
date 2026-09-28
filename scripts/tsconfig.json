@@ -1,0 +1,12 @@
+{
+	// For tsx only (svelte-check type-checks the scripts with the root config). Same aliases as
+	// SvelteKit, plus $env pointed at process.env.
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"paths": {
+			"$lib": ["../src/lib"],
+			"$lib/*": ["../src/lib/*"],
+			"$env/dynamic/private": ["./shims/env.ts"]
+		}
+	}
+}

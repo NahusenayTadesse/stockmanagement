@@ -1,0 +1,113 @@
+import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
+import Package from '@lucide/svelte/icons/package';
+import Warehouse from '@lucide/svelte/icons/warehouse';
+import CalendarClock from '@lucide/svelte/icons/calendar-clock';
+import FileText from '@lucide/svelte/icons/file-text';
+import Settings from '@lucide/svelte/icons/settings';
+import Users from '@lucide/svelte/icons/users';
+import Building2 from '@lucide/svelte/icons/building-2';
+import Banknote from '@lucide/svelte/icons/banknote';
+import Wallet from '@lucide/svelte/icons/wallet';
+import Store from '@lucide/svelte/icons/store';
+import Truck from '@lucide/svelte/icons/truck';
+import ClipboardCheck from '@lucide/svelte/icons/clipboard-check';
+import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
+import ChartColumn from '@lucide/svelte/icons/chart-column';
+import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+import type { Component } from 'svelte';
+import type { IconProps } from '@lucide/svelte';
+import type { NavItem } from '@nahu/admin-kit/navigation';
+
+/** The sidebar and the search palette. Each entry is shown only if `access` lets the viewer in. */
+export const NAVIGATION: NavItem[] = [
+	{ title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
+	{ title: 'Items', url: '/dashboard/items', icon: Package },
+	{
+		title: 'Stock',
+		url: '/dashboard/stock',
+		icon: Warehouse,
+		items: [
+			{ title: 'On hand', url: '/dashboard/stock', icon: Warehouse },
+			{ title: 'Documents', url: '/dashboard/stock/documents', icon: FileText },
+			{ title: 'Counts', url: '/dashboard/stock/counts', icon: ClipboardCheck },
+			{ title: 'Expiry follow-up', url: '/dashboard/stock/expiry', icon: TriangleAlert },
+			{ title: 'Lots & expiry', url: '/dashboard/lots', icon: CalendarClock }
+		]
+	},
+	{
+		title: 'Purchasing',
+		url: '/dashboard/purchasing',
+		icon: ShoppingCart,
+		items: [
+			{ title: 'Purchase orders', url: '/dashboard/purchasing', icon: ShoppingCart },
+			{ title: 'Reorder', url: '/dashboard/purchasing/reorder', icon: RefreshCw }
+		]
+	},
+	{ title: 'Suppliers', url: '/dashboard/suppliers', icon: Truck },
+	{ title: 'Transactions', url: '/dashboard/transactions', icon: Banknote },
+	{ title: 'Reports', url: '/dashboard/reports', icon: ChartColumn },
+	{ title: 'Admin panel', url: '/dashboard/admin-panel', icon: Settings }
+];
+
+/** The admin panel's index cards. */
+export const SETTINGS_SECTIONS: {
+	title: string;
+	description: string;
+	icon: Component<IconProps>;
+	items: NavItem[];
+}[] = [
+	{
+		title: 'Business',
+		description: 'Your business name, TIN, contact details and logo.',
+		icon: Store,
+		items: [{ title: 'Business profile', url: '/dashboard/admin-panel/business', icon: Store }]
+	},
+	{
+		title: 'Where stock is kept',
+		description: 'Branches, and the stores, shelves and fridges inside them.',
+		icon: Building2,
+		items: [
+			{ title: 'Branches', url: '/dashboard/admin-panel/branches', icon: Building2 },
+			{ title: 'Locations', url: '/dashboard/admin-panel/locations', icon: Warehouse }
+		]
+	},
+	{
+		title: 'Catalogue',
+		description: 'The lists items are described with.',
+		icon: Package,
+		items: [
+			{ title: 'Categories', url: '/dashboard/admin-panel/categories', icon: Package },
+			{ title: 'Units of measure', url: '/dashboard/admin-panel/units', icon: Package }
+		]
+	},
+	{
+		title: 'Money',
+		description: 'How money moves: cash, Telebirr, bank accounts.',
+		icon: Wallet,
+		items: [
+			{ title: 'Payment methods', url: '/dashboard/admin-panel/payment-methods', icon: Wallet }
+		]
+	},
+	{
+		title: 'People',
+		description: 'Who can sign in, and what each role may do.',
+		icon: Users,
+		items: [
+			{ title: 'Users', url: '/dashboard/admin-panel/users', icon: Users },
+			{ title: 'Roles', url: '/dashboard/admin-panel/roles', icon: Users }
+		]
+	}
+];
+
+/** Where each kind of record's page lives, so table cells can link to it. */
+export const ENTITIES: Record<string, string> = {
+	user: '/dashboard/admin-panel/users',
+	role: '/dashboard/admin-panel/roles',
+	item: '/dashboard/items',
+	document: '/dashboard/stock/documents',
+	transaction: '/dashboard/transactions',
+	supplier: '/dashboard/suppliers',
+	purchaseOrder: '/dashboard/purchasing',
+	count: '/dashboard/stock/counts'
+};
