@@ -10,6 +10,7 @@ import { recordAudit } from '@nahu/admin-kit/server/audit';
 import { db } from '$lib/server/db';
 import {
 	branch,
+	customer,
 	paymentMethod,
 	stockDocument,
 	transactionAttachment,
@@ -18,6 +19,7 @@ import {
 } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { branchOptions, methodOptions, supplierOptions } from '$lib/server/options';
+import { customerChoices } from '$lib/server/customers';
 import {
 	addAttachment,
 	attachmentsOf,
@@ -40,9 +42,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 					method: paymentMethod.name,
 					branch: branch.name,
 					recordedBy: user.name,
-					verifiedBy: verifier.name
+					verifiedBy: verifier.name,
+					customer: customer.name
 				})
 				.from(transactions)
+				.leftJoin(customer, eq(customer.id, transactions.customerId))
 				.leftJoin(paymentMethod, eq(paymentMethod.id, transactions.paymentMethodId))
 				.leftJoin(branch, eq(branch.id, transactions.branchId))
 				.leftJoin(user, eq(user.id, transactions.createdBy))
@@ -73,7 +77,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 					party: txn.party ?? '',
 					description: txn.description ?? '',
 					branchId: txn.branchId ?? 0,
-					supplierId: txn.supplierId ?? 0
+					supplierId: txn.supplierId ?? 0,
+					customerId: txn.customerId ?? 0,
+					withheld: txn.withheld,
+					withholdingReceipt: txn.withholdingReceipt ?? ''
 				},
 				zod4(transactionEdit),
 				{ errors: false }
@@ -93,6 +100,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		branches: [{ value: 0, name: 'Whole business' }, ...branches],
 		editForm,
 		suppliers: await supplierOptions(orgId),
+		customers: await customerChoices(orgId),
 		attachForm,
 		voidForm,
 		canManage: hasPermission(locals, 'transactions.manage'),

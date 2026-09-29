@@ -15,7 +15,12 @@ import {
 	supplier,
 	uom
 } from '$lib/server/db/schema';
-import { belongsToOrg } from '$lib/server/options';
+import { superValidate } from 'sveltekit-superforms';
+import { zod4 } from 'sveltekit-superforms/adapters';
+import { hasPermission } from '@nahu/admin-kit/server/permissions';
+import { belongsToOrg, customerOptions } from '$lib/server/options';
+import { checkCustomer, sellsToCustomers } from '$lib/server/customers';
+import { customerSchema } from '$lib/schemas/customers';
 import type { z } from 'zod/v4';
 import type { documentHeader } from '$lib/schemas/stock';
 
@@ -32,12 +37,36 @@ export async function orgDocument(orgId: number, id: number) {
 }
 
 /**
+ * The issue form's customer picker and "+ New customer" form — or nothing, for a business that
+ * does not sell (an internal store issues to departments, written in "Issued to").
+ */
+export async function customerPicker(orgId: number, locals: App.Locals) {
+	if (!(await sellsToCustomers(orgId))) {
+		return { customers: null, customerForm: undefined };
+	}
+	return {
+		customers: await customerOptions(orgId),
+		customerForm: hasPermission(locals, 'customers.manage')
+			? await superValidate(zod4(customerSchema))
+			: undefined
+	};
+}
+
+/**
  * The header's columns, checked: the locations the type needs are chosen, are this business's,
  * and the branch (whose numbering the document uses) follows from them.
  */
-export async function headerValues(orgId: number, h: Header) {
-	const needsFrom = h.type !== 'receipt';
-	const needsTo = h.type === 'receipt' || h.type === 'transfer';
+export async function headerValues(
+	orgId: number,
+	h: Header,
+	options: { allowReturn?: boolean } = {}
+) {
+	// Returns are started from the sale or receipt they return, never from the blank form.
+	if ((h.type === 'sales_return' || h.type === 'purchase_return') && !options.allowReturn) {
+		throw new WriteRefused('type', 'Start a return from the sale or receipt being returned.');
+	}
+	const needsFrom = h.type !== 'receipt' && h.type !== 'sales_return';
+	const needsTo = h.type === 'receipt' || h.type === 'transfer' || h.type === 'sales_return';
 
 	const pick = async (id: number, field: 'fromLocationId' | 'toLocationId', needed: boolean) => {
 		if (!needed) return null;
@@ -76,6 +105,14 @@ export async function headerValues(orgId: number, h: Header) {
 		supplierId = found.id;
 	}
 
+	// Issues may name a customer; nothing needs one.
+	let customerId: number | null = null;
+	if (h.type === 'issue' && h.customerId) {
+		const found = await checkCustomer(orgId, h.customerId);
+		if (!found) throw new WriteRefused('customerId', 'Choose a customer from the list.');
+		customerId = found.id;
+	}
+
 	const from = await pick(h.fromLocationId, 'fromLocationId', needsFrom);
 	const to = await pick(h.toLocationId, 'toLocationId', needsTo);
 	if (from && to && from.id === to.id) {
@@ -91,6 +128,7 @@ export async function headerValues(orgId: number, h: Header) {
 		branchId: (from ?? to)!.branchId,
 		reference: h.reference || null,
 		supplierId,
+		customerId,
 		// A receipt's "who" is its supplier; `party` is for where issued stock went.
 		party: h.type === 'receipt' ? null : h.party || null,
 		reason: h.type === 'adjustment' && h.reason ? h.reason : null,
@@ -139,9 +177,10 @@ export async function lineValues(
 
 	if (!values.uomId) values.uomId = it.baseUomId;
 	await belongsToOrg(uom, values.uomId, orgId, 'uomId', 'unit');
+	let factor = 1;
 	if (Number(values.uomId) !== it.baseUomId) {
 		const [conv] = await db
-			.select({ id: itemUnit.id })
+			.select({ id: itemUnit.id, factor: itemUnit.factor })
 			.from(itemUnit)
 			.where(
 				and(
@@ -156,6 +195,18 @@ export async function lineValues(
 				`${it.name} has no conversion for this unit. Add it on the item's page first.`
 			);
 		}
+		factor = conv.factor;
+	}
+
+	// A sale price belongs on issues only; left empty, it is the item's list price for this unit.
+	let unitPrice: number | null = null;
+	if (doc.type === 'issue') {
+		unitPrice =
+			values.unitPrice != null && values.unitPrice !== ''
+				? Number(values.unitPrice)
+				: it.salePrice != null
+					? Math.round(it.salePrice * factor * 100) / 100
+					: null;
 	}
 
 	if (values.lotId) {
@@ -172,6 +223,7 @@ export async function lineValues(
 		lotId: values.lotId || null,
 		lotNumber: values.lotNumber || null,
 		expiryDate: values.expiryDate || null,
-		serials: values.serials || null
+		serials: values.serials || null,
+		unitPrice
 	};
 }

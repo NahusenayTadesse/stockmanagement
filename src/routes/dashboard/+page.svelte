@@ -52,6 +52,38 @@
 			: []
 	);
 
+	const creditTiles = $derived<Stat[]>(
+		data.credit
+			? [
+					{
+						key: 'owed',
+						label: 'Customers owe you',
+						value: data.credit.owed,
+						format: 'money',
+						group: 'credit',
+						hint: `${data.credit.debtors} customer${data.credit.debtors === 1 ? '' : 's'} on credit`,
+						tone: 'warning'
+					},
+					{
+						key: 'overdue',
+						label: 'Overdue credit',
+						value: data.credit.overdue,
+						format: 'money',
+						group: 'credit',
+						tone: data.credit.overdue ? 'negative' : 'neutral'
+					},
+					{
+						key: 'overLimit',
+						label: 'Over their credit limit',
+						value: data.credit.overLimit,
+						format: 'count',
+						group: 'credit',
+						tone: data.credit.overLimit ? 'negative' : 'neutral'
+					}
+				]
+			: []
+	);
+
 	const tiles = $derived<Stat[]>(
 		stats
 			? [
@@ -127,6 +159,14 @@
 				>
 					<StatCard {stat} />
 				</a>
+			{/each}
+		</div>
+	{/if}
+
+	{#if data.credit && (data.credit.owed > 0 || data.credit.overLimit > 0)}
+		<div class="grid gap-4 sm:grid-cols-3">
+			{#each creditTiles as stat (stat.key)}
+				<a href={resolve('/dashboard/customers/credit')} class="block"><StatCard {stat} /></a>
 			{/each}
 		</div>
 	{/if}

@@ -6,6 +6,8 @@ import { hasPermission } from '@nahu/admin-kit/server/permissions';
 import { dashboardStats } from '$lib/server/stock/queries';
 import { localToday } from '@nahu/admin-kit/time';
 import { datePresets, transactionTotals } from '$lib/server/transactions';
+import { sellsToCustomers } from '$lib/server/customers';
+import { creditSummary } from '$lib/server/credit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -33,7 +35,18 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	// The home page is open to every signed-in user; the stock figures are not.
 	const stats = hasPermission(locals, 'stock.view') ? await dashboardStats(orgId) : null;
-	return { stats, money };
+	// Credit (ዱቤ): what customers owe, for a business that sells and a viewer who sees customers.
+	let credit = null;
+	if (hasPermission(locals, 'customers.view') && (await sellsToCustomers(orgId))) {
+		const all = await creditSummary(orgId);
+		credit = {
+			owed: all.reduce((s, c) => s + Math.max(0, c.balance), 0),
+			debtors: all.filter((c) => c.balance > 0).length,
+			overdue: all.reduce((s, c) => s + c.overdue, 0),
+			overLimit: all.filter((c) => c.overLimit).length
+		};
+	}
+	return { stats, money, credit };
 };
 
 export const actions: Actions = {

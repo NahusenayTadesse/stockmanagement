@@ -11,6 +11,7 @@ import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
 import {
+	customer,
 	paymentMethod,
 	stockDocument,
 	supplier,
@@ -20,12 +21,9 @@ import {
 import { orgIdOf } from '$lib/server/tenant';
 import { branchOptions, methodOptions, supplierOptions } from '$lib/server/options';
 import { orgDocument } from '$lib/server/stock/documents';
-import {
-	addAttachment,
-	checkTransaction,
-	documentValue,
-	linkableTransactions
-} from '$lib/server/transactions';
+import { customerChoices } from '$lib/server/customers';
+import { documentTotals, suggestedWithholding } from '$lib/server/tax';
+import { addAttachment, checkTransaction, linkableTransactions } from '$lib/server/transactions';
 import { linkSchema, transactionAdd } from '$lib/schemas/transactions';
 
 type Doc = typeof stockDocument.$inferSelect;
@@ -37,6 +35,11 @@ function defaultsFor(doc: Doc) {
 			return { direction: 'out', purpose: 'purchase' } as const;
 		case 'issue':
 			return { direction: 'in', purpose: 'sale' } as const;
+		// A refund to the customer; a refund from the supplier.
+		case 'sales_return':
+			return { direction: 'out', purpose: 'sale' } as const;
+		case 'purchase_return':
+			return { direction: 'in', purpose: 'purchase' } as const;
 		default:
 			return { direction: 'out', purpose: 'expense' } as const;
 	}
@@ -83,20 +86,33 @@ export async function paymentSection(orgId: number, doc: Doc, locals: App.Locals
 		return { payment: payment ?? null, paymentFiles: files, canManage, canPay: false as const };
 	}
 
-	const [methods, branches, suppliers, linkable, amount] = await Promise.all([
+	const [methods, branches, suppliers, customers, linkable, totals] = await Promise.all([
 		methodOptions(orgId),
 		branchOptions(orgId),
 		supplierOptions(orgId),
+		customerChoices(orgId),
 		linkableTransactions(orgId),
-		// Only deliveries and sales have a value that is the payment; a transfer or adjustment moves
-		// no money, and a payment on one is transport or loading, typed in by hand.
-		doc.type === 'receipt' || doc.type === 'issue' ? documentValue(doc.id) : Promise.resolve(0)
+		// Only deliveries, sales and their returns have a value that is the payment; a transfer or
+		// adjustment moves no money, and a payment on one is transport or loading, typed in by hand.
+		doc.type === 'transfer' || doc.type === 'adjustment'
+			? Promise.resolve(null)
+			: documentTotals(orgId, doc.id)
 	]);
+	// Withholding: ours from a supplier's delivery, or a customer's from our sale, on the amount
+	// before VAT. The cash is the rest.
+	const withholding = totals
+		? await suggestedWithholding(orgId, doc, totals.net)
+		: { amount: 0, rate: 0 };
+	const amount = totals ? Math.round((totals.gross - withholding.amount) * 100) / 100 : 0;
 
 	const [named] = doc.supplierId
 		? await db.select({ name: supplier.name }).from(supplier).where(eq(supplier.id, doc.supplierId))
 		: [];
 	const supplierName = named?.name ?? null;
+	// A sale to a listed customer: the payment is theirs too.
+	const [buyer] = doc.customerId
+		? await db.select({ name: customer.name }).from(customer).where(eq(customer.id, doc.customerId))
+		: [];
 
 	const [paymentForm, linkForm] = await Promise.all([
 		superValidate(
@@ -104,10 +120,12 @@ export async function paymentSection(orgId: number, doc: Doc, locals: App.Locals
 				...defaultsFor(doc),
 				amount: amount || undefined,
 				occurredOn: doc.docDate,
-				party: supplierName ?? doc.party ?? '',
+				party: supplierName ?? buyer?.name ?? doc.party ?? '',
 				supplierId: doc.supplierId ?? 0,
+				customerId: doc.customerId ?? 0,
 				receiptNumber: doc.reference ?? '',
-				branchId: doc.branchId
+				branchId: doc.branchId,
+				withheld: withholding.amount
 			},
 			zod4(transactionAdd),
 			{ errors: false }
@@ -123,9 +141,12 @@ export async function paymentSection(orgId: number, doc: Doc, locals: App.Locals
 		paymentForm,
 		linkForm,
 		suggestedAmount: amount,
+		totals: totals && { net: totals.net, vat: totals.vat, gross: totals.gross },
+		withholding,
 		methods: [{ value: 0, name: '— Not said —' }, ...methods],
 		branches: [{ value: 0, name: 'Whole business' }, ...branches],
 		suppliers,
+		customers,
 		linkable
 	};
 }

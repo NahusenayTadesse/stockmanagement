@@ -9,9 +9,12 @@
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { PURPOSE_CHOICES } from '$lib/schemas/transactions';
 	import {
+		customerColumns,
+		registerColumns,
+		withholdingColumns,
 		issuedColumns,
 		kindColumns,
 		splitColumns,
@@ -256,6 +259,7 @@
 			<Tabs.Trigger value="purchasing">Purchasing</Tabs.Trigger>
 			<Tabs.Trigger value="waste">Wastage</Tabs.Trigger>
 			{#if data.money}<Tabs.Trigger value="money">Money</Tabs.Trigger>{/if}
+			{#if data.vat}<Tabs.Trigger value="tax">VAT & withholding</Tabs.Trigger>{/if}
 		</Tabs.List>
 
 		<Tabs.Content value="stock" class="flex flex-col gap-4 pt-2">
@@ -310,6 +314,25 @@
 				fileName="Movements {period}"
 				height="auto"
 			/>
+			{#if data.byCustomer}
+				<h2 class="text-lg font-semibold">Issued by customer</h2>
+				<div class="grid gap-4 lg:grid-cols-2">
+					<ReportChart
+						chart={slices(
+							'customers',
+							'Issued by customer',
+							data.byCustomer.map((c) => ({ label: c.customer, value: c.value })),
+							'At cost. Walk-in sales and internal issues have no customer named.'
+						)}
+					/>
+					<DataTable
+						data={data.byCustomer}
+						columns={customerColumns}
+						fileName="Issued by customer {period}"
+						height="auto"
+					/>
+				</div>
+			{/if}
 		</Tabs.Content>
 
 		<Tabs.Content value="purchasing" class="flex flex-col gap-4 pt-2">
@@ -432,6 +455,125 @@
 						href={resolve('/dashboard/transactions')}>Transactions</a
 					> page.
 				</p>
+			</Tabs.Content>
+		{/if}
+		{#if data.vat && data.withholding}
+			{@const v = data.vat.totals}
+			{@const w = data.withholding.totals}
+			<Tabs.Content value="tax" class="flex flex-col gap-4 pt-2">
+				<p class="text-sm text-muted-foreground">
+					From posted documents dated in the period. Returns reduce the register they correct. Check
+					the figures against your invoices before filing.
+				</p>
+				<div class="grid gap-4 sm:grid-cols-3">
+					<StatCard
+						stat={{
+							key: 'out',
+							label: 'Output VAT (on sales)',
+							value: v.outputVat,
+							format: 'money',
+							group: 'tax',
+							hint: `On ${formatETB(v.salesNet)} of sales before VAT`
+						}}
+					/>
+					<StatCard
+						stat={{
+							key: 'in',
+							label: 'Input VAT (on purchases)',
+							value: v.inputVat,
+							format: 'money',
+							group: 'tax',
+							hint: `On ${formatETB(v.purchasesNet)} of deliveries before VAT`
+						}}
+					/>
+					<StatCard
+						stat={{
+							key: 'payable',
+							label: v.payable >= 0 ? 'VAT payable' : 'VAT to carry forward',
+							value: Math.abs(v.payable),
+							format: 'money',
+							group: 'tax',
+							tone: v.payable > 0 ? 'negative' : 'positive',
+							hint: 'Output less input VAT'
+						}}
+					/>
+				</div>
+				{#if v.tot}
+					<StatCard
+						stat={{
+							key: 'tot',
+							label: 'Turnover tax (TOT) on sales',
+							value: v.tot,
+							format: 'money',
+							group: 'tax',
+							tone: 'negative',
+							hint: 'Payable instead of VAT by a business that is not VAT-registered'
+						}}
+					/>
+				{/if}
+				<h2 class="text-lg font-semibold">Sales register</h2>
+				<DataTable
+					data={data.vat.sales}
+					columns={registerColumns}
+					fileName="VAT sales register {period}"
+					height="auto"
+				/>
+				<h2 class="text-lg font-semibold">Purchase register</h2>
+				<DataTable
+					data={data.vat.purchases}
+					columns={registerColumns}
+					fileName="VAT purchase register {period}"
+					height="auto"
+				/>
+
+				<div class="grid gap-4 sm:grid-cols-3">
+					<StatCard
+						stat={{
+							key: 'byUs',
+							label: 'Withheld by you',
+							value: w.byUs,
+							format: 'money',
+							group: 'tax',
+							tone: w.byUs ? 'warning' : 'neutral',
+							hint: 'Kept back from suppliers: pay it to the tax office'
+						}}
+					/>
+					<StatCard
+						stat={{
+							key: 'fromUs',
+							label: 'Withheld from you',
+							value: w.fromUs,
+							format: 'money',
+							group: 'tax',
+							tone: 'positive',
+							hint: 'Kept back by customers: a credit against your tax'
+						}}
+					/>
+					<StatCard
+						stat={{
+							key: 'missing',
+							label: 'Missing withholding receipts',
+							value: w.missingReceipts,
+							format: 'count',
+							group: 'tax',
+							tone: w.missingReceipts ? 'negative' : 'neutral'
+						}}
+					/>
+				</div>
+				<h2 class="text-lg font-semibold">Withheld by you</h2>
+				<DataTable
+					data={data.withholding.byUs}
+					columns={withholdingColumns}
+					fileName="Withholding by us {period}"
+					height="auto"
+				/>
+				<h2 class="text-lg font-semibold">Withheld from you</h2>
+				<DataTable
+					data={data.withholding.fromUs}
+					columns={withholdingColumns}
+					fileName="Withholding from us {period}"
+					height="auto"
+				/>
 			</Tabs.Content>
 		{/if}
 	</Tabs.Root>

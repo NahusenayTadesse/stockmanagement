@@ -10,6 +10,8 @@ export const documentHeader = z.object({
 	toLocationId: z.coerce.number().int().min(0).default(0),
 	/** Receipts: who delivered it. 0 = not chosen yet. */
 	supplierId: z.coerce.number().int().min(0).default(0),
+	/** Issues: the customer, if anyone cares to say. 0 = none (walk-in, internal issue). */
+	customerId: z.coerce.number().int().min(0).default(0),
 	reference: z.string().trim().max(80).default(''),
 	party: z.string().trim().max(160).default(''),
 	reason: z.enum(['', ...ADJUSTMENT_REASONS]).default(''),
@@ -22,6 +24,8 @@ export const lineAdd = z.object({
 	/** 0 means the item's base unit. */
 	uomId: z.coerce.number().int().min(0).default(0),
 	unitCost: z.number().min(0).nullable().default(null),
+	/** Issues: the sale price per unit above. Empty takes the item's list price. */
+	unitPrice: z.number().min(0).nullable().default(null),
 	/** 0 means first-expiry-first-out. */
 	lotId: z.coerce.number().int().min(0).default(0),
 	lotNumber: z.string().trim().max(60).default(''),

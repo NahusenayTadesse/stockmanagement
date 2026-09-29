@@ -8,6 +8,7 @@ import Users from '@lucide/svelte/icons/users';
 import Building2 from '@lucide/svelte/icons/building-2';
 import Banknote from '@lucide/svelte/icons/banknote';
 import Wallet from '@lucide/svelte/icons/wallet';
+import Receipt from '@lucide/svelte/icons/receipt';
 import Store from '@lucide/svelte/icons/store';
 import Truck from '@lucide/svelte/icons/truck';
 import ClipboardCheck from '@lucide/svelte/icons/clipboard-check';
@@ -15,6 +16,8 @@ import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 import ChartColumn from '@lucide/svelte/icons/chart-column';
 import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+import Contact from '@lucide/svelte/icons/contact';
+import Clock from '@lucide/svelte/icons/clock';
 import type { Component } from 'svelte';
 import type { IconProps } from '@lucide/svelte';
 import type { NavItem } from '@nahu/admin-kit/navigation';
@@ -45,6 +48,15 @@ export const NAVIGATION: NavItem[] = [
 		]
 	},
 	{ title: 'Suppliers', url: '/dashboard/suppliers', icon: Truck },
+	{
+		title: 'Customers',
+		url: '/dashboard/customers',
+		icon: Contact,
+		items: [
+			{ title: 'Customers', url: '/dashboard/customers', icon: Contact },
+			{ title: 'Credit & ageing', url: '/dashboard/customers/credit', icon: Clock }
+		]
+	},
 	{ title: 'Transactions', url: '/dashboard/transactions', icon: Banknote },
 	{ title: 'Reports', url: '/dashboard/reports', icon: ChartColumn },
 	{ title: 'Admin panel', url: '/dashboard/admin-panel', icon: Settings }
@@ -83,10 +95,11 @@ export const SETTINGS_SECTIONS: {
 	},
 	{
 		title: 'Money',
-		description: 'How money moves: cash, Telebirr, bank accounts.',
+		description: 'How money moves: cash, Telebirr, bank accounts, and the fiscal devices.',
 		icon: Wallet,
 		items: [
-			{ title: 'Payment methods', url: '/dashboard/admin-panel/payment-methods', icon: Wallet }
+			{ title: 'Payment methods', url: '/dashboard/admin-panel/payment-methods', icon: Wallet },
+			{ title: 'Fiscal devices', url: '/dashboard/admin-panel/fiscal-devices', icon: Receipt }
 		]
 	},
 	{
@@ -108,6 +121,7 @@ export const ENTITIES: Record<string, string> = {
 	document: '/dashboard/stock/documents',
 	transaction: '/dashboard/transactions',
 	supplier: '/dashboard/suppliers',
+	customer: '/dashboard/customers',
 	purchaseOrder: '/dashboard/purchasing',
 	count: '/dashboard/stock/counts'
 };

@@ -7,6 +7,9 @@
 import {
 	addBranch,
 	addCategories,
+	addCustomers,
+	returnGoods,
+	fiscalHistory,
 	addItems,
 	addLocations,
 	addSuppliers,
@@ -286,7 +289,9 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			address: 'Bole Road, Addis Ababa',
 			phone: '+251 11 661 2345',
 			store: 'Bole Warehouse'
-		}
+		},
+		// VAT-registered, and a withholding agent: it keeps back tax on large purchases.
+		settings: { vatRegistered: true, withholdingAgent: true, einvoiceMode: 'sandbox' }
 	});
 
 	await addBranch(tx, biz, {
@@ -362,20 +367,31 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 				email: 'sales@shegercement.example.com',
 				address: 'Sululta road, Oromia',
 				tin: '0012003401',
-				contactPerson: 'Ato Girma'
+				contactPerson: 'Ato Girma',
+				vatRegistered: true
 			},
-			{ name: 'Awash Steel Trading', phone: '+251 911 402 118', address: 'Kality, Addis Ababa' },
+			{
+				name: 'Awash Steel Trading',
+				phone: '+251 911 402 118',
+				address: 'Kality, Addis Ababa',
+				tin: '0012005566',
+				vatRegistered: true
+			},
 			{
 				name: 'Entoto Roofing & Paints',
 				phone: '+251 11 278 3300',
 				email: 'orders@entotopaints.example.com',
-				address: 'Shiro Meda, Addis Ababa'
+				address: 'Shiro Meda, Addis Ababa',
+				tin: '0012007788',
+				vatRegistered: true
 			},
 			{
 				name: 'Merkato Electric Wholesale',
 				phone: '+251 912 660 045',
 				address: 'Merkato, Addis Ababa',
-				contactPerson: 'W/ro Hirut'
+				contactPerson: 'W/ro Hirut',
+				tin: '0045001122',
+				vatRegistered: true
 			},
 			{ name: 'Akaki sand quarry', phone: '+251 913 220 781', address: 'Akaki Kality' },
 			{
@@ -383,9 +399,54 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 				phone: '+251 11 467 1919',
 				email: 'info@addismachinery.example.com',
 				address: 'Bole, Addis Ababa',
-				tin: '0012004512'
+				tin: '0012004512',
+				vatRegistered: true
 			},
 			{ name: 'Addis Tile Supply', phone: '+251 911 887 342', address: 'Gerji, Addis Ababa' }
+		],
+		biz.users.get('owner')!
+	);
+
+	// Regular buyers. Walk-in sales below name nobody, as they do in the shop.
+	await addCustomers(
+		tx,
+		biz,
+		[
+			{
+				name: 'Sisay Construction PLC',
+				phone: '+251 911 305 552',
+				tin: '0023456781',
+				address: 'Summit, Addis Ababa',
+				note: 'Contractor; pays by bank transfer',
+				creditLimit: 600_000,
+				creditDays: 30,
+				// A PLC above the turnover threshold: keeps back 3% and hands over a withholding receipt.
+				withholdsTax: true
+			},
+			{
+				name: 'Genet Finishing Works',
+				phone: '+251 912 774 019',
+				creditLimit: 20_000,
+				creditDays: 15
+			},
+			{
+				name: 'Tsehay Real Estate',
+				phone: '+251 11 667 3030',
+				email: 'procurement@tsehay.example.com',
+				tin: '0034120987',
+				address: 'CMC, Addis Ababa',
+				creditLimit: 1_000_000,
+				creditDays: 60,
+				withholdsTax: true
+			},
+			{
+				name: 'Abebe Kebede',
+				phone: '+251 911 882 450',
+				note: 'Private villa, CMC',
+				// Cash only: every sale is paid before it is posted.
+				creditLimit: 0,
+				creditDays: 0
+			}
 		],
 		biz.users.get('owner')!
 	);
@@ -554,7 +615,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-55),
 			from: 'Bole Warehouse',
-			party: 'Sisay Construction PLC',
+			customer: 'Sisay Construction PLC',
 			reference: 'SO-1043',
 			by: 'manager'
 		},
@@ -572,7 +633,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-52),
 			from: 'Bole Yard',
-			party: 'Sisay Construction PLC',
+			customer: 'Sisay Construction PLC',
 			reference: 'SO-1043',
 			by: 'manager'
 		},
@@ -589,7 +650,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-50),
 			from: 'Bole Warehouse',
-			party: 'Genet Finishing Works',
+			customer: 'Genet Finishing Works',
 			reference: 'SO-1051',
 			by: 'manager'
 		},
@@ -602,7 +663,6 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-45),
 			from: 'Merkato Store',
-			party: 'Walk-in customers',
 			reference: 'Daily sales book p.12–18',
 			by: 'merkato'
 		},
@@ -647,7 +707,8 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-30),
 			from: 'Bole Warehouse',
-			party: 'Tsehay Real Estate — Site 4',
+			customer: 'Tsehay Real Estate',
+			party: 'Site 4, CMC',
 			reference: 'SO-1088',
 			by: 'manager'
 		},
@@ -695,7 +756,6 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-10),
 			from: 'Merkato Store',
-			party: 'Walk-in customers',
 			reference: 'Daily sales book p.31–36',
 			by: 'merkato'
 		},
@@ -708,7 +768,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-5),
 			from: 'Bole Yard',
-			party: 'Abebe Kebede (private villa, CMC)',
+			customer: 'Abebe Kebede',
 			reference: 'SO-1102',
 			by: 'manager'
 		},
@@ -738,7 +798,6 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-2),
 			from: 'Bole Warehouse',
-			party: 'Walk-in customers',
 			by: 'manager'
 		},
 		[
@@ -784,7 +843,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	// Dawit verifies against the bank and Telebirr statements.
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 1_023_000,
+		settle: true,
 		date: day(-75),
 		method: 'Bank transfer — CBE',
 		purpose: 'purchase',
@@ -810,7 +869,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 547_000,
+		settle: true,
 		date: day(-70),
 		method: 'Bank transfer — other bank',
 		purpose: 'purchase',
@@ -823,7 +882,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 297_000,
+		settle: true,
 		date: day(-68),
 		method: 'Cheque',
 		purpose: 'purchase',
@@ -837,7 +896,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 239_500,
+		settle: true,
 		date: day(-66),
 		method: 'Telebirr',
 		purpose: 'purchase',
@@ -852,7 +911,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 45_600,
+		settle: true,
 		date: day(-64),
 		method: 'Cash',
 		purpose: 'purchase',
@@ -879,11 +938,12 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	// One transfer for two deliveries to the same site.
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 559_500,
+		settle: true,
 		date: day(-52),
 		method: 'Bank transfer — CBE',
 		purpose: 'sale',
 		party: 'Sisay Construction PLC',
+		customer: 'Sisay Construction PLC',
 		reference: 'FT25202SSC1043',
 		receipt: 'FS-00118',
 		branch: 'BOL',
@@ -894,11 +954,12 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 25_500,
+		settle: true,
 		date: day(-50),
 		method: 'CBE Birr',
 		purpose: 'sale',
 		party: 'Genet Finishing Works',
+		customer: 'Genet Finishing Works',
 		reference: 'CB0098812',
 		receipt: 'FS-00121',
 		branch: 'BOL',
@@ -934,7 +995,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 496_000,
+		settle: true,
 		date: day(-40),
 		method: 'Bank transfer — CBE',
 		purpose: 'purchase',
@@ -961,11 +1022,12 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 422_000,
+		settle: true,
 		date: day(-30),
 		method: 'Bank transfer — CBE',
 		purpose: 'sale',
 		party: 'Tsehay Real Estate — Site 4',
+		customer: 'Tsehay Real Estate',
 		reference: 'FT25227TRE088',
 		receipt: 'FS-00140',
 		branch: 'BOL',
@@ -981,13 +1043,14 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 		purpose: 'sale',
 		party: 'Tsehay Real Estate — Site 4',
 		description: 'Delivery to site (Isuzu)',
+		// A service, not goods on their account: no customer, so it does not count against them.
 		branch: 'BOL',
 		by: 'manager',
 		verifiedBy: 'owner'
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 87_000,
+		settle: true,
 		date: day(-10),
 		method: 'Cash',
 		purpose: 'sale',
@@ -999,11 +1062,12 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 64_000,
+		settle: true,
 		date: day(-5),
 		method: 'Telebirr',
 		purpose: 'sale',
 		party: 'Abebe Kebede (private villa, CMC)',
+		customer: 'Abebe Kebede',
 		reference: 'CI9F3K1LMN',
 		receipt: 'FS-00152',
 		branch: 'BOL',
@@ -1013,7 +1077,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 16_180,
+		settle: true,
 		date: day(-2),
 		method: 'Cash',
 		purpose: 'sale',
@@ -1117,6 +1181,88 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			{ sku: 'NAIL-10', delta: -0.5 }
 		]
 	);
+
+	// ── Credit (ዱቤ) ──────────────────────────────────────────────────────────────────────────
+	// Sisay took cement for another site on 30 days' credit and has paid part: the rest is late.
+	await document(
+		tx,
+		biz,
+		{
+			type: 'issue',
+			date: day(-45),
+			from: 'Bole Warehouse',
+			customer: 'Sisay Construction PLC',
+			party: 'Site 3, Summit',
+			reference: 'Delivery note DN-0419',
+			by: 'manager'
+		},
+		[{ sku: 'CEM-OPC-50', qty: 60 }]
+	);
+	await money(tx, biz, {
+		direction: 'in',
+		amount: 40_000,
+		date: day(-10),
+		method: 'Telebirr',
+		purpose: 'sale',
+		party: 'Sisay Construction PLC',
+		customer: 'Sisay Construction PLC',
+		reference: 'CI7SSC40K01',
+		description: 'Part payment for DN-0419',
+		branch: 'BOL',
+		by: 'manager'
+	});
+
+	// Genet took paint worth more than the 20,000 limit, with the owner's say-so. Not yet due.
+	const creditGenet = await document(
+		tx,
+		biz,
+		{
+			type: 'issue',
+			date: day(-6),
+			from: 'Bole Warehouse',
+			customer: 'Genet Finishing Works',
+			reference: 'Approved by Dawit over limit',
+			by: 'owner'
+		},
+		[{ sku: 'PNT-EMW-4', qty: 20 }]
+	);
+
+	// ── Returns ──────────────────────────────────────────────────────────────────────────────
+	// Genet brought back four gallons of the paint: the wrong shade. Off their account.
+	await returnGoods(
+		tx,
+		biz,
+		{ of: creditGenet, date: day(-2), by: 'manager', note: 'Wrong shade; unopened' },
+		{ 'PNT-EMW-4': 4 }
+	);
+
+	// ── Fiscal receipts and e-invoices ───────────────────────────────────────────────────────
+	// Bole's till is rung up by hand and its FS No. typed back in; Merkato has a networked Datecs
+	// printer (no real one here, so "Check" on it shows what a failed connection looks like).
+	await fiscalHistory(tx, biz, [
+		{
+			name: 'Bole till',
+			kind: 'manual',
+			branch: 'BOL',
+			machineCode: 'BHB0023145',
+			autoPrint: true,
+			isActive: true
+		},
+		{
+			name: 'Merkato fiscal printer',
+			kind: 'datecs_tcp',
+			branch: 'MRK',
+			machineCode: 'BHB0023146',
+			serialNumber: 'DT780126',
+			host: '192.168.10.20',
+			port: 4999,
+			operatorCode: '1',
+			tillNumber: 1,
+			taxGroups: '15=A,0=B,exempt=C',
+			autoPrint: false,
+			isActive: true
+		}
+	]);
 
 	return biz;
 }

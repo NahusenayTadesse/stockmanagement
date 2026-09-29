@@ -9,7 +9,11 @@ export const load = async ({ locals, url }) => {
 	}
 
 	const [org] = await db
-		.select({ name: organization.name, logo: organization.logo })
+		.select({
+			name: organization.name,
+			logo: organization.logo,
+			sellsToCustomers: organization.sellsToCustomers
+		})
 		.from(organization)
 		.where(eq(organization.id, locals.orgId));
 

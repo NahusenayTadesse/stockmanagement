@@ -9,6 +9,7 @@ import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
 import {
+	customer,
 	location,
 	stockDocument,
 	stockDocumentLine,
@@ -19,7 +20,7 @@ import {
 import { orgIdOf } from '$lib/server/tenant';
 import { locationOptions, supplierOptions } from '$lib/server/options';
 import { supplierSchema } from '$lib/schemas/suppliers';
-import { headerValues } from '$lib/server/stock/documents';
+import { customerPicker, headerValues } from '$lib/server/stock/documents';
 import { documentHeader } from '$lib/schemas/stock';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -38,8 +39,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 				docDate: stockDocument.docDate,
 				from: fromLoc.name,
 				to: toLoc.name,
-				// Receipts show their supplier; issues who the stock went to.
-				party: sql<string | null>`COALESCE(${supplier.name}, ${stockDocument.party})`,
+				// Receipts show their supplier; issues the customer, or who the stock went to.
+				party: sql<
+					string | null
+				>`COALESCE(${supplier.name}, ${customer.name}, ${stockDocument.party})`,
 				supplierId: stockDocument.supplierId,
 				reference: stockDocument.reference,
 				createdBy: user.name,
@@ -59,6 +62,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.leftJoin(user, eq(user.id, stockDocument.createdBy))
 			.leftJoin(transactions, eq(transactions.id, stockDocument.transactionId))
 			.leftJoin(supplier, eq(supplier.id, stockDocument.supplierId))
+			.leftJoin(customer, eq(customer.id, stockDocument.customerId))
 			.where(and(eq(stockDocument.orgId, orgId), isNull(stockDocument.deletedAt)))
 			.orderBy(desc(stockDocument.id))
 			.limit(1000),
@@ -74,6 +78,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		supplierForm: hasPermission(locals, 'suppliers.manage')
 			? await superValidate(zod4(supplierSchema))
 			: undefined,
+		...(await customerPicker(orgId, locals)),
 		canDraft: hasPermission(locals, 'stock.draft')
 	};
 };
@@ -98,7 +103,8 @@ export const actions: Actions = {
 			id = created.id;
 		} catch (err) {
 			if (err instanceof WriteRefused) {
-				if (err.field) setError(form, err.field as 'toLocationId' | 'supplierId', err.message);
+				if (err.field)
+					setError(form, err.field as 'toLocationId' | 'supplierId' | 'customerId', err.message);
 				return message(form, { type: 'error', text: err.message }, { status: 400 });
 			}
 			throw err;

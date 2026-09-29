@@ -39,6 +39,8 @@
 						locations={data.locations}
 						suppliers={data.suppliers}
 						supplierForm={data.supplierForm}
+						customers={data.customers}
+						customerForm={data.customerForm}
 					/>
 					<Button type="submit" form="create">
 						{#if $delayed}<LoadingBtn name="Creating" />{:else}Create draft{/if}

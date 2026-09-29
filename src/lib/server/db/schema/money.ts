@@ -13,6 +13,7 @@ import {
 import { user } from './auth';
 import { branch } from './locations';
 import { supplier } from './suppliers';
+import { customer } from './customers';
 import { deletionFields, lesserFields, orgRef, secureFields } from './fields';
 import {
 	PAYMENT_KINDS,
@@ -69,7 +70,17 @@ export const transactions = mysqlTable(
 		party: varchar('party', { length: 160 }),
 		/** The supplier paid, when it was one: what the supplier's balance is worked out from. */
 		supplierId: int('supplier_id').references(() => supplier.id, { onDelete: 'restrict' }),
+		/** The customer who paid, when it was one on the list. Optional, like the customer itself. */
+		customerId: int('customer_id').references(() => customer.id, { onDelete: 'restrict' }),
 		description: varchar('description', { length: 255 }),
+		/**
+		 * Tax withheld on this payment, on top of `amount`: kept back by us from a supplier (we pay it
+		 * to the tax office), or by a customer from us (a credit against our tax). Either way it
+		 * settles the account as much as the cash does.
+		 */
+		withheld: decimal('withheld', { precision: 14, scale: 2, mode: 'number' }).notNull().default(0),
+		/** The withholding receipt: issued by us, or handed to us by the customer. */
+		withholdingReceipt: varchar('withholding_receipt', { length: 60 }),
 		status: mysqlEnum('status', TRANSACTION_STATUSES).notNull().default('recorded'),
 		verifiedBy: varchar('verified_by', { length: 255 }).references(() => user.id, {
 			onDelete: 'set null'
@@ -81,7 +92,8 @@ export const transactions = mysqlTable(
 	(table) => [
 		index('transactions_org_date_idx').on(table.orgId, table.occurredOn),
 		index('transactions_org_reference_idx').on(table.orgId, table.reference),
-		index('transactions_supplier_idx').on(table.supplierId)
+		index('transactions_supplier_idx').on(table.supplierId),
+		index('transactions_customer_idx').on(table.customerId)
 	]
 );
 

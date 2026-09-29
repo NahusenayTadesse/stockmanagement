@@ -11,7 +11,7 @@ import {
 } from 'drizzle-orm/mysql-core';
 import { deletionFields, lesserFields, orgRef, secureFields } from './fields';
 import { supplier } from './suppliers';
-import { STORAGE_CONDITIONS } from '../../../constants';
+import { STORAGE_CONDITIONS, TAX_CODES } from '../../../constants';
 
 export const category = mysqlTable(
 	'category',
@@ -100,6 +100,10 @@ export const item = mysqlTable(
 		/** In base units. Stock at or below this shows as "reorder". */
 		reorderLevel: decimal('reorder_level', { precision: 18, scale: 4, mode: 'number' }),
 		salePrice: decimal('sale_price', { precision: 14, scale: 2, mode: 'number' }),
+		/** VAT treatment. Standard unless the law zero-rates or exempts it. */
+		taxCode: mysqlEnum('tax_code', TAX_CODES).notNull().default('standard'),
+		/** TOT on this item, overriding the business's rate (services are often 10%). Optional. */
+		totRate: decimal('tot_rate', { precision: 5, scale: 2, mode: 'number' }),
 		/**
 		 * Moving weighted-average cost per base unit, maintained by posting receipts. Never set
 		 * from a form: it is the ledger's number, and the value of all stock is computed from it.

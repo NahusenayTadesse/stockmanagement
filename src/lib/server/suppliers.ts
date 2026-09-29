@@ -3,15 +3,15 @@
  * query is filtered by the business first.
  */
 import { error } from '@sveltejs/kit';
-import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql, type Column } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
+import { lineNetSql, lineVatSql } from '$lib/server/tax';
 import {
 	item,
 	paymentMethod,
 	stockDocument,
 	stockDocumentLine,
-	stockMovement,
 	supplier,
 	transactions,
 	uom
@@ -20,16 +20,31 @@ import {
 /** The outer supplier row, for the correlated subqueries below. See `qualified`. */
 const supplierRef = qualified(supplier, supplier.id);
 
-/** Value delivered: what posted receipts from this supplier cost. */
+const doc = (c: Column) => qualified(stockDocument, c);
+const docLine = (c: Column) => qualified(stockDocumentLine, c);
+
+/**
+ * Value delivered: posted receipts from this supplier at the price on each line, VAT included,
+ * less what went back to them on returns.
+ */
 const receivedValue = sql<number>`COALESCE((
-	SELECT SUM(${stockMovement.quantity} * ${stockMovement.unitCost}) FROM ${stockMovement}
-	WHERE ${stockMovement.supplierId} = ${supplierRef} AND ${stockMovement.kind} = 'receipt'
+	SELECT SUM(CASE WHEN ${doc(stockDocument.type)} = 'receipt' THEN 1 ELSE -1 END * (${lineNetSql} + ${lineVatSql}))
+	FROM ${stockDocumentLine}
+	JOIN ${stockDocument} ON ${doc(stockDocument.id)} = ${docLine(stockDocumentLine.documentId)}
+	WHERE ${doc(stockDocument.supplierId)} = ${supplierRef}
+		AND ${doc(stockDocument.type)} IN ('receipt', 'purchase_return')
+		AND ${doc(stockDocument.status)} = 'posted'
+		AND ${docLine(stockDocumentLine.deletedAt)} IS NULL
 ), 0)`;
 
-/** Paid: money out to this supplier, voided transactions excluded. */
+/**
+ * Paid: money out to this supplier and the tax we withheld from it, less any refund they paid us
+ * back. Voided transactions excluded.
+ */
 const paidValue = sql<number>`COALESCE((
-	SELECT SUM(${transactions.amount}) FROM ${transactions}
-	WHERE ${transactions.supplierId} = ${supplierRef} AND ${transactions.direction} = 'out'
+	SELECT SUM(CASE WHEN ${transactions.direction} = 'out' THEN ${transactions.amount} + ${transactions.withheld} ELSE -${transactions.amount} END)
+	FROM ${transactions}
+	WHERE ${transactions.supplierId} = ${supplierRef}
 		AND ${transactions.status} <> 'void' AND ${transactions.deletedAt} IS NULL
 ), 0)`;
 
@@ -92,8 +107,10 @@ export function supplierValues(data: {
 	tin: string;
 	contactPerson: string;
 	note: string;
+	vatRegistered?: boolean;
 }) {
 	return {
+		vatRegistered: data.vatRegistered ?? false,
 		name: data.name,
 		phone: data.phone,
 		email: data.email || null,
@@ -114,16 +131,15 @@ export async function supplierDetail(orgId: number, supplierId: number) {
 				status: stockDocument.status,
 				docDate: stockDocument.docDate,
 				reference: stockDocument.reference,
-				// Posted: what the ledger says it cost. A draft has no ledger rows yet; its lines say.
-				value: sql<number>`CASE WHEN ${stockDocument.status} = 'posted' THEN COALESCE((
-					SELECT SUM(${stockMovement.quantity} * ${stockMovement.unitCost}) FROM ${stockMovement}
-					WHERE ${stockMovement.documentId} = ${qualified(stockDocument, stockDocument.id)}
-				), 0) ELSE COALESCE((
-					SELECT SUM(${stockDocumentLine.quantity} * COALESCE(${stockDocumentLine.unitCost}, 0))
+				type: stockDocument.type,
+				// At the price on each line; VAT included once posted (a draft's rate is not fixed yet).
+				value: sql<number>`COALESCE((
+					SELECT SUM(ROUND(${docLine(stockDocumentLine.quantity)} * COALESCE(${docLine(stockDocumentLine.unitCost)}, 0), 2)
+						+ ROUND(ROUND(${docLine(stockDocumentLine.quantity)} * COALESCE(${docLine(stockDocumentLine.unitCost)}, 0), 2) * COALESCE(${docLine(stockDocumentLine.vatRate)}, 0) / 100, 2))
 					FROM ${stockDocumentLine}
-					WHERE ${stockDocumentLine.documentId} = ${qualified(stockDocument, stockDocument.id)}
-						AND ${stockDocumentLine.deletedAt} IS NULL
-				), 0) END`,
+					WHERE ${docLine(stockDocumentLine.documentId)} = ${qualified(stockDocument, stockDocument.id)}
+						AND ${docLine(stockDocumentLine.deletedAt)} IS NULL
+				), 0)`,
 				paymentId: stockDocument.transactionId
 			})
 			.from(stockDocument)
@@ -131,7 +147,7 @@ export async function supplierDetail(orgId: number, supplierId: number) {
 				and(
 					eq(stockDocument.orgId, orgId),
 					eq(stockDocument.supplierId, supplierId),
-					eq(stockDocument.type, 'receipt'),
+					inArray(stockDocument.type, ['receipt', 'purchase_return']),
 					ne(stockDocument.status, 'cancelled')
 				)
 			)
@@ -157,6 +173,7 @@ export async function supplierDetail(orgId: number, supplierId: number) {
 				occurredOn: transactions.occurredOn,
 				direction: transactions.direction,
 				amount: transactions.amount,
+				withheld: transactions.withheld,
 				method: paymentMethod.name,
 				reference: transactions.reference,
 				receiptNumber: transactions.receiptNumber,
@@ -174,12 +191,13 @@ export async function supplierDetail(orgId: number, supplierId: number) {
 			.orderBy(desc(transactions.occurredOn), desc(transactions.id))
 	]);
 
+	// Returns to them take off what they delivered; tax we withheld counts as paid.
 	const received = deliveries
 		.filter((d) => d.status === 'posted')
-		.reduce((s, d) => s + Number(d.value), 0);
+		.reduce((s, d) => s + (d.type === 'purchase_return' ? -1 : 1) * Number(d.value), 0);
 	const paid = payments
-		.filter((p) => p.direction === 'out' && p.status !== 'void')
-		.reduce((s, p) => s + p.amount, 0);
+		.filter((p) => p.status !== 'void')
+		.reduce((s, p) => s + (p.direction === 'out' ? p.amount + p.withheld : -p.amount), 0);
 
 	return {
 		deliveries: deliveries.map((d) => ({ ...d, value: Math.round(Number(d.value) * 100) / 100 })),

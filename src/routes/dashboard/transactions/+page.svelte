@@ -109,6 +109,7 @@
 						methods={data.methods}
 						branches={data.branches}
 						suppliers={data.suppliers}
+						customers={data.customers}
 						withFile
 					/>
 					<Button type="submit" form="add">

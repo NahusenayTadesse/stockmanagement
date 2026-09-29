@@ -35,7 +35,12 @@ const fields = {
 	/** 0 = the whole business. */
 	branchId: z.coerce.number().int().min(0).default(0),
 	/** 0 = not a supplier. */
-	supplierId: z.coerce.number().int().min(0).default(0)
+	supplierId: z.coerce.number().int().min(0).default(0),
+	/** 0 = no customer named — a walk-in, or not a sale at all. */
+	customerId: z.coerce.number().int().min(0).default(0),
+	/** Tax withheld on top of `amount`. */
+	withheld: z.number().min(0, 'Cannot be negative').default(0),
+	withholdingReceipt: z.string().trim().max(60).default('')
 };
 
 export const transactionAdd = z.object({ ...fields, file: attachment.optional() });

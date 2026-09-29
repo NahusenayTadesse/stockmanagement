@@ -50,6 +50,9 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
+					// One real database, each test in a rolled-back transaction: files running side by
+					// side deadlock on the same unique-index gaps (stock_balance), so they run in turn.
+					fileParallelism: false,
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
 				}

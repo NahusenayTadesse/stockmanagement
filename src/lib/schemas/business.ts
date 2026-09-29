@@ -9,7 +9,23 @@ export const businessSchema = z.object({
 		.or(z.literal(''))
 		.default(''),
 	phone: z.string().trim().max(30).default(''),
-	address: z.string().trim().max(255).default('')
+	address: z.string().trim().max(255).default(''),
+	/** Off for an internal store: hides customers everywhere. */
+	sellsToCustomers: z.boolean().default(true),
+	vatRegistered: z.boolean().default(false),
+	vatRate: z.coerce.number().min(0).max(100).default(15),
+	withholdingAgent: z.boolean().default(false),
+	withholdingRate: z.coerce.number().min(0).max(100).default(3),
+	withholdingThreshold: z.coerce.number().min(0).default(10000),
+	/** Empty: not a TOT payer. */
+	totRate: z.number().min(0).max(100).nullable().default(null),
+	/** Empty: e-invoicing off. */
+	einvoiceMode: z.enum(['', 'sandbox', 'live']).default(''),
+	einvoiceEndpoint: z.url('Enter the full URL').or(z.literal('')).default(''),
+	einvoiceTokenUrl: z.url('Enter the full URL').or(z.literal('')).default(''),
+	einvoiceClientId: z.string().trim().max(120).default(''),
+	/** Empty keeps the stored one. */
+	einvoiceSecret: z.string().trim().max(300).default('')
 });
 
 export const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];

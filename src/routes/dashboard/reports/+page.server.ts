@@ -3,7 +3,11 @@ import { addLocalDays, localToday } from '@nahu/admin-kit/time';
 import { orgIdOf } from '$lib/server/tenant';
 import { branchOptions } from '$lib/server/options';
 import { datePresets } from '$lib/server/transactions';
+import { sellsToCustomers } from '$lib/server/customers';
 import {
+	issuedByCustomer,
+	vatRegisters,
+	withholdingRegister,
 	moneyOverTime,
 	movementsOverTime,
 	purchasesBySupplier,
@@ -35,14 +39,21 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	};
 	const seesMoney = hasPermission(locals, 'transactions.view');
 
-	const [stock, movements, issued, suppliers, waste, money] = await Promise.all([
+	const sells = await sellsToCustomers(orgId);
+
+	const [stock, movements, issued, byCustomer, suppliers, waste, money] = await Promise.all([
 		stockValuation(orgId, filters.branchId),
 		movementsOverTime(orgId, filters),
 		topIssued(orgId, filters),
+		sells ? issuedByCustomer(orgId, filters) : Promise.resolve(null),
 		purchasesBySupplier(orgId, filters),
 		wastage(orgId, filters),
 		seesMoney ? moneyOverTime(orgId, filters) : Promise.resolve(null)
 	]);
+	// Tax figures are money: for whoever may see transactions.
+	const [vat, withholding] = seesMoney
+		? await Promise.all([vatRegisters(orgId, filters), withholdingRegister(orgId, filters)])
+		: [null, null];
 
 	return {
 		filters,
@@ -51,9 +62,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		stock,
 		movements,
 		issued,
+		byCustomer,
 		suppliers,
 		waste,
 		money,
+		vat,
+		withholding,
 		tab: p.get('tab') ?? 'stock'
 	};
 };

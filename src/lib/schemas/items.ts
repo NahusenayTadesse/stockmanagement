@@ -1,5 +1,5 @@
 import { z } from 'zod/v4';
-import { STORAGE_CONDITIONS } from '$lib/constants';
+import { STORAGE_CONDITIONS, TAX_CODES } from '$lib/constants';
 
 const flag = z.boolean().default(false);
 
@@ -12,6 +12,9 @@ export const itemAdd = z.object({
 	/** Required for stock-tracked items (checked on the server); services may leave it at 0. */
 	supplierId: z.coerce.number().int().min(0).default(0),
 	salePrice: z.number().min(0).nullable().default(null),
+	taxCode: z.enum(TAX_CODES).default('standard'),
+	/** TOT on this item, overriding the business's rate. Optional. */
+	totRate: z.number().min(0).max(100).nullable().default(null),
 	reorderLevel: z.number().min(0).nullable().default(null),
 	storageCondition: z.enum(STORAGE_CONDITIONS).default('ambient'),
 	description: z.string().trim().max(2000).default(''),
@@ -41,6 +44,12 @@ export const barcodeAdd = z.object({
 	uomId: z.coerce.number().int().min(0).default(0)
 });
 export const barcodeEdit = barcodeAdd.extend({ id: z.coerce.number() });
+
+export const TAX_CODE_CHOICES = [
+	{ value: 'standard', name: 'Standard VAT' },
+	{ value: 'zero', name: 'Zero-rated (0%) — exports, some basic foods' },
+	{ value: 'exempt', name: 'Exempt — medicines, bread, some services' }
+];
 
 export const STORAGE_CHOICES = [
 	{ value: 'ambient', name: 'Room temperature' },

@@ -9,6 +9,7 @@ import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
 import {
 	category,
+	customer,
 	item,
 	location,
 	lot,
@@ -24,6 +25,7 @@ import {
 	uom
 } from '$lib/server/db/schema';
 import { round4 } from '$lib/server/stock/math';
+import { lineNetSql, lineTotSql, lineVatSql } from '$lib/server/tax';
 
 export type ReportFilters = { from: string; to: string; branchId: number };
 
@@ -237,6 +239,42 @@ export async function topIssued(orgId: number, f: ReportFilters, limit = 15) {
 	return rows.map((r) => ({
 		...r,
 		quantity: round4(Number(r.quantity)),
+		value: money(r.value),
+		documents: Number(r.documents)
+	}));
+}
+
+/**
+ * Issues over the period by who took them: each listed customer, and everything with no customer
+ * named in one line — walk-in sales and internal issues, which is most of it for many businesses.
+ */
+export async function issuedByCustomer(orgId: number, f: ReportFilters) {
+	const rows = await db
+		.select({
+			customerId: stockDocument.customerId,
+			customer: customer.name,
+			value: sql<number>`SUM(-${stockMovement.quantity} * ${stockMovement.unitCost})`,
+			documents: sql<number>`COUNT(DISTINCT ${stockMovement.documentId})`
+		})
+		.from(stockMovement)
+		.innerJoin(stockDocument, eq(stockDocument.id, stockMovement.documentId))
+		.leftJoin(customer, eq(customer.id, stockDocument.customerId))
+		.innerJoin(location, eq(location.id, stockMovement.locationId))
+		.where(
+			and(
+				eq(stockMovement.orgId, orgId),
+				eq(stockMovement.kind, 'issue'),
+				gte(stockMovement.docDate, f.from),
+				lte(stockMovement.docDate, f.to),
+				branchOf(f.branchId)
+			)
+		)
+		.groupBy(stockDocument.customerId, customer.name)
+		.orderBy(desc(sql`SUM(-${stockMovement.quantity} * ${stockMovement.unitCost})`));
+
+	return rows.map((r) => ({
+		customerId: r.customerId,
+		customer: r.customer ?? 'No customer named',
 		value: money(r.value),
 		documents: Number(r.documents)
 	}));
@@ -483,5 +521,134 @@ export async function moneyOverTime(orgId: number, f: ReportFilters) {
 		byMethod: table(byMethod),
 		totalIn: money(moneyIn.reduce((s, v) => s + v, 0)),
 		totalOut: money(moneyOut.reduce((s, v) => s + v, 0))
+	};
+}
+
+// ── Tax ───────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * VAT over the period, from posted documents: the sales register (sales, less customer returns)
+ * gives output VAT, the purchase register (deliveries, less returns to suppliers) input VAT. A
+ * return is a negative line of the register it corrects, as a credit note would be.
+ */
+export async function vatRegisters(orgId: number, f: ReportFilters) {
+	const rows = await db
+		.select({
+			id: stockDocument.id,
+			type: stockDocument.type,
+			number: stockDocument.number,
+			docDate: stockDocument.docDate,
+			party: sql<string>`COALESCE(${customer.name}, ${supplier.name}, ${stockDocument.party}, 'Walk-in')`,
+			tin: sql<string | null>`COALESCE(${customer.tin}, ${supplier.tin})`,
+			net: sql<number>`SUM(${lineNetSql})`,
+			vat: sql<number>`SUM(${lineVatSql})`,
+			tot: sql<number>`SUM(${lineTotSql})`
+		})
+		.from(stockDocument)
+		.innerJoin(stockDocumentLine, eq(stockDocumentLine.documentId, stockDocument.id))
+		.leftJoin(customer, eq(customer.id, stockDocument.customerId))
+		.leftJoin(supplier, eq(supplier.id, stockDocument.supplierId))
+		.where(
+			and(
+				eq(stockDocument.orgId, orgId),
+				eq(stockDocument.status, 'posted'),
+				inArray(stockDocument.type, ['issue', 'sales_return', 'receipt', 'purchase_return']),
+				gte(stockDocument.docDate, f.from),
+				lte(stockDocument.docDate, f.to),
+				f.branchId ? eq(stockDocument.branchId, f.branchId) : undefined,
+				isNull(stockDocumentLine.deletedAt)
+			)
+		)
+		.groupBy(stockDocument.id)
+		.orderBy(asc(stockDocument.docDate), asc(stockDocument.id));
+
+	const register = (types: string[], negative: string) =>
+		rows
+			.filter((r) => types.includes(r.type))
+			.map((r) => {
+				const sign = r.type === negative ? -1 : 1;
+				const net = money(Number(r.net) * sign);
+				const vat = money(Number(r.vat) * sign);
+				const tot = money(Number(r.tot) * sign);
+				return {
+					id: r.id,
+					number: r.number,
+					docDate: r.docDate,
+					kind: r.type === negative ? 'Return' : r.type === 'issue' ? 'Sale' : 'Delivery',
+					party: r.party,
+					tin: r.tin,
+					net,
+					vat,
+					tot,
+					gross: money(net + vat + tot)
+				};
+			})
+			// A sale nobody priced is not a sale for tax purposes: it moved no money.
+			.filter((r) => r.net !== 0 || r.vat !== 0 || r.tot !== 0);
+
+	const sales = register(['issue', 'sales_return'], 'sales_return');
+	const purchases = register(['receipt', 'purchase_return'], 'purchase_return');
+	const sum = (list: typeof sales, k: 'net' | 'vat' | 'tot') =>
+		money(list.reduce((s, r) => s + r[k], 0));
+	const outputVat = sum(sales, 'vat');
+	const inputVat = sum(purchases, 'vat');
+	return {
+		sales,
+		purchases,
+		totals: {
+			salesNet: sum(sales, 'net'),
+			outputVat,
+			purchasesNet: sum(purchases, 'net'),
+			inputVat,
+			payable: money(outputVat - inputVat),
+			/** Turnover tax on sales, for a business that pays TOT instead of VAT. */
+			tot: sum(sales, 'tot')
+		}
+	};
+}
+
+/**
+ * Withholding over the period: what we kept back from suppliers (owed to the tax office) and what
+ * customers kept back from us (a credit against our own tax). Voided payments left out.
+ */
+export async function withholdingRegister(orgId: number, f: ReportFilters) {
+	const rows = await db
+		.select({
+			id: transactions.id,
+			occurredOn: transactions.occurredOn,
+			direction: transactions.direction,
+			party: sql<string>`COALESCE(${supplier.name}, ${customer.name}, ${transactions.party}, '—')`,
+			tin: sql<string | null>`COALESCE(${supplier.tin}, ${customer.tin})`,
+			amount: transactions.amount,
+			withheld: transactions.withheld,
+			receipt: transactions.withholdingReceipt
+		})
+		.from(transactions)
+		.leftJoin(supplier, eq(supplier.id, transactions.supplierId))
+		.leftJoin(customer, eq(customer.id, transactions.customerId))
+		.where(
+			and(
+				eq(transactions.orgId, orgId),
+				gt(transactions.withheld, 0),
+				ne(transactions.status, 'void'),
+				isNull(transactions.deletedAt),
+				gte(transactions.occurredOn, f.from),
+				lte(transactions.occurredOn, f.to),
+				f.branchId ? eq(transactions.branchId, f.branchId) : undefined
+			)
+		)
+		.orderBy(asc(transactions.occurredOn), asc(transactions.id));
+
+	const byUs = rows.filter((r) => r.direction === 'out');
+	const fromUs = rows.filter((r) => r.direction === 'in');
+	const sum = (list: typeof rows) => money(list.reduce((s, r) => s + r.withheld, 0));
+	return {
+		byUs,
+		fromUs,
+		totals: {
+			byUs: sum(byUs),
+			fromUs: sum(fromUs),
+			missingReceipts: rows.filter((r) => !r.receipt).length
+		}
 	};
 }

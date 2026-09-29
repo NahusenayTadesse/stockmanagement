@@ -19,7 +19,9 @@ import { item, uom } from './catalog';
 import { branch, location } from './locations';
 import { transactions } from './money';
 import { supplier } from './suppliers';
+import { customer } from './customers';
 import { purchaseOrder, purchaseOrderLine } from './purchasing';
+import { fiscalDevice } from './fiscal';
 import { deletionFields, orgRef, secureFields } from './fields';
 import {
 	ADJUSTMENT_REASONS,
@@ -121,6 +123,38 @@ export const stockDocument = mysqlTable(
 		supplierId: int('supplier_id').references(() => supplier.id, { onDelete: 'restrict' }),
 		/** Who it went to (issues), as written on the paper. Receipts use `supplierId` instead. */
 		party: varchar('party', { length: 160 }),
+		/** Issues: the customer, when the sale was to someone on the customer list. Optional. */
+		customerId: int('customer_id').references(() => customer.id, { onDelete: 'restrict' }),
+		// ── Fiscal receipt and e-invoice (sales and customer returns). All optional. ──
+		fiscalDeviceId: int('fiscal_device_id').references(() => fiscalDevice.id, {
+			onDelete: 'set null'
+		}),
+		/** The FS No. the device printed. */
+		fiscalReceiptNumber: varchar('fiscal_receipt_number', { length: 30 }),
+		/** The device's registration code (MRC), as printed on the receipt. */
+		fiscalMachineCode: varchar('fiscal_machine_code', { length: 30 }),
+		fiscalStatus: mysqlEnum('fiscal_status', ['pending', 'printed', 'manual', 'failed']),
+		fiscalPrintedAt: datetime('fiscal_printed_at'),
+		fiscalError: varchar('fiscal_error', { length: 255 }),
+		einvoiceStatus: mysqlEnum('einvoice_status', [
+			'submitted',
+			'accepted',
+			'rejected',
+			'failed',
+			'cancelled'
+		]),
+		/** The invoice reference number the tax office issued. */
+		einvoiceIrn: varchar('einvoice_irn', { length: 120 }),
+		/** What the invoice's QR code encodes. */
+		einvoiceQr: text('einvoice_qr'),
+		einvoiceSubmittedAt: datetime('einvoice_submitted_at'),
+		einvoiceError: varchar('einvoice_error', { length: 255 }),
+		/** The tax office's reply, as received, for the record. */
+		einvoiceResponse: text('einvoice_response'),
+		/** Returns: the sale or delivery being returned. */
+		returnOfId: int('return_of_id').references((): AnyMySqlColumn => stockDocument.id, {
+			onDelete: 'restrict'
+		}),
 		reason: mysqlEnum('reason', ADJUSTMENT_REASONS),
 		note: text('note'),
 		/**
@@ -142,7 +176,8 @@ export const stockDocument = mysqlTable(
 	},
 	(table) => [
 		uniqueIndex('stock_document_number_idx').on(table.orgId, table.number),
-		index('stock_document_org_status_idx').on(table.orgId, table.status, table.type)
+		index('stock_document_org_status_idx').on(table.orgId, table.status, table.type),
+		index('stock_document_customer_idx').on(table.customerId)
 	]
 );
 
@@ -169,6 +204,23 @@ export const stockDocumentLine = mysqlTable(
 		quantity: decimal('quantity', { precision: 18, scale: 4, mode: 'number' }).notNull(),
 		/** Per `uomId`. Receipts and positive adjustments; defaults to the average cost when empty. */
 		unitCost: decimal('unit_cost', { precision: 18, scale: 4, mode: 'number' }),
+		/**
+		 * Issues: what the line was sold for, per `uomId`. Defaults to the item's list price. A sale
+		 * to a named customer needs it on every line — it is what the customer owes.
+		 */
+		unitPrice: decimal('unit_price', { precision: 18, scale: 4, mode: 'number' }),
+		/**
+		 * VAT on this line, in percent: fixed when the document is posted (sales and receipts) or
+		 * copied from the line returned. Empty on a draft, and on anything that is not bought or sold.
+		 */
+		vatRate: decimal('vat_rate', { precision: 5, scale: 2, mode: 'number' }),
+		/** Turnover tax on this line, in percent, fixed at posting like `vatRate`. Optional. */
+		totRate: decimal('tot_rate', { precision: 5, scale: 2, mode: 'number' }),
+		/** Returns: the line of the original document this returns part of. */
+		returnOfLineId: int('return_of_line_id').references(
+			(): AnyMySqlColumn => stockDocumentLine.id,
+			{ onDelete: 'restrict' }
+		),
 		/** Issues and transfers: take from this lot. Empty means first-expiry-first-out. */
 		lotId: int('lot_id').references(() => lot.id, { onDelete: 'restrict' }),
 		/** Receipts and positive adjustments: the lot being brought in. */
@@ -200,7 +252,9 @@ export const MOVEMENT_KINDS = [
 	'transfer_out',
 	'transfer_in',
 	'adjustment_in',
-	'adjustment_out'
+	'adjustment_out',
+	'sales_return',
+	'purchase_return'
 ] as const;
 
 /**

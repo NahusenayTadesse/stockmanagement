@@ -5,8 +5,27 @@
 export const LOCATION_KINDS = ['storage', 'sales', 'cold', 'quarantine'] as const;
 export const STORAGE_CONDITIONS = ['ambient', 'cool', 'cold', 'frozen'] as const;
 export const LOT_STATUSES = ['available', 'quarantine', 'recalled'] as const;
-export const SERIAL_STATUSES = ['in_stock', 'issued', 'leased', 'maintenance', 'disposed'] as const;
-export const DOCUMENT_TYPES = ['receipt', 'issue', 'transfer', 'adjustment'] as const;
+export const SERIAL_STATUSES = [
+	'in_stock',
+	'issued',
+	'leased',
+	'maintenance',
+	'disposed',
+	'returned'
+] as const;
+export const DOCUMENT_TYPES = [
+	'receipt',
+	'issue',
+	'transfer',
+	'adjustment',
+	'sales_return',
+	'purchase_return'
+] as const;
+/** The types a person starts from the "new document" form. Returns start from what they return. */
+export const CREATABLE_TYPES = ['receipt', 'issue', 'transfer', 'adjustment'] as const;
+export const RETURN_TYPES = ['sales_return', 'purchase_return'] as const;
+/** VAT treatment of an item: standard rate, zero-rated (exports, some foods), or exempt. */
+export const TAX_CODES = ['standard', 'zero', 'exempt'] as const;
 export const DOCUMENT_STATUSES = ['draft', 'posted', 'cancelled'] as const;
 export const ADJUSTMENT_REASONS = ['count', 'damage', 'expiry', 'found', 'other'] as const;
 
@@ -33,3 +52,6 @@ export const PO_STATUSES = [
 	'closed',
 	'cancelled'
 ] as const;
+
+/** How the app talks to a fiscal device. Empty means manual. */
+export const FISCAL_DEVICE_KINDS = ['manual', 'datecs_tcp', 'http_bridge'] as const;

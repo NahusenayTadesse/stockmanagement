@@ -57,6 +57,23 @@ export const kindColumns: ColumnDef<PageData['movements']['byKind'][number]>[] =
 	{ accessorKey: 'value', header: 'Value at cost', cell: (i) => etb(i.getValue()) }
 ];
 
+export const customerColumns: ColumnDef<NonNullable<PageData['byCustomer']>[number]>[] = [
+	{
+		accessorKey: 'customer',
+		header: 'Customer',
+		cell: ({ row }) =>
+			row.original.customerId
+				? renderComponent(DataTableLinks, {
+						id: row.original.customerId,
+						name: row.original.customer,
+						entity: 'customer'
+					})
+				: row.original.customer
+	},
+	{ accessorKey: 'documents', header: 'Issues' },
+	{ accessorKey: 'value', header: 'Value at cost', cell: (i) => etb(i.getValue()) }
+];
+
 export const supplierColumns: ColumnDef<PageData['suppliers'][number]>[] = [
 	{
 		accessorKey: 'supplier',
@@ -110,3 +127,44 @@ export const splitColumns = (first: string): ColumnDef<Split>[] => [
 	{ accessorKey: 'out', header: 'Out', cell: (i) => etb(i.getValue()) },
 	{ accessorKey: 'net', header: 'Net', cell: (i) => etb(i.getValue()) }
 ];
+
+export const registerColumns: ColumnDef<NonNullable<PageData['vat']>['sales'][number]>[] = [
+	{ accessorKey: 'docDate', header: 'Date', cell: (i) => ethiopianDate(i.getValue()) },
+	{
+		accessorKey: 'number',
+		header: 'Document',
+		cell: ({ row }) =>
+			renderComponent(DataTableLinks, {
+				id: row.original.id,
+				name: row.original.number ?? `#${row.original.id}`,
+				entity: 'document'
+			})
+	},
+	{ accessorKey: 'kind', header: 'Kind' },
+	{ accessorKey: 'party', header: 'Customer / supplier' },
+	{ accessorKey: 'tin', header: 'TIN', cell: (i) => i.getValue() ?? '—' },
+	{ accessorKey: 'net', header: 'Before VAT', cell: (i) => etb(i.getValue()) },
+	{ accessorKey: 'vat', header: 'VAT', cell: (i) => etb(i.getValue()) },
+	{ accessorKey: 'tot', header: 'TOT', cell: (i) => etb(i.getValue()) },
+	{ accessorKey: 'gross', header: 'Total', cell: (i) => etb(i.getValue()) }
+];
+
+export const withholdingColumns: ColumnDef<NonNullable<PageData['withholding']>['byUs'][number]>[] =
+	[
+		{ accessorKey: 'occurredOn', header: 'Date', cell: (i) => ethiopianDate(i.getValue()) },
+		{
+			accessorKey: 'id',
+			header: 'Transaction',
+			cell: ({ row }) =>
+				renderComponent(DataTableLinks, {
+					id: row.original.id,
+					name: `#${row.original.id}`,
+					entity: 'transaction'
+				})
+		},
+		{ accessorKey: 'party', header: 'Paid to / by' },
+		{ accessorKey: 'tin', header: 'TIN', cell: (i) => i.getValue() ?? '— none' },
+		{ accessorKey: 'amount', header: 'Cash', cell: (i) => etb(i.getValue()) },
+		{ accessorKey: 'withheld', header: 'Withheld', cell: (i) => etb(i.getValue()) },
+		{ accessorKey: 'receipt', header: 'Receipt no.', cell: (i) => i.getValue() ?? '⚠ missing' }
+	];

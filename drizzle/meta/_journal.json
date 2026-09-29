@@ -43,6 +43,41 @@
       "when": 1790627399216,
       "tag": "0005_counts_and_purchasing",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1790662713357,
+      "tag": "0006_customers",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1790665165136,
+      "tag": "0007_credit",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1790666594999,
+      "tag": "0008_returns_vat_withholding",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1790668508486,
+      "tag": "0009_fiscal_einvoice_tot",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1790668980439,
+      "tag": "0010_fiscal_device_deleted_by",
+      "breakpoints": true
     }
   ]
 }

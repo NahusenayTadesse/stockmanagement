@@ -7,7 +7,7 @@
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { barcodeAdd, barcodeEdit, STORAGE_CHOICES, unitAdd, unitEdit } from '$lib/schemas/items';
-	import { qty } from '$lib/format';
+	import { TAX_CODE_LABELS, qty } from '$lib/format';
 	import { cardColumns, stockColumns } from './columns';
 
 	let { data } = $props();
@@ -54,6 +54,7 @@
 		{ name: 'Average cost', value: formatETB(it.avgCost) },
 		{ name: 'Stock value', value: formatETB(total * it.avgCost) },
 		{ name: 'Sale price', value: it.salePrice == null ? '—' : formatETB(it.salePrice) },
+		{ name: 'VAT', value: TAX_CODE_LABELS[it.taxCode] ?? it.taxCode },
 		{
 			name: 'Reorder at',
 			value: it.reorderLevel == null ? '—' : qty(it.reorderLevel, data.base?.symbol)

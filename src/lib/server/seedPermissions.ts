@@ -31,6 +31,8 @@ const CODE_ONLY_PERMISSIONS = [
 	'transactions.manage',
 	'transactions.verify',
 	'suppliers.manage',
+	'customers.manage',
+	'customers.credit',
 	'purchasing.manage'
 ] as const;
 
@@ -40,6 +42,9 @@ export const DESCRIPTIONS: Record<string, string> = {
 	'business.manage': 'Change the business name, TIN, contact details and logo',
 	'suppliers.view': 'See suppliers, what they delivered, and what is owed to them',
 	'suppliers.manage': 'Add suppliers and change their details',
+	'customers.view': 'See customers, what they took and what they paid',
+	'customers.manage': 'Add customers and change their details, including credit limits',
+	'customers.credit': 'Post a sale that takes a customer over their credit limit',
 	'purchasing.view': 'See purchase orders and what needs reordering',
 	'purchasing.manage': 'Draft purchase orders, send them to suppliers, close and cancel them',
 	'reports.view': 'Read the stock, purchase, wastage and money reports, and export them',
@@ -92,6 +97,9 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'transactions.verify',
 				'suppliers.view',
 				'suppliers.manage',
+				'customers.view',
+				'customers.manage',
+				'customers.credit',
 				'purchasing.view',
 				'purchasing.manage',
 				'reports.view'
@@ -106,6 +114,8 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'transactions.view',
 				'transactions.manage',
 				'suppliers.view',
+				'customers.view',
+				'customers.manage',
 				'purchasing.view',
 				'reports.view'
 			]
@@ -120,6 +130,7 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'stock.post',
 				'suppliers.view',
 				'suppliers.manage',
+				'customers.view',
 				'purchasing.view',
 				'reports.view'
 			]
@@ -134,13 +145,22 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'transactions.manage',
 				'suppliers.view',
 				'suppliers.manage',
+				'customers.view',
+				'customers.manage',
 				'purchasing.view'
 			]
 		},
 		{
 			name: 'Viewer',
 			description: 'Reads stock and items, changes nothing',
-			permissions: ['items.view', 'stock.view', 'suppliers.view', 'purchasing.view', 'reports.view']
+			permissions: [
+				'items.view',
+				'stock.view',
+				'suppliers.view',
+				'customers.view',
+				'purchasing.view',
+				'reports.view'
+			]
 		}
 	];
 

@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
 import { addLocalDays, localToday } from '@nahu/admin-kit/time';
 import {
@@ -15,6 +15,8 @@ import {
 	barcode,
 	branch,
 	category,
+	customer,
+	fiscalDevice,
 	item,
 	itemUnit,
 	location,
@@ -44,7 +46,10 @@ import {
 import { createOrganization } from '$lib/server/seedPermissions';
 import { postDocument, type Tx } from '$lib/server/stock/post';
 import { markOrdered, receiptFromOrder } from '$lib/server/purchasing';
+import { createReturn } from '$lib/server/returns';
+import { submitEinvoice } from '$lib/server/einvoice';
 import { countLines, openCount, postCount, saveCounts } from '$lib/server/counts';
+import { documentTotals, suggestedWithholding } from '$lib/server/tax';
 import type { DocumentType } from '$lib/constants';
 
 /** Every seeded account signs in with this. */
@@ -71,6 +76,7 @@ export type Business = {
 	items: Map<string, number>;
 	users: Map<string, string>;
 	suppliers: Map<string, number>;
+	customers: Map<string, number>;
 };
 
 /**
@@ -109,6 +115,13 @@ export async function removeBusiness(tx: Tx, ownerEmail: string) {
 			if (name) fs.rmSync(path.join(FILES_DIR, name), { force: true });
 		}
 
+		// Returns point at what they return, within the same tables: unhook them before deleting.
+		await tx
+			.update(stockDocumentLine)
+			.set({ returnOfLineId: null })
+			.where(eq(stockDocumentLine.orgId, orgId));
+		await tx.update(stockDocument).set({ returnOfId: null }).where(eq(stockDocument.orgId, orgId));
+
 		for (const table of [
 			stockMovement,
 			stockBalance,
@@ -128,7 +141,8 @@ export async function removeBusiness(tx: Tx, ownerEmail: string) {
 			transactionAttachment,
 			transactions,
 			paymentMethod,
-			supplier
+			supplier,
+			customer
 		]) {
 			await tx.delete(table).where(eq(table.orgId, orgId));
 		}
@@ -165,10 +179,15 @@ export async function createBusiness(
 		phone: string;
 		address: string;
 		main: { name: string; code: string; address: string; phone: string; store: string };
+		/** VAT registration, withholding agency and the like. */
+		settings?: Partial<typeof organization.$inferInsert>;
 	}
 ): Promise<Business> {
 	const { orgId, branchId } = await createOrganization(tx, input);
-	await tx.update(organization).set({ address: input.address }).where(eq(organization.id, orgId));
+	await tx
+		.update(organization)
+		.set({ address: input.address, ...input.settings })
+		.where(eq(organization.id, orgId));
 	await tx
 		.update(branch)
 		.set({
@@ -192,7 +211,8 @@ export async function createBusiness(
 		categories: new Map(),
 		items: new Map(),
 		users: new Map(),
-		suppliers: new Map()
+		suppliers: new Map(),
+		customers: new Map()
 	};
 
 	for (const l of await tx.select().from(location).where(eq(location.orgId, orgId))) {
@@ -295,6 +315,7 @@ export async function addUser(
 export type SupplierSpec = {
 	name: string;
 	phone: string;
+	vatRegistered?: boolean;
 	email?: string;
 	address?: string;
 	tin?: string;
@@ -309,6 +330,35 @@ export async function addSuppliers(tx: Tx, biz: Business, rows: SupplierSpec[], 
 			.$returningId();
 		biz.suppliers.set(s.name, row.id);
 	}
+}
+
+export type CustomerSpec = {
+	name: string;
+	withholdsTax?: boolean;
+	creditLimit?: number | null;
+	creditDays?: number;
+	phone?: string;
+	email?: string;
+	address?: string;
+	tin?: string;
+	note?: string;
+};
+
+/** The regular buyers worth naming. Walk-in sales in the seed name nobody, as in real life. */
+export async function addCustomers(tx: Tx, biz: Business, rows: CustomerSpec[], createdBy: string) {
+	for (const c of rows) {
+		const [row] = await tx
+			.insert(customer)
+			.values({ orgId: biz.orgId, ...c, createdBy })
+			.$returningId();
+		biz.customers.set(c.name, row.id);
+	}
+}
+
+function customerId(biz: Business, name: string) {
+	const id = biz.customers.get(name);
+	if (!id) throw new Error(`${biz.name}: no customer called ${name}`);
+	return id;
 }
 
 function supplierId(biz: Business, name: string) {
@@ -401,6 +451,8 @@ export type LineSpec = {
 	unit?: string;
 	/** Per `unit`. */
 	cost?: number;
+	/** Issues: the sale price per `unit`. Defaults to the item's list price. */
+	price?: number;
 	/** Receipts: the lot arriving. */
 	lot?: string;
 	expiry?: string;
@@ -423,8 +475,10 @@ export async function document(
 		to?: string;
 		/** Receipts: the supplier, by name. */
 		supplier?: string;
-		/** Issues: who it went to. */
+		/** Issues: who it went to, as written — a department, or nobody for a walk-in sale. */
 		party?: string;
+		/** Issues: a listed customer, by name. */
+		customer?: string;
 		reference?: string;
 		reason?: 'count' | 'damage' | 'expiry' | 'found' | 'other';
 		note?: string;
@@ -455,6 +509,7 @@ export async function document(
 			toLocationId: toId,
 			supplierId: head.type === 'receipt' ? supplierId(biz, head.supplier!) : null,
 			party: head.type === 'receipt' ? null : head.party,
+			customerId: head.customer ? customerId(biz, head.customer) : null,
 			reference: head.reference,
 			reason: head.reason,
 			note: head.note,
@@ -466,9 +521,25 @@ export async function document(
 		const itemId = biz.items.get(l.sku);
 		if (!itemId) throw new Error(`${biz.name}: no item ${l.sku}`);
 		const [it] = await tx
-			.select({ baseUomId: item.baseUomId })
+			.select({ baseUomId: item.baseUomId, salePrice: item.salePrice })
 			.from(item)
 			.where(eq(item.id, itemId));
+		const uomId = l.unit ? unitId(biz, l.unit) : it.baseUomId;
+
+		// A sale is priced as the issue form prices it: the list price, times the pack size.
+		let unitPrice: number | null = null;
+		if (head.type === 'issue') {
+			let factor = 1;
+			if (uomId !== it.baseUomId) {
+				const [conv] = await tx
+					.select({ factor: itemUnit.factor })
+					.from(itemUnit)
+					.where(and(eq(itemUnit.itemId, itemId), eq(itemUnit.uomId, uomId)));
+				factor = conv?.factor ?? 1;
+			}
+			unitPrice =
+				l.price ?? (it.salePrice != null ? Math.round(it.salePrice * factor * 100) / 100 : null);
+		}
 
 		let lotId: number | null = null;
 		if (l.fromLot) {
@@ -484,9 +555,10 @@ export async function document(
 			orgId: biz.orgId,
 			documentId: doc.id,
 			itemId,
-			uomId: l.unit ? unitId(biz, l.unit) : it.baseUomId,
+			uomId,
 			quantity: l.qty,
 			unitCost: l.cost ?? null,
+			unitPrice,
 			lotId,
 			lotNumber: l.lot ?? null,
 			expiryDate: l.expiry ?? null,
@@ -495,7 +567,14 @@ export async function document(
 	}
 
 	if (!head.draft) {
-		await postDocument(tx, { orgId: biz.orgId, documentId: doc.id, userId, today: head.date });
+		// The seed stands in for a manager, who may take a customer over their limit.
+		await postDocument(tx, {
+			orgId: biz.orgId,
+			documentId: doc.id,
+			userId,
+			today: head.date,
+			allowOverLimit: true
+		});
 	}
 	return doc.id;
 }
@@ -553,7 +632,14 @@ function samplePdf(title: string, lines: string[]): Buffer {
 
 export type MoneySpec = {
 	direction: 'in' | 'out';
-	amount: number;
+	/** Or `settle`: pay the linked documents in full, as the payment form suggests. */
+	amount?: number;
+	/**
+	 * Pays the linked documents' total, VAT included, keeping back the withholding the rules call
+	 * for (ours from a supplier, or a withholding customer's from us).
+	 */
+	settle?: boolean;
+	withholdingReceipt?: string;
 	date: string;
 	method: string;
 	purpose: 'purchase' | 'sale' | 'expense' | 'other_income' | 'other';
@@ -573,6 +659,8 @@ export type MoneySpec = {
 	documents?: number[];
 	/** The supplier paid, by name. Defaults to the supplier of a linked receipt. */
 	supplier?: string;
+	/** The customer who paid, by name. Defaults to the customer of a linked sale. */
+	customer?: string;
 };
 
 /** A transaction, optionally with a sample PDF attached and linked to stock documents. */
@@ -585,13 +673,39 @@ export async function money(tx: Tx, biz: Business, m: MoneySpec) {
 
 	const createdBy = biz.users.get(m.by)!;
 
-	let paidSupplier = m.supplier ? supplierId(biz, m.supplier) : null;
-	if (!paidSupplier && m.documents?.length) {
+	let amount = m.amount ?? 0;
+	let withheld = 0;
+	if (m.settle) {
+		if (!m.documents?.length) throw new Error(`${biz.name}: settle needs documents`);
+		let gross = 0;
+		let net = 0;
+		for (const id of m.documents) {
+			const t = await documentTotals(biz.orgId, id, tx);
+			gross += t?.gross ?? 0;
+			net += t?.net ?? 0;
+		}
 		const [doc] = await tx
-			.select({ supplierId: stockDocument.supplierId })
+			.select({
+				type: stockDocument.type,
+				supplierId: stockDocument.supplierId,
+				customerId: stockDocument.customerId
+			})
 			.from(stockDocument)
 			.where(eq(stockDocument.id, m.documents[0]));
-		paidSupplier = doc?.supplierId ?? null;
+		withheld = (await suggestedWithholding(biz.orgId, doc, net, tx)).amount;
+		amount = Math.round((gross - withheld) * 100) / 100;
+	}
+
+	let paidSupplier = m.supplier ? supplierId(biz, m.supplier) : null;
+	// A sale's payment belongs to the sale's customer, if it had one.
+	let payingCustomer = m.customer ? customerId(biz, m.customer) : null;
+	if (m.documents?.length) {
+		const [doc] = await tx
+			.select({ supplierId: stockDocument.supplierId, customerId: stockDocument.customerId })
+			.from(stockDocument)
+			.where(eq(stockDocument.id, m.documents[0]));
+		paidSupplier ??= doc?.supplierId ?? null;
+		payingCustomer ??= doc?.customerId ?? null;
 	}
 
 	const [row] = await tx
@@ -600,7 +714,11 @@ export async function money(tx: Tx, biz: Business, m: MoneySpec) {
 			orgId: biz.orgId,
 			branchId: m.branch ? biz.branches.get(m.branch) : null,
 			direction: m.direction,
-			amount: m.amount,
+			amount,
+			withheld,
+			withholdingReceipt: withheld
+				? (m.withholdingReceipt ?? `WH-${m.date.replaceAll('-', '')}`)
+				: null,
 			occurredOn: m.date,
 			paymentMethodId: method.id,
 			purpose: m.purpose,
@@ -609,6 +727,7 @@ export async function money(tx: Tx, biz: Business, m: MoneySpec) {
 			receiptNumber: m.receipt,
 			description: m.description,
 			supplierId: paidSupplier,
+			customerId: payingCustomer,
 			createdBy,
 			...(m.verifiedBy && {
 				status: 'verified' as const,
@@ -623,7 +742,7 @@ export async function money(tx: Tx, biz: Business, m: MoneySpec) {
 		fs.mkdirSync(FILES_DIR, { recursive: true });
 		const pdf = samplePdf(m.attach, [
 			`Date: ${m.date}`,
-			`Amount: ETB ${m.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+			`Amount: ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
 			`Method: ${m.method}`,
 			`${m.direction === 'in' ? 'From' : 'To'}: ${m.party ?? '-'}`,
 			`Reference: ${m.reference ?? '-'}`,
@@ -820,4 +939,104 @@ export async function stockTake(
 
 	if (!head.open) await postCount(tx, { orgId: biz.orgId, countId, userId, today: head.date });
 	return countId;
+}
+
+/**
+ * A return, the way the document page makes one: drafted from the sale or receipt with everything
+ * returnable, cut down to what actually comes back (by SKU; anything unlisted is dropped), posted.
+ */
+export async function returnGoods(
+	tx: Tx,
+	biz: Business,
+	head: { of: number; date: string; by: string; note?: string },
+	quantities: Record<string, number>
+) {
+	const userId = biz.users.get(head.by)!;
+	const id = await createReturn(tx, {
+		orgId: biz.orgId,
+		documentId: head.of,
+		date: head.date,
+		userId
+	});
+	if (head.note) {
+		await tx.update(stockDocument).set({ note: head.note }).where(eq(stockDocument.id, id));
+	}
+	const skuOf = new Map([...biz.items].map(([sku, itemId]) => [itemId, sku]));
+	const lines = await tx
+		.select()
+		.from(stockDocumentLine)
+		.where(eq(stockDocumentLine.documentId, id));
+	for (const line of lines) {
+		const qty = quantities[skuOf.get(line.itemId)!] ?? 0;
+		await tx
+			.update(stockDocumentLine)
+			.set(qty ? { quantity: qty } : { deletedAt: new Date() })
+			.where(eq(stockDocumentLine.id, line.id));
+	}
+	await postDocument(tx, {
+		orgId: biz.orgId,
+		documentId: id,
+		userId,
+		today: head.date,
+		allowOverLimit: true
+	});
+	return id;
+}
+
+export type DeviceSpec = Partial<typeof fiscalDevice.$inferInsert> & { branch?: string };
+
+/**
+ * Fiscal devices, and the fiscal side of every posted, priced sale and customer return so far:
+ * an FS No. from the branch's device (as if the cashier typed it in from the device's receipt),
+ * and — when the business has e-invoicing on — the e-invoice, sent the way the app sends it.
+ */
+export async function fiscalHistory(tx: Tx, biz: Business, devices: DeviceSpec[]) {
+	const made: { id: number; branchId: number | null; machineCode: string | null; next: number }[] =
+		[];
+	for (const d of devices) {
+		const { branch: code, ...values } = d;
+		const branchId = code ? (biz.branches.get(code) ?? null) : null;
+		const [row] = await tx
+			.insert(fiscalDevice)
+			.values({ ...values, orgId: biz.orgId, branchId })
+			.$returningId();
+		made.push({ id: row.id, branchId, machineCode: values.machineCode ?? null, next: 1 });
+	}
+
+	const sales = await tx
+		.selectDistinct({ id: stockDocument.id, branchId: stockDocument.branchId })
+		.from(stockDocument)
+		.innerJoin(stockDocumentLine, eq(stockDocumentLine.documentId, stockDocument.id))
+		.where(
+			and(
+				eq(stockDocument.orgId, biz.orgId),
+				eq(stockDocument.status, 'posted'),
+				inArray(stockDocument.type, ['issue', 'sales_return']),
+				isNotNull(stockDocumentLine.unitPrice)
+			)
+		)
+		.orderBy(stockDocument.id);
+
+	const [org] = await tx
+		.select({ mode: organization.einvoiceMode })
+		.from(organization)
+		.where(eq(organization.id, biz.orgId));
+
+	for (const sale of sales) {
+		const device = made.find((m) => m.branchId === sale.branchId) ?? made.find((m) => !m.branchId);
+		if (device) {
+			await tx
+				.update(stockDocument)
+				.set({
+					fiscalDeviceId: device.id,
+					fiscalReceiptNumber: String(device.next++).padStart(8, '0'),
+					fiscalMachineCode: device.machineCode,
+					fiscalStatus: 'manual',
+					fiscalPrintedAt: new Date()
+				})
+				.where(eq(stockDocument.id, sale.id));
+		}
+		if (org?.mode) await submitEinvoice(biz.orgId, sale.id, tx);
+	}
+	return sales.length;
 }

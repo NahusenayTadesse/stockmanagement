@@ -18,7 +18,7 @@
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { fileUrl } from '@nahu/admin-kit/files';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
 	import TransactionFields from '$lib/components/TransactionFields.svelte';
 	import { DOCUMENT_LABELS } from '$lib/format';
@@ -78,7 +78,16 @@
 			{ name: 'Paid by', value: data.names.method ?? '—' },
 			{ name: 'For', value: PURPOSE_LABELS[txn.purpose] },
 			{ name: txn.direction === 'in' ? 'Received from' : 'Paid to', value: txn.party ?? '—' },
+			txn.customerId && {
+				name: 'Customer',
+				value: data.names.customer ?? '—',
+				href: resolve('/dashboard/customers/[id]', { id: String(txn.customerId) })
+			},
 			{ name: 'Transaction reference', value: txn.reference ?? '—' },
+			txn.withheld > 0 && {
+				name: txn.direction === 'out' ? 'Tax we withheld' : 'Tax they withheld',
+				value: `${formatETB(txn.withheld)}${txn.withholdingReceipt ? ` · receipt ${txn.withholdingReceipt}` : ' · no receipt number yet'}`
+			},
 			{ name: 'Receipt / invoice no.', value: txn.receiptNumber ?? '—' },
 			{ name: 'Note', value: txn.description ?? '—' },
 			{ name: 'Branch', value: data.names.branch ?? 'Whole business' },
@@ -91,7 +100,7 @@
 				value: `${ethiopianDateTime(txn.verifiedAt)} by ${data.names.verifiedBy ?? '—'}`
 			},
 			txn.voidReason && { name: 'Voided because', value: txn.voidReason }
-		].filter((row): row is { name: string; value: string } => Boolean(row))
+		].filter(Boolean) as { name: string; value: string; href?: string }[]
 	);
 
 	const isImage = (mime: string | null) => Boolean(mime?.startsWith('image/'));
@@ -150,6 +159,7 @@
 							methods={data.methods}
 							branches={data.branches}
 							suppliers={data.suppliers}
+							customers={data.customers}
 						/>
 						<Button type="submit" form="edit">
 							{#if $editDelayed}<LoadingBtn name="Saving" />{:else}Save{/if}

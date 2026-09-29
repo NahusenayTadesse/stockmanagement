@@ -63,3 +63,15 @@
 	/>
 	<InputComp {form} {errors} id="{idPrefix}note" name="note" label="Note (optional)" />
 {/if}
+<InputComp
+	{form}
+	{errors}
+	id="{idPrefix}vatRegistered"
+	name="vatRegistered"
+	type="select"
+	label="VAT"
+	items={[
+		{ value: false, name: 'Not VAT-registered — no VAT on their invoices' },
+		{ value: true, name: 'VAT-registered — their invoices add VAT' }
+	]}
+/>

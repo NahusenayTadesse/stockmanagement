@@ -1,0 +1,1 @@
+ALTER TABLE `fiscal_device` ADD `deleted_by` varchar(255);

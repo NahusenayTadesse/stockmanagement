@@ -8,6 +8,8 @@
 import {
 	addBranch,
 	addCategories,
+	addCustomers,
+	returnGoods,
 	addItems,
 	addLocations,
 	addSuppliers,
@@ -270,7 +272,10 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			address: 'Churchill Avenue, Piassa',
 			phone: '+251 11 111 4567',
 			store: 'Piassa Back Store'
-		}
+		},
+		// Not VAT-registered: pays 2% turnover tax on what it sells instead. No fiscal device and
+		// no e-invoicing set up — all of that is optional.
+		settings: { totRate: 2 }
 	});
 
 	await addBranch(tx, biz, {
@@ -337,7 +342,8 @@ export async function seedTech(tx: Tx): Promise<Business> {
 				email: 'sales@horizontech.example.com',
 				address: 'Bole, Addis Ababa',
 				tin: '0023004567',
-				contactPerson: 'Ato Yared'
+				contactPerson: 'Ato Yared',
+				vatRegistered: true
 			},
 			{
 				name: 'Al Noor Electronics LLC, Dubai',
@@ -350,6 +356,45 @@ export async function seedTech(tx: Tx): Promise<Business> {
 				phone: '+251 911 334 556',
 				address: 'Merkato, Addis Ababa'
 			}
+		],
+		biz.users.get('owner')!
+	);
+
+	// Institutional buyers who come back. Most walk-in buyers leave no name, and their sales name
+	// no customer.
+	await addCustomers(
+		tx,
+		biz,
+		[
+			{
+				name: 'Addis Ababa University',
+				phone: '+251 11 123 9800',
+				email: 'ict.procurement@aau.example.com',
+				tin: '0000012345',
+				address: 'Sidist Kilo, Addis Ababa',
+				note: 'Buys on purchase orders; pays by cheque',
+				creditLimit: 1_500_000,
+				creditDays: 45,
+				withholdsTax: true
+			},
+			{
+				name: 'Sheger Insurance',
+				phone: '+251 11 155 7070',
+				tin: '0011223344',
+				address: 'Piassa, Addis Ababa',
+				creditLimit: 200_000,
+				creditDays: 30,
+				withholdsTax: true
+			},
+			{
+				name: 'Abay Microfinance',
+				phone: '+251 11 470 2211',
+				address: 'Bole, Addis Ababa',
+				creditLimit: 100_000,
+				creditDays: 30
+			},
+			// On the list but has not bought yet: someone who asked for a quote.
+			{ name: 'Hanna Tesfaye', note: 'Asked for a quote on 3 laptops' }
 		],
 		biz.users.get('owner')!
 	);
@@ -512,7 +557,6 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-40),
 			from: 'Piassa Showroom',
-			party: 'Walk-in customers',
 			reference: 'Receipts 00412–00447',
 			by: 'manager'
 		},
@@ -532,7 +576,8 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-35),
 			from: 'Piassa Back Store',
-			party: 'Addis Ababa University — ICT Office',
+			customer: 'Addis Ababa University',
+			party: 'ICT Office',
 			reference: 'PO AAU/ICT/2019/044',
 			note: 'Against proforma PF-0219; paid by CPO.',
 			by: 'owner'
@@ -552,7 +597,6 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-30),
 			from: 'Edna Store',
-			party: 'Walk-in customers (Edna)',
 			reference: 'Receipts E-0101–E-0133',
 			by: 'edna'
 		},
@@ -584,7 +628,8 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-20),
 			from: 'Piassa Back Store',
-			party: 'Sheger Insurance — Piassa branch',
+			customer: 'Sheger Insurance',
+			party: 'Piassa branch',
 			reference: 'PO SI/0772',
 			by: 'manager'
 		},
@@ -635,7 +680,6 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(-8),
 			from: 'Piassa Showroom',
-			party: 'Walk-in customers',
 			reference: 'Receipts 00519–00540',
 			by: 'manager'
 		},
@@ -689,7 +733,8 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			type: 'issue',
 			date: day(0),
 			from: 'Piassa Back Store',
-			party: 'Abay Microfinance — head office',
+			customer: 'Abay Microfinance',
+			party: 'Head office',
 			reference: 'Proforma PF-0231',
 			by: 'clerk',
 			draft: true
@@ -717,7 +762,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 1_659_000,
+		settle: true,
 		date: day(-60),
 		method: 'Bank transfer — CBE',
 		purpose: 'purchase',
@@ -732,7 +777,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 1_027_000,
+		settle: true,
 		date: day(-58),
 		method: 'Bank transfer — other bank',
 		purpose: 'purchase',
@@ -760,7 +805,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 272_700,
+		settle: true,
 		date: day(-55),
 		method: 'Cash',
 		purpose: 'purchase',
@@ -774,7 +819,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 130_520,
+		settle: true,
 		date: day(-54),
 		method: 'Bank transfer — CBE',
 		purpose: 'purchase',
@@ -788,7 +833,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 114_000,
+		settle: true,
 		date: day(-50),
 		method: 'Bank transfer — CBE',
 		purpose: 'purchase',
@@ -802,7 +847,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 222_560,
+		settle: true,
 		date: day(-40),
 		method: 'Cash',
 		purpose: 'sale',
@@ -815,11 +860,12 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 670_125,
+		settle: true,
 		date: day(-35),
 		method: 'Bank transfer — CBE',
 		purpose: 'sale',
 		party: 'Addis Ababa University — ICT Office',
+		customer: 'Addis Ababa University',
 		reference: 'CPO 7731902',
 		receipt: 'FS-00231',
 		description: 'CPO deposited; waiting for it to clear',
@@ -854,7 +900,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 280_000,
+		settle: true,
 		date: day(-30),
 		method: 'Telebirr',
 		purpose: 'sale',
@@ -868,11 +914,12 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 54_800,
+		settle: true,
 		date: day(-20),
 		method: 'Cheque',
 		purpose: 'sale',
 		party: 'Sheger Insurance — Piassa branch',
+		customer: 'Sheger Insurance',
 		reference: 'CHQ 1180347',
 		receipt: 'FS-00248',
 		branch: 'PSA',
@@ -882,7 +929,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'out',
-		amount: 372_000,
+		settle: true,
 		date: day(-15),
 		method: 'Bank transfer — other bank',
 		purpose: 'purchase',
@@ -919,7 +966,7 @@ export async function seedTech(tx: Tx): Promise<Business> {
 	});
 	await money(tx, biz, {
 		direction: 'in',
-		amount: 53_980,
+		settle: true,
 		date: day(-8),
 		method: 'Telebirr',
 		purpose: 'sale',
@@ -1015,6 +1062,72 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			countedShare: 0.5
 		},
 		[]
+	);
+
+	// ── Credit (ዱቤ) ──────────────────────────────────────────────────────────────────────────
+	// AAU's ICT office took flash drives, mice and routers against a purchase order, on 45 days'
+	// credit: owed, not yet due.
+	await document(
+		tx,
+		biz,
+		{
+			type: 'issue',
+			date: day(-20),
+			from: 'Piassa Back Store',
+			customer: 'Addis Ababa University',
+			party: 'ICT Office',
+			reference: 'AAU PO 2019/ICT/117',
+			by: 'manager'
+		},
+		[
+			{ sku: 'STO-USB32', qty: 20 },
+			{ sku: 'ACC-MOUSE', qty: 10 },
+			{ sku: 'NET-C6', qty: 2 }
+		]
+	);
+
+	// Abay paid part of an old account and nothing since: more than 90 days late.
+	await document(
+		tx,
+		biz,
+		{
+			type: 'issue',
+			date: day(-125),
+			from: 'Piassa Back Store',
+			customer: 'Abay Microfinance',
+			party: 'Head office',
+			by: 'manager'
+		},
+		[
+			{ sku: 'STO-USB32', qty: 6 },
+			{ sku: 'ACC-HDMI15', qty: 5 }
+		]
+	);
+	await money(tx, biz, {
+		direction: 'in',
+		amount: 4_000,
+		date: day(-60),
+		method: 'Cash',
+		purpose: 'sale',
+		party: 'Abay Microfinance',
+		customer: 'Abay Microfinance',
+		receipt: 'FS-00391',
+		branch: 'PSA',
+		by: 'manager'
+	});
+
+	// ── Returns ──────────────────────────────────────────────────────────────────────────────
+	// The quarantined black ink goes back to Horizon: the counterfeit notice was confirmed.
+	await returnGoods(
+		tx,
+		biz,
+		{
+			of: grnInk,
+			date: day(-3),
+			by: 'manager',
+			note: 'Counterfeit notice confirmed; lot HP305B-2411 returned for credit'
+		},
+		{ 'INK-HP305B': 30 }
 	);
 
 	return biz;

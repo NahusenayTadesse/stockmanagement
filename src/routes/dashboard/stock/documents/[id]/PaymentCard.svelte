@@ -96,8 +96,11 @@
 					methods={pay.methods}
 					branches={pay.branches}
 					suppliers={pay.suppliers}
+					customers={pay.customers}
 					linkable={pay.linkable}
 					suggestedAmount={pay.suggestedAmount}
+					totals={pay.totals}
+					withholding={pay.withholding}
 				/>
 			{/if}
 		{/if}

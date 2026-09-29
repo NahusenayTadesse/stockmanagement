@@ -1,4 +1,6 @@
 import {
+	decimal,
+	mysqlEnum,
 	mysqlTable,
 	varchar,
 	text,
@@ -27,6 +29,44 @@ export const organization = mysqlTable('organization', {
 	address: varchar('address', { length: 255 }),
 	/** Stored file name of the logo (the kit's file store). Shown in the sidebar and on printouts. */
 	logo: varchar('logo', { length: 100 }),
+	/**
+	 * Whether the business sells to customers. Off for an internal store (hospital, NGO, school),
+	 * which issues to departments: the customer list and every customer picker are hidden.
+	 */
+	sellsToCustomers: boolean('sells_to_customers').default(true).notNull(),
+	/** Registered for VAT: sales carry output VAT, and VAT on deliveries is input VAT. */
+	vatRegistered: boolean('vat_registered').default(false).notNull(),
+	vatRate: decimal('vat_rate', { precision: 5, scale: 2, mode: 'number' }).default(15).notNull(),
+	/**
+	 * A withholding agent: withholds tax from payments for goods at or above the threshold, at the
+	 * rate for suppliers with a TIN (the rate for those without is in `$lib/server/tax`).
+	 */
+	withholdingAgent: boolean('withholding_agent').default(false).notNull(),
+	withholdingRate: decimal('withholding_rate', { precision: 5, scale: 2, mode: 'number' })
+		.default(3)
+		.notNull(),
+	/**
+	 * Turnover tax (TOT) rate on goods sold, for a business that is not VAT-registered. Empty: not a
+	 * TOT payer. Items may set their own rate (services are often taxed higher).
+	 */
+	totRate: decimal('tot_rate', { precision: 5, scale: 2, mode: 'number' }),
+	/**
+	 * Electronic invoicing with the Ministry of Revenues. Empty: off. `sandbox` issues local
+	 * reference numbers without calling anyone, for trying it out; `live` sends to the endpoint.
+	 */
+	einvoiceMode: mysqlEnum('einvoice_mode', ['sandbox', 'live']),
+	einvoiceEndpoint: varchar('einvoice_endpoint', { length: 255 }),
+	einvoiceTokenUrl: varchar('einvoice_token_url', { length: 255 }),
+	einvoiceClientId: varchar('einvoice_client_id', { length: 120 }),
+	/** Stored encrypted (`$lib/server/secrets`); never sent to the browser. */
+	einvoiceSecret: varchar('einvoice_secret', { length: 512 }),
+	withholdingThreshold: decimal('withholding_threshold', {
+		precision: 14,
+		scale: 2,
+		mode: 'number'
+	})
+		.default(10000)
+		.notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 	updatedAt: timestamp('updated_at')

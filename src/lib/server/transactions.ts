@@ -11,6 +11,7 @@ import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
 import {
 	branch,
+	customer,
 	item,
 	itemUnit,
 	organization,
@@ -272,6 +273,7 @@ export async function documentValue(documentId: number): Promise<number> {
 		.select({
 			quantity: stockDocumentLine.quantity,
 			unitCost: stockDocumentLine.unitCost,
+			unitPrice: stockDocumentLine.unitPrice,
 			uomId: stockDocumentLine.uomId,
 			itemId: stockDocumentLine.itemId,
 			baseUomId: item.baseUomId,
@@ -301,7 +303,11 @@ export async function documentValue(documentId: number): Promise<number> {
 			l.uomId === l.baseUomId
 				? 1
 				: (factors.find((f) => f.itemId === l.itemId && f.uomId === l.uomId)?.factor ?? 1);
-		total += round4(Math.abs(l.quantity) * factor) * (l.salePrice ?? 0);
+		// The line's own sale price when it has one; otherwise the list price.
+		total +=
+			l.unitPrice !== null
+				? Math.abs(l.quantity) * l.unitPrice
+				: round4(Math.abs(l.quantity) * factor) * (l.salePrice ?? 0);
 	}
 	return Math.round(total * 100) / 100;
 }
@@ -353,6 +359,20 @@ export async function checkTransaction(
 		supplierName = s.name;
 	}
 
+	// Optional: most takings are from people who never gave a name.
+	const customerId = Number(values.customerId) || null;
+	let customerName: string | null = null;
+	if (customerId) {
+		const [c] = await reader
+			.select({ name: customer.name })
+			.from(customer)
+			.where(
+				and(eq(customer.id, customerId), eq(customer.orgId, orgId), isNull(customer.deletedAt))
+			);
+		if (!c) throw new WriteRefused('customerId', 'Choose a customer from the list.');
+		customerName = c.name;
+	}
+
 	const reference = String(values.reference ?? '').trim();
 	if (reference) {
 		const [dup] = await reader
@@ -383,9 +403,12 @@ export async function checkTransaction(
 		purpose: values.purpose as (typeof TRANSACTION_PURPOSES)[number],
 		receiptNumber: String(values.receiptNumber ?? '') || null,
 		reference: reference || null,
-		// Paying a supplier with no name typed: the supplier is who was paid.
-		party: String(values.party ?? '') || supplierName,
+		// No name typed: the supplier paid, or the customer who paid, is the party.
+		party: String(values.party ?? '') || supplierName || customerName,
 		supplierId,
+		customerId,
+		withheld: Math.round(Number(values.withheld ?? 0) * 100) / 100,
+		withholdingReceipt: String(values.withholdingReceipt ?? '') || null,
 		description: String(values.description ?? '') || null,
 		branchId
 	};

@@ -128,7 +128,9 @@ export const DOCUMENT_PREFIX: Record<DocumentType, string> = {
 	receipt: 'GRN',
 	issue: 'ISS',
 	transfer: 'TRF',
-	adjustment: 'ADJ'
+	adjustment: 'ADJ',
+	sales_return: 'SRN',
+	purchase_return: 'PRN'
 };
 
 /** `ADD-GRN-2019-00042`: branch, kind, fiscal year, running number. */

@@ -1,4 +1,4 @@
-import { index, int, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { boolean, index, int, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 import { orgRef, secureFields } from './fields';
 
 /**
@@ -25,6 +25,8 @@ export const supplier = mysqlTable(
 		tin: varchar('tin', { length: 20 }),
 		contactPerson: varchar('contact_person', { length: 120 }),
 		note: varchar('note', { length: 255 }),
+		/** Charges VAT on its invoices: its deliveries carry input VAT. */
+		vatRegistered: boolean('vat_registered').notNull().default(false),
 		...secureFields
 	},
 	(table) => [

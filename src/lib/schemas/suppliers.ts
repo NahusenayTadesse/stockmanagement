@@ -22,7 +22,9 @@ export const supplierSchema = z.object({
 		.or(z.literal(''))
 		.default(''),
 	contactPerson: z.string().trim().max(120).default(''),
-	note: z.string().trim().max(255).default('')
+	note: z.string().trim().max(255).default(''),
+	/** Charges VAT: its deliveries carry input VAT. */
+	vatRegistered: z.boolean().default(false)
 });
 
 export const supplierEdit = supplierSchema.extend({ status: z.boolean().default(true) });

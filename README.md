@@ -94,6 +94,71 @@ The first request after a boot seeds the `permissions` table from the route rule
   has a non-null `supplier_id`: the receipt's coming in; going out, the serial unit's, else the
   lot's, else the item's main supplier. Each supplier's page shows deliveries, payments and what is
   still owed (received at cost − paid).
+- **Customers** (`/dashboard/customers`, `src/lib/server/customers.ts`) are optional everywhere.
+  Only the name is required; names repeat, so the same name is refused only with the same phone
+  (or both without one). An issue may name a customer, write who it went to in "Issued to", or
+  leave both empty for a walk-in sale; a payment may name a customer the same way, and a sale's
+  payment defaults to the sale's customer. A business that never sells (a hospital, NGO or school
+  store) sets **Business profile → Customers → Internal store only**, which hides the customer list,
+  every picker and the report section; nothing recorded is lost.
+- **Credit (ዱቤ)** (`src/lib/server/credit.ts`). Issue lines carry a sale price, defaulting to the
+  item's list price for the unit. What a customer owes is computed, never stored: posted sales to
+  them at those prices, minus money in from them, plus refunds — a cash sale is one whose payment
+  is recorded with it. Each customer has a credit limit (empty: none; 0: cash only) and days to
+  pay. Posting a sale to a named customer is refused if a line has no price, or if it would take
+  them over their limit — counting payments already recorded on the sale — unless the poster holds
+  `customers.credit`. Payments are applied to the oldest sales first; what is left is aged
+  (not due, 1–30, 31–60, 61–90, over 90 days late) on **Customers → Credit & ageing** and on the
+  customer's page, which also has "Receive payment", a printable statement with running balance
+  (`?from=` brings a balance forward) and "Email statement". The dashboard shows what is owed and
+  overdue. Customer returns and tax the customer withheld settle the account like payments.
+- **Returns** (`src/lib/server/returns.ts`): a posted sale has "Customer return", a posted receipt
+  "Return to supplier". Either drafts a return of everything still returnable — per original line
+  and lot, in base units, serials listed — at the original price (or cost) and VAT rate; the
+  storekeeper lowers it to what actually comes back and posts it. Customer returns go back into
+  the lot they left from, even an expired one; returns to supplier may take expired, quarantined
+  and recalled stock (that is what they are for). Posting refuses more than is left to return,
+  and serials that were not on the original. A customer return credits their account; a return to
+  supplier comes off what they are owed.
+- **VAT** (`src/lib/server/tax.ts`): prices and costs on lines are before VAT. Items carry a tax
+  code (standard, zero-rated, exempt); the business (Business profile) and each supplier say
+  whether they are VAT-registered. Posting a sale or receipt fixes each line's rate — the
+  business's rate on standard items if it is registered (sales), or if the supplier is
+  (deliveries) — so later changes never rewrite a posted invoice; returns copy the rate they
+  return. Customer and supplier balances, payment suggestions and printed vouchers use totals
+  with VAT. **Reports → VAT & withholding** has output VAT, input VAT, VAT payable, and the sales
+  and purchase registers (with TINs) for filing.
+- **Withholding**: every transaction can record tax withheld on top of the cash, with its receipt
+  number; it settles the account as the cash does. A business that is a withholding agent is
+  offered its withholding on payments for deliveries at or above the threshold (default 3% from
+  ETB 10,000, before VAT; 30% for a supplier with no TIN); a customer marked as a withholding
+  agent is expected to withhold from our sales the same way. The report lists what we withheld
+  (to pay to the tax office), what was withheld from us (a credit), and receipts still missing.
+  Rates and threshold are settings — check them against current rules.
+- **TOT** (turnover tax, optional): a business that is not VAT-registered may set a TOT rate
+  (Business profile; empty = not a TOT payer); items may override it (services are often
+  higher). It is added to sale lines like VAT, fixed at posting (`stock_document_line.tot_rate`),
+  counted in what customers owe, printed on vouchers and totalled on the tax report.
+- **Fiscal devices** (optional; Admin panel → Fiscal devices, `src/lib/server/fiscal/`). Each
+  device is `manual` (ring the sale up on the device, type its FS No. back in), `datecs_tcp` (the
+  Datecs fiscal-printer protocol over the network — FP-/DP- series, common as MoR-registered
+  sales registers) or `http_bridge` (a vendor bridge service for USB/serial devices; the JSON
+  contract is in `fiscal/bridge.ts`). Every column is optional. A posted, priced sale or customer
+  return gets its receipt printed — automatically when the device prints on posting — and keeps
+  its FS No. and MRC; printing runs after the commit, so a device that is off records a failure
+  to retry and never loses the sale. "Check" asks the device for its diagnostics (prints nothing);
+  "Z report" closes the fiscal day. Tax groups map rates to the device's groups
+  (`15=A,0=B,exempt=C,tot=D`), and Datecs payment types are in `DATECS_PAYMENT`: both vary by
+  firmware, so confirm them on the real device (an X report is harmless) before relying on them.
+  `fiscal.test.ts` exercises the protocol against a fake device over TCP.
+- **E-invoicing** (optional; Business profile, `src/lib/server/einvoice.ts`): `sandbox` issues
+  a local IRN and QR data without calling anyone; `live` posts each posted sale (and each customer
+  return, as a credit note naming the original IRN) to the configured endpoint, with an OAuth2
+  client-credentials token when a token URL is set. The IRN and QR code show on the document and
+  the voucher. **`toProviderPayload` holds the tax office's field names and is provisional —
+  align it with the Ministry of Revenues' published specification before going live.** Stored
+  credentials (e-invoice secret, bridge token, operator password) are encrypted with a key
+  derived from `SECRETS_KEY` (or `BETTER_AUTH_SECRET`), and never sent to the browser.
 - **Stock counts** (`/dashboard/stock/counts`, `src/lib/server/counts.ts`): opening a count
   snapshots what the system expects at one location (optionally one category; serial-tracked
   items are left out). Counts can be blind — expected quantities are hidden from anyone who
@@ -133,4 +198,5 @@ npx vitest --run --project server   # stock rules against the real database, rol
 npm run check
 npm run lint
 ```
+
 # stockmanagement

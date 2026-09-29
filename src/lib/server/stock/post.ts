@@ -13,6 +13,8 @@
  *   - lot numbers, expiry dates and serial numbers are required where the item says so
  *   - expired stock cannot be received
  *   - the average cost moves only on stock coming in
+ *   - a sale or receipt fixes each line's VAT rate; a return is checked against what is left of
+ *     the document it returns
  */
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { localToday } from '@nahu/admin-kit/time';
@@ -34,6 +36,9 @@ import {
 	MOVEMENT_KINDS
 } from '$lib/server/db/schema';
 import { refreshOrderStatus } from '$lib/server/purchasing';
+import { creditCheck } from '$lib/server/credit';
+import { checkReturn } from '$lib/server/returns';
+import { purchaseVatRate, saleTotRate, saleVatRate, taxSettings } from '$lib/server/tax';
 import {
 	allocate,
 	DOCUMENT_PREFIX,
@@ -75,7 +80,14 @@ type Context = {
 
 export async function postDocument(
 	tx: Tx,
-	options: { orgId: number; documentId: number; userId?: string; today?: string }
+	options: {
+		orgId: number;
+		documentId: number;
+		userId?: string;
+		today?: string;
+		/** The poster may take a customer over their credit limit (`customers.credit`). */
+		allowOverLimit?: boolean;
+	}
 ): Promise<{ number: string }> {
 	const { orgId, documentId, userId } = options;
 	const today = options.today ?? localToday();
@@ -131,6 +143,13 @@ export async function postDocument(
 		case 'adjustment':
 			if (!from) throw new StockError('Choose the location the stock is at.');
 			break;
+		case 'sales_return':
+			if (!to) throw new StockError('Choose where the returned goods go.');
+			break;
+		case 'purchase_return':
+			if (!from) throw new StockError('Choose where the goods leave from.');
+			if (!doc.supplierId) throw new StockError('A return to supplier names the supplier.');
+			break;
 		case 'transfer':
 			if (!from || !to) throw new StockError('Choose both locations for a transfer.');
 			if (from.id === to.id) throw new StockError('A transfer needs two different locations.');
@@ -156,6 +175,54 @@ export async function postDocument(
 			(u) => [u.id, u.symbol]
 		)
 	);
+
+	// Sales and receipts: the VAT on each line is fixed now, at this business's and this supplier's
+	// registration and the item's tax code. Returns carry the rate of the line they return.
+	if (doc.type === 'issue' || doc.type === 'receipt') {
+		const settings = await taxSettings(orgId, tx);
+		let supplierVat = false;
+		if (doc.type === 'receipt' && doc.supplierId) {
+			const [s] = await tx
+				.select({ vat: supplier.vatRegistered })
+				.from(supplier)
+				.where(eq(supplier.id, doc.supplierId));
+			supplierVat = s?.vat ?? false;
+		}
+		for (const line of lines) {
+			const it = itemById.get(line.itemId);
+			if (!it) continue;
+			const rate =
+				doc.type === 'issue'
+					? saleVatRate(settings, it.taxCode)
+					: purchaseVatRate(settings, supplierVat, it.taxCode);
+			// TOT: sales only, by a TOT payer that is not VAT-registered.
+			const tot = doc.type === 'issue' ? saleTotRate(settings, it.totRate) : null;
+			if (line.vatRate !== rate || line.totRate !== tot) {
+				await tx
+					.update(stockDocumentLine)
+					.set({ vatRate: rate, totRate: tot })
+					.where(eq(stockDocumentLine.id, line.id));
+				line.vatRate = rate;
+				line.totRate = tot;
+			}
+		}
+	}
+
+	// A sale to a named customer is what they owe: priced, and within their credit limit.
+	if (doc.type === 'issue' && doc.customerId) {
+		const refused = await creditCheck(tx, {
+			orgId,
+			documentId: doc.id,
+			customerId: doc.customerId,
+			allowOverLimit: options.allowOverLimit ?? false
+		});
+		if (refused) throw new StockError(refused);
+	}
+
+	if (doc.type === 'sales_return' || doc.type === 'purchase_return') {
+		const refused = await checkReturn(tx, doc, lines);
+		if (refused) throw new StockError(refused.message, refused.lineId);
+	}
 
 	const ctx: Context = {
 		tx,
@@ -207,6 +274,14 @@ export async function postDocument(
 		}
 
 		const cost = line.unitCost == null ? it.avgCost : round4(line.unitCost / factor);
+		// A receipt with no cost came in at the average cost: say so on the line, so what the
+		// supplier is owed can always be read off the document.
+		if (doc.type === 'receipt' && line.unitCost == null) {
+			await tx
+				.update(stockDocumentLine)
+				.set({ unitCost: round4(cost * factor) })
+				.where(eq(stockDocumentLine.id, line.id));
+		}
 
 		switch (doc.type) {
 			case 'receipt':
@@ -229,6 +304,18 @@ export async function postDocument(
 				await takeOut(ctx, it, line, from!.id, quantity, serials, 'transfer_out', {
 					allowUnusable: to!.kind === 'quarantine',
 					transferTo: to!.id
+				});
+				break;
+			case 'sales_return':
+				// Back into its own lot, even an expired one: that is often why it came back.
+				await bringIn(ctx, it, line, to!.id, quantity, cost, serials, 'sales_return', {
+					acceptExpired: true
+				});
+				break;
+			case 'purchase_return':
+				// Expired, quarantined and recalled stock is exactly what goes back to a supplier.
+				await takeOut(ctx, it, line, from!.id, quantity, serials, 'purchase_return', {
+					allowUnusable: true
 				});
 				break;
 		}
@@ -258,7 +345,8 @@ async function bringIn(
 	quantity: number,
 	cost: number,
 	serials: string[],
-	kind: Kind
+	kind: Kind,
+	options: { acceptExpired?: boolean } = {}
 ) {
 	const { tx, orgId, today, doc } = ctx;
 	let lotId: number | null = null;
@@ -274,7 +362,7 @@ async function bringIn(
 		if (it.trackExpiry && !line.expiryDate) {
 			throw new StockError(`Enter the expiry date for ${it.name}.`, line.id);
 		}
-		if (isExpired(line.expiryDate, today)) {
+		if (!options.acceptExpired && isExpired(line.expiryDate, today)) {
 			throw new StockError(
 				`Lot ${lotNumber} of ${it.name} expired on ${line.expiryDate} and cannot be received.`,
 				line.id
@@ -432,7 +520,15 @@ async function takeOut(
 				.set(
 					options.transferTo
 						? { locationId: options.transferTo }
-						: { status: kind === 'issue' ? 'issued' : 'disposed', locationId: null }
+						: {
+								status:
+									kind === 'issue'
+										? 'issued'
+										: kind === 'purchase_return'
+											? 'returned'
+											: 'disposed',
+								locationId: null
+							}
 				)
 				.where(eq(serialUnit.id, unit.id));
 		}

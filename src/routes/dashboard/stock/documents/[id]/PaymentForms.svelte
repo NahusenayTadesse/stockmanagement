@@ -19,17 +19,35 @@
 		methods,
 		branches,
 		suppliers,
+		customers = null,
 		linkable,
-		suggestedAmount
+		suggestedAmount,
+		totals = null,
+		withholding = { amount: 0, rate: 0 }
 	}: {
 		paymentForm: SuperValidated<Record<string, unknown>>;
 		linkForm: SuperValidated<Record<string, unknown>>;
 		methods: { value: number; name: string }[];
 		branches: { value: number; name: string }[];
 		suppliers: { value: number; name: string }[];
+		customers?: { value: number; name: string }[] | null;
 		linkable: { value: number; name: string }[];
 		suggestedAmount: number;
+		totals?: { net: number; vat: number; gross: number } | null;
+		withholding?: { amount: number; rate: number };
 	} = $props();
+
+	/** What the suggested amount is made of: the total, and any tax to withhold from it. */
+	const paymentHint = $derived.by(() => {
+		if (!totals) return '';
+		let text = `The document comes to ${formatETB(totals.gross)}`;
+		if (totals.vat) text += `, VAT ${formatETB(totals.vat)} included`;
+		text += '.';
+		if (withholding.amount) {
+			text += ` ${withholding.rate}% withholding on ${formatETB(totals.net)} is ${formatETB(withholding.amount)}, which leaves ${formatETB(suggestedAmount)} in cash.`;
+		}
+		return `${text} Change it if the payment differs.`;
+	});
 
 	let recordOpen = $state(false);
 	let linkOpen = $state(false);
@@ -65,11 +83,8 @@
 			id="record-payment"
 			class="flex flex-col gap-4"
 		>
-			{#if suggestedAmount}
-				<p class="text-sm text-muted-foreground">
-					The document's lines come to {formatETB(suggestedAmount)}; change it if the payment
-					differs.
-				</p>
+			{#if totals?.gross}
+				<p class="text-sm text-muted-foreground">{paymentHint}</p>
 			{/if}
 			<Errors allErrors={$recordAll} />
 			<TransactionFields
@@ -78,6 +93,7 @@
 				{methods}
 				{branches}
 				{suppliers}
+				{customers}
 				withFile
 			/>
 			<Button type="submit" form="record-payment">

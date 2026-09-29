@@ -6,6 +6,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Printer from '@lucide/svelte/icons/printer';
 	import X from '@lucide/svelte/icons/x';
+	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
@@ -14,12 +15,13 @@
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import * as AlertDialog from '@nahu/admin-kit/components/ui/alert-dialog/index.js';
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
+	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { Button, buttonVariants } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
 	import { ADJUSTMENT_REASONS, DOCUMENT_LABELS } from '$lib/format';
 	import { documentHeader, lineAdd, lineEdit } from '$lib/schemas/stock';
@@ -31,6 +33,7 @@
 
 	const doc = $derived(data.doc);
 	const isDraft = $derived(doc.status === 'draft');
+	const isReturnDoc = $derived(doc.type === 'sales_return' || doc.type === 'purchase_return');
 	const type = $derived(doc.type);
 
 	let editOpen = $state(false);
@@ -99,6 +102,14 @@
 		display: 'lot',
 		required: false
 	};
+	const unitPrice: LookupField = {
+		name: 'unitPrice',
+		label: 'Sale price (per unit above)',
+		type: 'money',
+		required: false,
+		placeholder: 'Empty: the item’s list price'
+	};
+	const sells = $derived(Boolean(data.organization?.sellsToCustomers));
 	const serials: LookupField = {
 		name: 'serials',
 		label: 'Serial numbers (one per line)',
@@ -113,7 +124,9 @@
 			? [item, quantity, unit, unitCost, lotNumber, expiryDate, serials]
 			: type === 'adjustment'
 				? [item, quantity, unit, lotPick, lotNumber, expiryDate, unitCost, serials]
-				: [item, quantity, unit, lotPick, serials]
+				: type === 'issue' && sells
+					? [item, quantity, unit, unitPrice, lotPick, serials]
+					: [item, quantity, unit, lotPick, serials]
 	);
 
 	const lineOptions = $derived({ itemId: data.items, uomId: data.units, lotId: data.lots });
@@ -140,7 +153,30 @@
 				value: data.names.purchaseOrder ?? `Draft #${doc.purchaseOrderId}`,
 				href: resolve('/dashboard/purchasing/[id]', { id: String(doc.purchaseOrderId) })
 			},
-			doc.party && { name: 'Issued to', value: doc.party },
+			data.names.customer && {
+				name: 'Customer',
+				value: `${data.names.customer}${data.names.customerPhone ? ` · ${data.names.customerPhone}` : ''}`,
+				href: resolve('/dashboard/customers/[id]', { id: String(doc.customerId) })
+			},
+			data.original && {
+				name: type === 'sales_return' ? 'Returns sale' : 'Returns delivery',
+				value: data.original.number ?? `#${data.original.id}`,
+				href: resolve('/dashboard/stock/documents/[id]', { id: String(data.original.id) })
+			},
+			doc.party && {
+				name: type === 'sales_return' ? 'Returned by' : 'Issued to',
+				value: doc.party
+			},
+			data.totals &&
+				data.totals.gross > 0 && {
+					name: 'Value',
+					value:
+						(data.totals.vat || data.totals.tot
+							? `${formatETB(data.totals.net)}${data.totals.vat ? ` + VAT ${formatETB(data.totals.vat)}` : ''}${data.totals.tot ? ` + TOT ${formatETB(data.totals.tot)}` : ''} = ${formatETB(data.totals.gross)}`
+							: formatETB(data.totals.gross)) +
+						(isDraft && (type === 'issue' || type === 'receipt') ? ' (VAT fixed on posting)' : '') +
+						(data.unpriced ? ` · ${data.unpriced} line(s) unpriced` : '')
+				},
 			doc.reference && { name: 'Reference', value: doc.reference },
 			doc.reason && {
 				name: 'Reason',
@@ -195,6 +231,8 @@
 							locations={data.locations}
 							suppliers={data.suppliers}
 							supplierForm={data.supplierForm}
+							customers={data.customers}
+							customerForm={data.customerForm}
 							lockType
 						/>
 						<Button type="submit" form="header">
@@ -247,6 +285,15 @@
 				</AlertDialog.Root>
 			{/if}
 
+			{#if data.canReturn && data.canDraft}
+				<form method="POST" action="?/startReturn" use:enhance>
+					<Button type="submit" variant="outline">
+						<Undo2 />
+						{type === 'issue' ? 'Customer return' : 'Return to supplier'}
+					</Button>
+				</form>
+			{/if}
+
 			{#if doc.status === 'posted'}
 				<Button href="/dashboard/stock/documents/{doc.id}/print" target="_blank" variant="outline">
 					<Printer /> Print
@@ -254,6 +301,36 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if isDraft && data.credit}
+		{@const c = data.credit}
+		{@const after = Math.round((c.balance + (data.saleValue ?? 0)) * 100) / 100}
+		<div
+			class="flex flex-col gap-1 rounded-md border p-3 text-sm {c.creditLimit !== null &&
+			after > c.creditLimit
+				? 'border-destructive/50 bg-destructive/10'
+				: c.overdue > 0
+					? 'border-amber-500/40 bg-amber-500/10'
+					: ''}"
+		>
+			<p>
+				<strong>{data.names.customer}</strong> owes {formatETB(c.balance)} now{c.overdue > 0
+					? `, ${formatETB(c.overdue)} of it overdue`
+					: ''}. Unless paid, this sale takes it to <strong>{formatETB(after)}</strong>.
+			</p>
+			<p class="text-muted-foreground">
+				{#if c.creditLimit === null}
+					No credit limit set.
+				{:else if c.creditLimit === 0}
+					Cash only: record the payment below before posting.
+				{:else}
+					Credit limit {formatETB(c.creditLimit)}{after > c.creditLimit
+						? ' — this sale goes over it. Record a payment first, or have someone allowed to exceed limits post it.'
+						: `; ${formatETB(c.creditLimit - after)} would remain.`}
+				{/if}
+			</p>
+		</div>
+	{/if}
 
 	{#if stockError && isDraft}
 		<div
@@ -271,6 +348,102 @@
 		<PaymentCard pay={data.pay} canManage={data.pay.canManage} />
 	</div>
 
+	{#if data.fiscal}
+		{@const f = data.fiscal}
+		<Card.Root>
+			<Card.Header>
+				<Card.Title>Fiscal receipt & e-invoice</Card.Title>
+			</Card.Header>
+			<Card.Content class="grid gap-6 md:grid-cols-2">
+				<div class="flex flex-col gap-2 text-sm">
+					<p class="font-medium">
+						Fiscal receipt
+						{#if f.fsNumber}
+							<Badge>{f.fiscalStatus === 'manual' ? 'entered' : 'printed'}</Badge>
+						{:else if f.fiscalStatus === 'failed'}
+							<Badge variant="destructive">failed</Badge>
+						{:else if f.fiscalStatus === 'pending'}
+							<Badge variant="secondary">waiting for the FS No.</Badge>
+						{/if}
+					</p>
+					{#if f.fsNumber}
+						<p>
+							FS No. <strong>{f.fsNumber}</strong>{f.machineCode ? ` · MRC ${f.machineCode}` : ''}
+						</p>
+					{:else}
+						{#if f.fiscalError}<p class="text-destructive">{f.fiscalError}</p>{/if}
+						{#if !f.device}
+							<p class="text-muted-foreground">
+								No fiscal device is set up for this branch (Admin panel → Fiscal devices).
+							</p>
+						{/if}
+						{#if data.canPost}
+							<div class="flex flex-wrap gap-2">
+								{#if f.device && f.device.kind !== 'manual'}
+									<form method="POST" action="?/printFiscal" use:enhance>
+										<Button type="submit" size="sm"
+											><Printer />
+											{f.fiscalStatus === 'failed' ? 'Try again' : 'Print on'}
+											{f.device.name}</Button
+										>
+									</form>
+								{/if}
+								<form
+									method="POST"
+									action="?/recordFiscal"
+									use:enhance
+									class="flex flex-wrap gap-2"
+								>
+									<Input name="fsNumber" placeholder="FS No." class="h-9 w-32" required />
+									<Input
+										name="machineCode"
+										placeholder="MRC"
+										value={f.device?.machineCode ?? ''}
+										class="h-9 w-36"
+									/>
+									<Button type="submit" size="sm" variant="outline">Record</Button>
+								</form>
+							</div>
+						{/if}
+					{/if}
+				</div>
+
+				<div class="flex flex-col gap-2 text-sm">
+					<p class="font-medium">
+						E-invoice
+						{#if f.einvoiceStatus === 'accepted'}
+							<Badge>accepted</Badge>
+						{:else if f.einvoiceStatus}
+							<Badge variant="destructive">{f.einvoiceStatus}</Badge>
+						{/if}
+						{#if f.einvoiceMode === 'sandbox'}<Badge variant="outline">sandbox</Badge>{/if}
+					</p>
+					{#if f.irn}
+						<div class="flex items-start gap-3">
+							{#if f.qr}<img
+									src={f.qr}
+									alt="E-invoice QR code"
+									class="size-28 rounded border"
+								/>{/if}
+							<p class="break-all">IRN <strong>{f.irn}</strong></p>
+						</div>
+					{:else}
+						{#if f.einvoiceError}<p class="text-destructive">{f.einvoiceError}</p>{/if}
+						{#if !f.einvoiceMode}
+							<p class="text-muted-foreground">E-invoicing is off (Business profile).</p>
+						{:else if data.canPost}
+							<form method="POST" action="?/submitEinvoice" use:enhance>
+								<Button type="submit" size="sm" variant="outline"
+									>{f.einvoiceStatus ? 'Send again' : 'Send e-invoice'}</Button
+								>
+							</form>
+						{/if}
+					{/if}
+				</div>
+			</Card.Content>
+		</Card.Root>
+	{/if}
+
 	<section class="flex flex-col gap-2">
 		<h2 class="text-xl font-semibold">Lines</h2>
 		{#if isDraft && type !== 'receipt'}
@@ -279,18 +452,114 @@
 				lots are never issued{type === 'transfer' ? ', except into a quarantine location' : ''}.
 			</p>
 		{/if}
-		<LookupSection
-			config={{ entity: 'Line', plural: 'Lines', fields: lineFields }}
-			rows={data.lines.rows}
-			addForm={data.lines.addForm}
-			editForm={data.lines.editForm}
-			canDelete={isDraft && data.canDraft}
-			options={lineOptions}
-			actions={{ add: '?/addLine', edit: '?/editLine', delete: '?/deleteLine' }}
-			schemas={{ add: lineAdd, edit: lineEdit }}
-			readonly={!isDraft || !data.canDraft}
-		/>
+		{#if isReturnDoc}
+			<p class="text-sm text-muted-foreground">
+				{type === 'sales_return'
+					? 'Everything still returnable on the sale, back into the lot it left from. Lower each line to what the customer brought back; 0 drops it.'
+					: 'Everything still returnable on the delivery, from the lot it came in as — expired and quarantined stock included. Lower each line to what is going back; 0 drops it.'}
+			</p>
+			<form
+				method="POST"
+				action="?/saveReturn"
+				use:enhance={() =>
+					async ({ update }) =>
+						update({ reset: false })}
+				class="flex flex-col gap-3"
+			>
+				<div class="overflow-x-auto rounded-md border">
+					<table class="w-full text-sm">
+						<thead class="bg-muted/50 text-left">
+							<tr>
+								<th class="px-3 py-2">Item</th>
+								<th class="px-3 py-2">Lot</th>
+								<th class="px-3 py-2 text-right">Returning</th>
+								<th class="px-3 py-2 text-right">Still returnable</th>
+								<th class="px-3 py-2 text-right">{type === 'sales_return' ? 'Price' : 'Cost'}</th>
+								<th class="px-3 py-2 text-right">Value</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each data.returnSheet as r (r.id)}
+								<tr class="border-t align-top">
+									<td class="px-3 py-2">{r.item}</td>
+									<td class="px-3 py-2">{r.lot || '—'}</td>
+									<td class="px-3 py-2 text-right">
+										{#if isDraft && data.canDraft}
+											{#if r.serials}
+												<textarea
+													name="serials_{r.id}"
+													rows={Math.min(6, r.serials.split('\n').length)}
+													aria-label="Serials of {r.item} coming back"
+													class="w-48 rounded-md border bg-background px-2 py-1 font-mono text-xs"
+													>{r.serials}</textarea
+												>
+											{:else}
+												<input
+													name="qty_{r.id}"
+													type="number"
+													min="0"
+													max={r.left}
+													step="any"
+													value={r.quantity}
+													aria-label="Quantity of {r.item} returning"
+													class="h-9 w-24 rounded-md border bg-background px-2 text-right"
+												/>
+											{/if}
+										{:else}
+											{r.quantity}
+										{/if}
+										<span class="ml-1 text-xs text-muted-foreground">{r.unit}</span>
+									</td>
+									<td class="px-3 py-2 text-right text-muted-foreground">{r.left} {r.unit}</td>
+									<td class="px-3 py-2 text-right">{r.price == null ? '—' : formatETB(r.price)}</td>
+									<td class="px-3 py-2 text-right">{formatETB(r.gross)}</td>
+								</tr>
+							{:else}
+								<tr
+									><td colspan="6" class="px-3 py-6 text-center text-muted-foreground"
+										>No lines left.</td
+									></tr
+								>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+				{#if isDraft && data.canDraft && data.returnSheet.length}
+					<Button type="submit" class="self-start" variant="outline">Save quantities</Button>
+				{/if}
+			</form>
+		{:else}
+			<LookupSection
+				config={{ entity: 'Line', plural: 'Lines', fields: lineFields }}
+				rows={data.lines.rows}
+				addForm={data.lines.addForm}
+				editForm={data.lines.editForm}
+				canDelete={isDraft && data.canDraft}
+				options={lineOptions}
+				actions={{ add: '?/addLine', edit: '?/editLine', delete: '?/deleteLine' }}
+				schemas={{ add: lineAdd, edit: lineEdit }}
+				readonly={!isDraft || !data.canDraft}
+			/>
+		{/if}
 	</section>
+
+	{#if data.returnsMade.length}
+		<section class="flex flex-col gap-2">
+			<h2 class="text-xl font-semibold">Returns</h2>
+			<ul class="flex flex-col divide-y rounded-md border">
+				{#each data.returnsMade as r (r.id)}
+					<li class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+						<a
+							class="font-medium underline-offset-4 hover:underline"
+							href={resolve('/dashboard/stock/documents/[id]', { id: String(r.id) })}
+							>{r.number ?? `Draft return #${r.id}`}</a
+						>
+						<Badge variant={r.status === 'posted' ? 'default' : 'secondary'}>{r.status}</Badge>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	{#if data.movements.length}
 		<section class="flex flex-col gap-2">

@@ -8,6 +8,7 @@ import { db } from '$lib/server/db';
 import { transactions } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { branchOptions, methodOptions, supplierOptions } from '$lib/server/options';
+import { customerChoices } from '$lib/server/customers';
 import {
 	addAttachment,
 	checkTransaction,
@@ -44,6 +45,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		branches: [{ value: 0, name: 'Whole business' }, ...branches],
 		form,
 		suppliers: await supplierOptions(orgId),
+		customers: await customerChoices(orgId),
 		canManage: hasPermission(locals, 'transactions.manage')
 	};
 };

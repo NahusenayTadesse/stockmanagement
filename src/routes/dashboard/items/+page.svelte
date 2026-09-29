@@ -1,7 +1,7 @@
 <script lang="ts">
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import type { LookupField } from '@nahu/admin-kit/components/lookup/types';
-	import { itemAdd, itemEdit, STORAGE_CHOICES } from '$lib/schemas/items';
+	import { itemAdd, itemEdit, STORAGE_CHOICES, TAX_CODE_CHOICES } from '$lib/schemas/items';
 	import { extraColumns } from './columns';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
@@ -47,7 +47,21 @@
 			options: 'unitList',
 			display: 'unit'
 		},
-		{ name: 'salePrice', label: 'Sale price', type: 'money', required: false },
+		{ name: 'salePrice', label: 'Sale price (before VAT)', type: 'money', required: false },
+		{
+			name: 'taxCode',
+			label: 'VAT',
+			type: 'select',
+			choices: TAX_CODE_CHOICES,
+			inTable: false
+		},
+		{
+			name: 'totRate',
+			label: 'TOT rate % (optional, TOT payers only)',
+			type: 'number',
+			required: false,
+			inTable: false
+		},
 		{
 			name: 'reorderLevel',
 			label: 'Reorder at (base units)',

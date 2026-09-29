@@ -175,6 +175,9 @@
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Deliveries</Card.Title>
+				<Card.Description
+					>At the price paid, VAT included; returns to them count against.</Card.Description
+				>
 			</Card.Header>
 			<Card.Content>
 				<ul class="divide-y">
@@ -186,6 +189,8 @@
 							>
 								{d.number ?? `Draft #${d.id}`}
 							</a>
+							{#if d.type === 'purchase_return'}<Badge variant="outline">returned to them</Badge
+								>{/if}
 							<span class="text-sm text-muted-foreground">
 								{day(d.docDate)} · {formatETB(d.value)}
 								{#if d.status === 'draft'}<Badge variant="secondary">draft</Badge>{/if}

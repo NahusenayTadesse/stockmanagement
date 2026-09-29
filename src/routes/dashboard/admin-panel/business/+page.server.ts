@@ -10,6 +10,7 @@ import { db } from '$lib/server/db';
 import { organization } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { removeStoredFile } from '$lib/server/files';
+import { seal } from '$lib/server/secrets';
 import { businessSchema, logoSchema } from '$lib/schemas/business';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
@@ -22,13 +23,36 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const org = await current(orgIdOf(locals));
 	const [form, logoForm] = await Promise.all([
 		superValidate(
-			{ name: org.name, tin: org.tin ?? '', phone: org.phone ?? '', address: org.address ?? '' },
+			{
+				name: org.name,
+				tin: org.tin ?? '',
+				phone: org.phone ?? '',
+				address: org.address ?? '',
+				sellsToCustomers: org.sellsToCustomers,
+				vatRegistered: org.vatRegistered,
+				vatRate: org.vatRate,
+				withholdingAgent: org.withholdingAgent,
+				withholdingRate: org.withholdingRate,
+				withholdingThreshold: org.withholdingThreshold,
+				totRate: org.totRate,
+				einvoiceMode: org.einvoiceMode ?? '',
+				einvoiceEndpoint: org.einvoiceEndpoint ?? '',
+				einvoiceTokenUrl: org.einvoiceTokenUrl ?? '',
+				einvoiceClientId: org.einvoiceClientId ?? '',
+				// Never sent back: the form only says whether one is stored.
+				einvoiceSecret: ''
+			},
 			zod4(businessSchema),
 			{ errors: false }
 		),
 		superValidate(zod4(logoSchema))
 	]);
-	return { org: { name: org.name, logo: org.logo, createdAt: org.createdAt }, form, logoForm };
+	return {
+		org: { name: org.name, logo: org.logo, createdAt: org.createdAt },
+		hasEinvoiceSecret: Boolean(org.einvoiceSecret),
+		form,
+		logoForm
+	};
 };
 
 /** Every action here changes the business itself; the route rule is checked again for the POST. */
@@ -49,7 +73,21 @@ export const actions: Actions = {
 			name: form.data.name,
 			tin: form.data.tin || null,
 			phone: form.data.phone || null,
-			address: form.data.address || null
+			address: form.data.address || null,
+			sellsToCustomers: form.data.sellsToCustomers,
+			vatRegistered: form.data.vatRegistered,
+			vatRate: form.data.vatRate,
+			withholdingAgent: form.data.withholdingAgent,
+			withholdingRate: form.data.withholdingRate,
+			withholdingThreshold: form.data.withholdingThreshold,
+			totRate: form.data.totRate,
+			einvoiceMode: form.data.einvoiceMode || null,
+			einvoiceEndpoint: form.data.einvoiceEndpoint || null,
+			einvoiceTokenUrl: form.data.einvoiceTokenUrl || null,
+			einvoiceClientId: form.data.einvoiceClientId || null,
+			einvoiceSecret: form.data.einvoiceSecret
+				? seal(form.data.einvoiceSecret)
+				: before.einvoiceSecret
 		};
 		await db.transaction(async (tx) => {
 			await tx.update(organization).set(after).where(eq(organization.id, orgId));
@@ -57,8 +95,8 @@ export const actions: Actions = {
 				table: 'organization',
 				recordId: orgId,
 				action: 'update',
-				before,
-				after
+				before: { ...before, einvoiceSecret: before.einvoiceSecret ? '(set)' : null },
+				after: { ...after, einvoiceSecret: after.einvoiceSecret ? '(set)' : null }
 			});
 		});
 		return message(form, { type: 'success', text: 'Business details saved' });

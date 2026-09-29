@@ -10,6 +10,7 @@ import { db } from '$lib/server/db';
 import {
 	branch,
 	category,
+	customer,
 	item,
 	location,
 	lot,
@@ -91,6 +92,17 @@ export const methodOptions = (orgId: number) =>
 			)
 		)
 		.orderBy(asc(paymentMethod.name));
+
+/** Active customers, labelled with their phone when they left one — names repeat. */
+export const customerOptions = (orgId: number) =>
+	db
+		.select({
+			value: customer.id,
+			name: sql<string>`CONCAT(${customer.name}, IF(${customer.phone} IS NULL, '', CONCAT(' · ', ${customer.phone})))`
+		})
+		.from(customer)
+		.where(and(eq(customer.orgId, orgId), eq(customer.isActive, true), isNull(customer.deletedAt)))
+		.orderBy(asc(customer.name));
 
 /** Active suppliers, labelled with their phone so two of the same name can be told apart. */
 export const supplierOptions = (orgId: number) =>

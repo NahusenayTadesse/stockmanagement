@@ -17,11 +17,18 @@
 	let { data, children } = $props();
 
 	let logoutForm = $state<HTMLFormElement>();
+
+	/** An internal store that never sells has no use for the customer list. */
+	const navigation = $derived(
+		data.organization?.sellsToCustomers
+			? NAVIGATION
+			: NAVIGATION.filter((entry) => entry.url !== '/dashboard/customers')
+	);
 </script>
 
 <KitProvider
 	{access}
-	navigation={NAVIGATION}
+	{navigation}
 	entities={ENTITIES}
 	permList={data.permList}
 	isSuperAdmin={data.isSuperAdmin}

@@ -13,7 +13,9 @@ export const DOCUMENT_LABELS = {
 	receipt: 'Goods receipt',
 	issue: 'Issue',
 	transfer: 'Transfer',
-	adjustment: 'Adjustment'
+	adjustment: 'Adjustment',
+	sales_return: 'Customer return',
+	purchase_return: 'Return to supplier'
 } as const;
 
 export const MOVEMENT_LABELS: Record<string, string> = {
@@ -22,7 +24,15 @@ export const MOVEMENT_LABELS: Record<string, string> = {
 	transfer_out: 'Transferred out',
 	transfer_in: 'Transferred in',
 	adjustment_in: 'Adjusted in',
-	adjustment_out: 'Adjusted out'
+	adjustment_out: 'Adjusted out',
+	sales_return: 'Returned by customer',
+	purchase_return: 'Returned to supplier'
+};
+
+export const TAX_CODE_LABELS: Record<string, string> = {
+	standard: 'Standard VAT',
+	zero: 'Zero-rated (0%)',
+	exempt: 'Exempt'
 };
 
 export const LOCATION_KINDS = [
