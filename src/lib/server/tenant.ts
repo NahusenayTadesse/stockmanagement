@@ -1,12 +1,13 @@
 import { error, type RequestEvent } from '@sveltejs/kit';
 import { childCrud, type ChildCrudOptions } from '@nahu/admin-kit/server/childCrud';
+import { m } from '$lib/paraglide/messages.js';
 
 /**
  * The viewer's organization. Set in `hooks.server.ts` from the user row — never from the URL,
  * a cookie or a form — so it is the one value every tenant-scoped query can trust.
  */
 export function orgIdOf(locals: App.Locals): number {
-	if (!locals.orgId) error(403, 'Your account is not attached to a business.');
+	if (!locals.orgId) error(403, m.admin_tenant_no_business());
 	return locals.orgId;
 }
 

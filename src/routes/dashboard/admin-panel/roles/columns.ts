@@ -4,6 +4,7 @@ import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.sv
 import DataTableSort from '@nahu/admin-kit/components/Table/data-table-sort.svelte';
 import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
 import type { PageData } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 type Role = PageData['roleList'][number];
 
@@ -12,7 +13,10 @@ export const columns: ColumnDef<Role>[] = [
 	{
 		accessorKey: 'name',
 		header: ({ column }) =>
-			renderComponent(DataTableSort, { name: 'Name', onclick: column.getToggleSortingHandler() }),
+			renderComponent(DataTableSort, {
+				name: m.common_name(),
+				onclick: column.getToggleSortingHandler()
+			}),
 		cell: ({ row }) =>
 			renderComponent(DataTableLinks, {
 				id: row.original.id,
@@ -20,21 +24,37 @@ export const columns: ColumnDef<Role>[] = [
 				entity: 'role'
 			})
 	},
-	{ accessorKey: 'description', header: 'Description' },
+	{
+		accessorKey: 'description',
+		get header() {
+			return m.admin_roles_description();
+		}
+	},
 	{
 		accessorKey: 'status',
-		header: 'Status',
+		get header() {
+			return m.common_status();
+		},
 		cell: ({ row }) =>
-			renderComponent(Statuses, { status: row.original.status ? 'Active' : 'Inactive' })
+			renderComponent(Statuses, {
+				// The colour follows the English word; the badge says it in the viewer's language.
+				status: row.original.status ? 'Active' : 'Inactive',
+				label: row.original.status ? m.common_active() : m.common_inactive()
+			})
 	},
 	{
 		accessorKey: 'permissionsCount',
 		header: ({ column }) =>
 			renderComponent(DataTableSort, {
-				name: 'Permissions',
+				name: m.admin_users_permissions(),
 				onclick: column.getToggleSortingHandler()
 			}),
-		cell: ({ row }) => (row.original.isOwner ? 'All' : row.original.permissionsCount)
+		cell: ({ row }) => (row.original.isOwner ? m.admin_roles_all() : row.original.permissionsCount)
 	},
-	{ accessorKey: 'userCount', header: 'Users' }
+	{
+		accessorKey: 'userCount',
+		get header() {
+			return m.admin_users_title();
+		}
+	}
 ];

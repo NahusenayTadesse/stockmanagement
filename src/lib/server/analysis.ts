@@ -26,6 +26,7 @@ import {
 	uom
 } from '$lib/server/db/schema';
 import { round4 } from '$lib/server/stock/math';
+import { m } from '$lib/paraglide/messages.js';
 
 type Reader = Pick<typeof db, 'select'>;
 
@@ -477,7 +478,9 @@ export async function stockOuts(
 			...p,
 			item: itemInfo.get(p.itemId)?.name ?? '—',
 			sku: itemInfo.get(p.itemId)?.sku ?? '',
-			location: p.locationId ? (locationName.get(p.locationId) ?? '—') : 'All chosen locations',
+			location: p.locationId
+				? (locationName.get(p.locationId) ?? '—')
+				: m.reports_all_chosen_locations(),
 			stillOut: p.backIn === null
 		}))
 		.sort((a, b) => (a.outFrom < b.outFrom ? 1 : a.outFrom > b.outFrom ? -1 : 0));
@@ -536,7 +539,7 @@ export function bucketOf(day: string, grain: Grain) {
 		const monday = new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY)
 			.toISOString()
 			.slice(0, 10);
-		return { key: monday, label: `Week of ${ethiopianDay(monday)}` };
+		return { key: monday, label: m.reports_week_of({ day: ethiopianDay(monday) }) };
 	}
 	const e = getEthiopianYearMonth(noon(day))!;
 	const [, month, year] = ethiopianDay(day).split(' ');

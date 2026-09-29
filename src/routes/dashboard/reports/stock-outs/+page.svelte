@@ -5,6 +5,7 @@
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
 	import ReportFilterBar from '../ReportFilterBar.svelte';
 	import { periodColumns, summaryColumns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -13,45 +14,45 @@
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'now',
-			label: 'Out of stock now',
+			label: m.reports_outs_now(),
 			value: items.filter((i) => i.stillOut).length,
 			format: 'count',
 			group: 'outs',
 			tone: items.some((i) => i.stillOut) ? 'negative' : 'neutral',
-			hint: 'Had stock before, have none now'
+			hint: m.reports_outs_now_hint()
 		},
 		{
 			key: 'items',
-			label: 'Ran out in the period',
+			label: m.reports_outs_period(),
 			value: items.length,
 			format: 'count',
 			group: 'outs',
-			hint: `${data.report.periods.length} time${data.report.periods.length === 1 ? '' : 's'} in all`
+			hint: (data.report.periods.length === 1
+				? m.reports_outs_times_one
+				: m.reports_outs_times_many)({
+				count: data.report.periods.length
+			})
 		},
 		{
 			key: 'days',
-			label: 'Days out of stock',
+			label: m.reports_outs_days(),
 			value: items.reduce((s, i) => s + i.days, 0),
 			format: 'days',
 			group: 'outs',
 			tone: 'warning',
-			hint: 'Added up over items'
+			hint: m.reports_outs_days_hint()
 		}
 	]);
 </script>
 
 <svelte:head>
-	<title>Stock-outs</title>
+	<title>{m.nav_stock_outs()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div>
-		<h1 class="text-2xl font-semibold">Stock-out history</h1>
-		<p class="text-muted-foreground">
-			When shelves ran empty, worked out from every movement: each stretch an item had none after
-			having had some, and when it came back. Stock in transit or in quarantine is not on a shelf
-			and is not counted. Items that run out often need a higher reorder level.
-		</p>
+		<h1 class="text-2xl font-semibold">{m.reports_outs_title()}</h1>
+		<p class="text-muted-foreground">{m.reports_outs_intro()}</p>
 	</div>
 
 	<ReportFilterBar
@@ -61,13 +62,13 @@
 		locationId={data.locationId}
 		from={data.from}
 		to={data.to}
-		allLocationsLabel="All shelves together"
+		allLocationsLabel={m.reports_all_shelves()}
 	>
 		<div class="flex flex-col gap-1">
-			<Label for="by">Count</Label>
+			<Label for="by">{m.reports_outs_count()}</Label>
 			<select id="by" name="by" class={select} value={data.byLocation ? 'location' : 'item'}>
-				<option value="item">Across the locations chosen</option>
-				<option value="location">Each location on its own</option>
+				<option value="item">{m.reports_outs_across()}</option>
+				<option value="location">{m.reports_outs_each()}</option>
 			</select>
 		</div>
 	</ReportFilterBar>
@@ -76,21 +77,21 @@
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
 	</div>
 
-	<h2 class="text-lg font-semibold">By item</h2>
+	<h2 class="text-lg font-semibold">{m.reports_outs_by_item()}</h2>
 	<DataTable
 		data={items}
 		columns={summaryColumns}
-		fileName="Stock-outs by item {data.from} to {data.to}"
+		fileName={m.reports_file_outs_by_item({ from: data.from, to: data.to })}
 		facetKeys={['now']}
-		facetLabels={{ now: 'Now' }}
+		facetLabels={{ now: m.reports_col_now() }}
 		height="auto"
 	/>
 
-	<h2 class="text-lg font-semibold">Every stock-out</h2>
+	<h2 class="text-lg font-semibold">{m.reports_outs_every()}</h2>
 	<DataTable
 		data={data.report.periods}
 		columns={periodColumns}
-		fileName="Stock-outs {data.from} to {data.to}"
+		fileName={m.reports_file_outs({ from: data.from, to: data.to })}
 		height="auto"
 	/>
 </div>

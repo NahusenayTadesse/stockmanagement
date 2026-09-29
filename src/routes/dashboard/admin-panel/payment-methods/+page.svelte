@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
 	import { PAYMENT_KIND_CHOICES } from '$lib/schemas/transactions';
 	import { add, edit } from './schema';
@@ -10,24 +11,24 @@
 	{data}
 	schemas={{ add, edit }}
 	config={{
-		entity: 'Payment method',
-		plural: 'Payment methods',
+		entity: m.admin_pm_entity(),
+		plural: m.admin_pm_plural(),
 		fields: [
 			{
 				name: 'name',
-				label: 'Name',
+				label: m.common_name(),
 				type: 'text',
-				placeholder: 'Telebirr, Awash Bank, Cash till 2…'
+				placeholder: m.admin_pm_name_placeholder()
 			},
-			{ name: 'kind', label: 'Kind', type: 'select', choices: PAYMENT_KIND_CHOICES },
+			{ name: 'kind', label: m.admin_pm_kind(), type: 'select', choices: PAYMENT_KIND_CHOICES },
 			{
 				name: 'accountNumber',
-				label: 'Your account / wallet number',
+				label: m.admin_pm_account(),
 				type: 'text',
 				required: false,
-				placeholder: 'For matching statements'
+				placeholder: m.admin_pm_account_placeholder()
 			},
-			{ name: 'status', label: 'Status', type: 'boolean' }
+			{ name: 'status', label: m.common_status(), type: 'boolean' }
 		]
 	}}
 />

@@ -8,6 +8,8 @@ import { organization } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import {
 	COLUMNS,
+	columnLabel,
+	columnNote,
 	IMPORT_KINDS,
 	ImportError,
 	MAX_ROWS,
@@ -18,13 +20,15 @@ import {
 	type SheetRow
 } from '$lib/server/importer';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
+import { labels } from '$lib/format';
 
-const KIND_NAMES: Record<ImportKind, string> = {
-	items: 'Items',
-	suppliers: 'Suppliers',
-	customers: 'Customers',
-	opening: 'Opening stock'
-};
+const KIND_NAMES: Record<ImportKind, string> = labels({
+	items: m.admin_imp_kind_items,
+	suppliers: m.admin_imp_kind_suppliers,
+	customers: m.admin_imp_kind_customers,
+	opening: m.admin_imp_kind_opening
+});
 
 async function kindsFor(orgId: number) {
 	const [org] = await db
@@ -45,7 +49,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 		kinds: kinds.map((k) => ({
 			value: k,
 			name: KIND_NAMES[k],
-			columns: COLUMNS[k].map((c) => ({ label: c.label, note: c.note ?? null }))
+			columns: COLUMNS[k].map((c) => ({
+				label: columnLabel(c.key, c.label),
+				note: c.note ? columnNote(c.note) : null
+			}))
 		})),
 		maxRows: MAX_ROWS
 	};
@@ -60,9 +67,10 @@ export const actions: Actions = {
 		const kind = kindOf(data.get('kind'));
 		const file = data.get('file');
 		if (!kind || !(await kindsFor(orgId)).includes(kind)) {
-			return fail(400, { error: 'Choose what the file holds.' });
+			return fail(400, { error: m.admin_imp_choose_kind() });
 		}
-		if (!(file instanceof File) || !file.size) return fail(400, { error: 'Choose a file.' });
+		if (!(file instanceof File) || !file.size)
+			return fail(400, { error: m.admin_imp_choose_file() });
 		try {
 			const { rows, ignored } = await readTable(kind, {
 				name: file.name,
@@ -86,7 +94,7 @@ export const actions: Actions = {
 		const data = await request.formData();
 		const kind = kindOf(data.get('kind'));
 		if (!kind || !(await kindsFor(orgId)).includes(kind)) {
-			return fail(400, { error: 'Choose what the file holds.' });
+			return fail(400, { error: m.admin_imp_choose_kind() });
 		}
 		let rows: SheetRow[];
 		try {
@@ -104,7 +112,7 @@ export const actions: Actions = {
 				return { row: r.row, values };
 			});
 		} catch {
-			return fail(400, { error: 'The preview could not be read back. Preview the file again.' });
+			return fail(400, { error: m.admin_imp_preview_lost() });
 		}
 
 		try {
@@ -113,9 +121,14 @@ export const actions: Actions = {
 			);
 			const what =
 				kind === 'opening'
-					? `Opening stock posted: ${result.documents.map((d) => d.number).join(', ')}`
-					: `${result.created} added, ${result.updated} updated`;
-			setFlash({ type: 'success', message: `${KIND_NAMES[kind]} imported. ${what}` }, cookies);
+					? m.admin_imp_opening_posted({
+							numbers: result.documents.map((d) => d.number).join(', ')
+						})
+					: m.admin_imp_added_updated({ created: result.created, updated: result.updated });
+			setFlash(
+				{ type: 'success', message: m.admin_imp_done({ kind: KIND_NAMES[kind], what }) },
+				cookies
+			);
 			return { imported: { kind, ...result } };
 		} catch (err) {
 			if (err instanceof ImportError) return fail(400, { error: err.message });

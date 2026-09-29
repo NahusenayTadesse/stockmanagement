@@ -5,36 +5,42 @@
 	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
 	import type { ReportChartData, Stat } from '@nahu/admin-kit/components/reports/types';
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
-	import { qty } from '$lib/format';
+	import { choices, qty } from '$lib/format';
 	import ReportFilterBar from '../ReportFilterBar.svelte';
 	import { columns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
 	const select = 'h-9 rounded-md border bg-background px-2 text-sm';
 	const t = $derived(data.trend);
 	const unit = $derived(t?.item.unit ?? '');
-	const GRAINS = [
-		{ value: 'day', name: 'Day by day' },
-		{ value: 'week', name: 'Week by week' },
-		{ value: 'month', name: 'Ethiopian month' }
-	];
+	const GRAINS = choices([
+		['day', m.reports_grain_day],
+		['week', m.reports_grain_week],
+		['month', m.reports_grain_month]
+	]);
 
 	const chart = $derived.by<ReportChartData | null>(() => {
 		if (!t) return null;
 		const flat = (v: number | null) => t.buckets.map(() => v ?? 0);
-		const series = [{ label: `On hand (${unit})`, data: t.buckets.map((b) => b.closing) }];
+		const series = [
+			{ label: m.reports_trend_on_hand({ unit }), data: t.buckets.map((b) => b.closing) }
+		];
 		if (t.lines) {
 			series.push({
-				label: t.lines.source === 'location' ? 'Minimum' : 'Reorder level',
+				label:
+					t.lines.source === 'location' ? m.reports_trend_minimum() : m.reports_trend_reorder(),
 				data: flat(t.lines.min)
 			});
-			if (t.lines.max !== null) series.push({ label: 'Maximum', data: flat(t.lines.max) });
+			if (t.lines.max !== null) {
+				series.push({ label: m.reports_trend_maximum(), data: flat(t.lines.max) });
+			}
 		}
 		return {
 			key: 'trend',
-			title: `${t.item.name} on hand`,
-			description: 'The level at the end of each period',
+			title: m.reports_trend_chart({ name: t.item.name }),
+			description: m.reports_trend_chart_desc(),
 			group: 'trend',
 			kind: 'line',
 			wide: true,
@@ -48,14 +54,14 @@
 			? [
 					{
 						key: 'open',
-						label: `Opening (${unit})`,
+						label: m.reports_trend_opening({ unit }),
 						value: t.opening,
 						format: 'count',
 						group: 'trend'
 					},
 					{
 						key: 'in',
-						label: `In (${unit})`,
+						label: m.reports_trend_in({ unit }),
 						value: t.totalIn,
 						format: 'count',
 						group: 'trend',
@@ -63,19 +69,19 @@
 					},
 					{
 						key: 'out',
-						label: `Out (${unit})`,
+						label: m.reports_trend_out({ unit }),
 						value: t.totalOut,
 						format: 'count',
 						group: 'trend'
 					},
 					{
 						key: 'close',
-						label: `Closing (${unit})`,
+						label: m.reports_trend_closing({ unit }),
 						value: t.closing,
 						format: 'count',
 						group: 'trend',
 						tone: t.lines && t.closing <= t.lines.min ? 'warning' : 'neutral',
-						hint: `Lowest: ${qty(t.low, unit)}`
+						hint: m.reports_trend_lowest({ qty: qty(t.low, unit) })
 					}
 				]
 			: []
@@ -83,17 +89,13 @@
 </script>
 
 <svelte:head>
-	<title>Stock trend</title>
+	<title>{m.nav_trend()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div>
-		<h1 class="text-2xl font-semibold">Stock trend</h1>
-		<p class="text-muted-foreground">
-			How much of one item was on hand over time, rebuilt from every movement: what it held before
-			the period, then what came in and went out. Drawn against its reorder level, or a location's
-			minimum and maximum when one location is chosen.
-		</p>
+		<h1 class="text-2xl font-semibold">{m.nav_trend()}</h1>
+		<p class="text-muted-foreground">{m.reports_trend_intro()}</p>
 	</div>
 
 	<ReportFilterBar
@@ -105,16 +107,16 @@
 		to={data.to}
 	>
 		<div class="flex flex-col gap-1">
-			<Label for="item">Item</Label>
+			<Label for="item">{m.common_item()}</Label>
 			<select id="item" name="item" class="{select} max-w-72" value={data.itemId}>
-				<option value={0}>— Choose an item —</option>
+				<option value={0}>{m.reports_choose_item()}</option>
 				{#each data.items as i (i.value)}
 					<option value={i.value}>{i.name}</option>
 				{/each}
 			</select>
 		</div>
 		<div class="flex flex-col gap-1">
-			<Label for="grain">Show</Label>
+			<Label for="grain">{m.reports_trend_show()}</Label>
 			<select id="grain" name="grain" class={select} value={data.grain}>
 				{#each GRAINS as g (g.value)}
 					<option value={g.value}>{g.name}</option>
@@ -136,11 +138,11 @@
 		<DataTable
 			data={t.buckets}
 			columns={columns(unit)}
-			fileName="{t.item.name} stock {data.from} to {data.to}"
+			fileName={m.reports_file_trend({ name: t.item.name, from: data.from, to: data.to })}
 			search={false}
 			height="auto"
 		/>
 	{:else}
-		<p class="text-muted-foreground">Choose an item to see its stock over time.</p>
+		<p class="text-muted-foreground">{m.reports_trend_empty()}</p>
 	{/if}
 </div>

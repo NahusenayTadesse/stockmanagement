@@ -25,10 +25,12 @@ import {
 	revokeSessions,
 	setPassword,
 	setUserBranches,
-	ungrantable
+	ungrantable,
+	permissionWords
 } from '$lib/server/users';
 import { editUserSchema, resetPasswordSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 /** The user, if they belong to the viewer's business; with their role. */
 async function member(orgId: number, id: string) {
@@ -59,7 +61,7 @@ const worded = sql<string>`COALESCE(${permissions.description}, ${permissions.na
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const orgId = orgIdOf(locals);
 	const person = await member(orgId, params.id);
-	if (!person) error(404, 'User not found');
+	if (!person) error(404, m.admin_users_not_found());
 
 	const [roleList, branchList, rolePerms, ownPerms, allPerms, works] = await Promise.all([
 		roleOptions(orgId),
@@ -87,7 +89,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	// Special permissions, when a user has any, replace the role's — dentalClinic's rule.
 	const custom = ownPerms.length > 0;
-	const permissionList = custom ? ownPerms : rolePerms;
+	const permissionList = (custom ? ownPerms : rolePerms).map((p) => ({
+		...p,
+		name: permissionWords(p.description, p.name)
+	}));
 
 	const [form, passwordForm] = await Promise.all([
 		superValidate(
@@ -113,7 +118,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		permissionList,
 		allPerms,
 		roleList,
-		branchList: [{ value: 0, name: 'Any branch' }, ...branchList],
+		branchList: [{ value: 0, name: m.admin_users_any_branch() }, ...branchList],
 		branchChoices: branchList,
 		worksIn: worksIn.map((b) => b.name),
 		form,
@@ -127,11 +132,11 @@ export const actions: Actions = {
 		const orgId = orgIdOf(locals);
 		const form = await superValidate(event.request, zod4(editUserSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		const person = await member(orgId, params.id);
-		if (!person) error(404, 'User not found');
+		if (!person) error(404, m.admin_users_not_found());
 
 		const { name, email, role, branchId, branchIds, status, editPermission, permissionsList } =
 			form.data;
@@ -145,20 +150,16 @@ export const actions: Actions = {
 		};
 
 		const target = await orgRole(orgId, role);
-		if (!target) return refuse('role', 'Choose a role from the list.');
+		if (!target) return refuse('role', m.admin_users_choose_role());
 
 		// The owner role holds everything; only an owner may hand it out or change an owner.
 		if ((target.isOwner || person.isOwner) && !locals.isSuperAdmin) {
-			return refuse('role', 'Only an owner can change an owner, or make someone an owner.', 403);
+			return refuse('role', m.admin_users_only_owner_change_owner(), 403);
 		}
 		// Never leave the business with nobody who can manage it.
 		if (person.isOwner && person.status && (!target.isOwner || !status)) {
 			if ((await activeOwnerCount(orgId, person.id)) === 0) {
-				return refuse(
-					target.isOwner ? 'status' : 'role',
-					'This is the only active owner. Make someone else an owner first.',
-					409
-				);
+				return refuse(target.isOwner ? 'status' : 'role', m.admin_users_only_active_owner(), 409);
 			}
 		}
 
@@ -167,19 +168,19 @@ export const actions: Actions = {
 				.select({ id: branch.id })
 				.from(branch)
 				.where(and(eq(branch.id, branchId), eq(branch.orgId, orgId)));
-			if (!b) return refuse('branchId', 'Choose a branch from the list.');
+			if (!b) return refuse('branchId', m.admin_users_choose_branch());
 		}
 
 		if (editPermission) {
 			if (!permissionsList.length)
-				return refuse('permissionsList._errors', 'Select at least one permission.');
+				return refuse('permissionsList._errors', m.admin_users_select_permission());
 			const refused = await ungrantable(locals, permissionsList);
 			if (refused === null)
-				return refuse('permissionsList._errors', 'Choose permissions from the list.');
+				return refuse('permissionsList._errors', m.admin_users_choose_permissions());
 			if (refused.length) {
 				return refuse(
 					'permissionsList._errors',
-					`You cannot grant permissions you do not hold: ${refused.join(', ')}`,
+					m.admin_users_cannot_grant({ names: refused.join(', ') }),
 					403
 				);
 			}
@@ -210,24 +211,24 @@ export const actions: Actions = {
 				if (person.id !== locals.user?.id) await revokeSessions(tx, person.id);
 				return true;
 			});
-			if (!branchesOk) return refuse('branchIds._errors', 'Choose branches from the list.');
+			if (!branchesOk) return refuse('branchIds._errors', m.admin_users_choose_branches());
 		} catch (err) {
 			if (err instanceof TransactionRollbackError) {
-				return refuse('branchIds._errors', 'Choose branches from the list.');
+				return refuse('branchIds._errors', m.admin_users_choose_branches());
 			}
 			if (isDuplicateKey(err)) {
-				setError(form, 'email', 'Another account already uses this email.');
+				setError(form, 'email', m.admin_users_email_taken_other());
 				return message(
 					form,
-					{ type: 'error', text: 'That email is already in use.' },
+					{ type: 'error', text: m.admin_users_email_in_use() },
 					{ status: 409 }
 				);
 			}
 			console.error('user update failed', err);
-			return message(form, { type: 'error', text: 'Could not save the user.' }, { status: 500 });
+			return message(form, { type: 'error', text: m.admin_users_save_failed() }, { status: 500 });
 		}
 
-		return message(form, { type: 'success', text: 'User saved' });
+		return message(form, { type: 'success', text: m.admin_users_saved() });
 	},
 
 	/** Sets a new password and signs the user out everywhere. */
@@ -236,15 +237,19 @@ export const actions: Actions = {
 		const orgId = orgIdOf(locals);
 		const form = await superValidate(event.request, zod4(resetPasswordSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the password' }, { status: 400 });
+			return message(
+				form,
+				{ type: 'error', text: m.admin_users_check_password() },
+				{ status: 400 }
+			);
 		}
 
 		const person = await member(orgId, params.id);
-		if (!person) error(404, 'User not found');
+		if (!person) error(404, m.admin_users_not_found());
 		if (person.isOwner && !locals.isSuperAdmin) {
 			return message(
 				form,
-				{ type: 'error', text: 'Only an owner can reset an owner’s password.' },
+				{ type: 'error', text: m.admin_users_only_owner_reset_owner() },
 				{ status: 403 }
 			);
 		}
@@ -252,7 +257,7 @@ export const actions: Actions = {
 		await setPassword(person.id, form.data.password);
 		return message(form, {
 			type: 'success',
-			text: `Password changed. Tell ${person.name} the new one; they have been signed out.`
+			text: m.admin_users_password_changed({ name: person.name })
 		});
 	},
 
@@ -262,14 +267,14 @@ export const actions: Actions = {
 		const orgId = orgIdOf(locals);
 
 		if (params.id === locals.user?.id) {
-			setFlash({ type: 'error', message: 'You cannot delete your own account.' }, cookies);
+			setFlash({ type: 'error', message: m.admin_users_cannot_delete_self() }, cookies);
 			return fail(409);
 		}
 
 		const person = await member(orgId, params.id);
-		if (!person) error(404, 'User not found');
+		if (!person) error(404, m.admin_users_not_found());
 		if (person.isOwner && (await activeOwnerCount(orgId, person.id)) === 0) {
-			setFlash({ type: 'error', message: 'This is the only active owner.' }, cookies);
+			setFlash({ type: 'error', message: m.admin_users_only_active_owner_short() }, cookies);
 			return fail(409);
 		}
 
@@ -283,7 +288,7 @@ export const actions: Actions = {
 
 		redirect(
 			'/dashboard/admin-panel/users',
-			{ type: 'success', message: `${person.name} was removed and signed out everywhere.` },
+			{ type: 'success', message: m.admin_users_removed({ name: person.name }) },
 			cookies
 		);
 	}

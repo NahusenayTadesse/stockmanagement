@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -44,37 +45,46 @@
 	const isSelf = $derived(data.person.id === data.user.id);
 
 	const details = $derived([
-		{ name: 'Name', value: data.person.name },
-		{ name: 'Email', value: data.person.email },
+		{ name: m.common_name(), value: data.person.name },
+		{ name: m.common_email(), value: data.person.email },
 		{
-			name: 'Role',
+			name: m.admin_users_col_role(),
 			value: data.person.role,
 			href: `/dashboard/admin-panel/roles/${data.person.roleId}`
 		},
-		{ name: 'Home branch', value: data.person.branch ?? 'Any branch' },
-		{ name: 'Works in', value: data.worksIn.length ? data.worksIn.join(', ') : 'All branches' },
-		{ name: 'Status', value: data.person.status ? 'Active' : 'Inactive' },
 		{
-			name: 'Permissions',
-			value: data.custom ? 'Their own (replacing the role’s)' : 'From their role'
+			name: m.admin_users_col_home_branch(),
+			value: data.person.branch ?? m.admin_users_any_branch()
 		},
-		{ name: 'Added', value: formatEthiopianDate(new Date(data.person.createdAt)) }
+		{
+			name: m.admin_users_col_works_in(),
+			value: data.worksIn.length ? data.worksIn.join(', ') : m.admin_users_all_branches()
+		},
+		{
+			name: m.common_status(),
+			value: data.person.status ? m.common_active() : m.common_inactive()
+		},
+		{
+			name: m.admin_users_permissions(),
+			value: data.custom ? m.admin_users_perms_own() : m.admin_users_perms_role()
+		},
+		{ name: m.admin_users_col_added(), value: formatEthiopianDate(new Date(data.person.createdAt)) }
 	]);
 </script>
 
 <svelte:head>
-	<title>{data.person.name} · User</title>
+	<title>{m.admin_users_title_one({ name: data.person.name })}</title>
 </svelte:head>
 
 <SingleView title={data.person.name}>
 	<div class="flex w-full flex-wrap gap-2 p-4">
 		<Button onclick={() => (editing = !editing)}>
-			{#if editing}<ArrowLeft /> Back{:else}<Pencil /> Edit{/if}
+			{#if editing}<ArrowLeft /> {m.common_back()}{:else}<Pencil /> {m.common_edit()}{/if}
 		</Button>
 
 		<DialogComp
 			bind:open={resetOpen}
-			title="Set a new password"
+			title={m.admin_users_set_password()}
 			variant="outline"
 			IconComp={KeyRound}
 		>
@@ -86,27 +96,29 @@
 				class="flex flex-col gap-4"
 			>
 				<p class="text-sm text-muted-foreground">
-					{data.person.name} is signed out everywhere and signs in again with this password.
+					{m.admin_users_reset_desc({ name: data.person.name })}
 				</p>
 				<InputComp
 					form={resetData}
 					errors={resetErrors}
 					name="password"
 					type="password"
-					label="New password"
+					label={m.admin_reset_new_password()}
 					required
 				/>
 				<PasswordGenerator bind:password={$resetData.password} />
 				<Button type="submit" form="reset">
-					{#if $resetDelayed}<LoadingBtn name="Saving" />{:else}Set password{/if}
+					{#if $resetDelayed}<LoadingBtn
+							name={m.common_saving()}
+						/>{:else}{m.admin_users_set_password_btn()}{/if}
 				</Button>
 			</form>
 		</DialogComp>
 
 		<DeleteEntity
-			entity="User"
+			entity={m.admin_users_entity()}
 			name={data.person.name}
-			consequence="They are signed out everywhere and can no longer sign in. What they recorded stays, under their name."
+			consequence={m.admin_users_delete_consequence()}
 			canDelete={data.isSuperAdmin && !isSelf}
 		/>
 	</div>
@@ -120,21 +132,29 @@
 			method="POST"
 		>
 			<p class="text-sm text-muted-foreground">
-				Saving signs {isSelf ? 'nobody' : data.person.name} out of every device, so the change applies
-				straight away.
+				{m.admin_users_saving_signs_out({
+					name: isSelf ? m.admin_users_nobody() : data.person.name
+				})}
 			</p>
 			<Errors allErrors={$allErrors} />
-			<InputComp {form} {errors} name="name" label="Name" required />
-			<InputComp {form} {errors} name="email" type="email" label="Email" required />
-			<InputComp {form} {errors} name="role" type="select" label="Role" items={data.roleList} />
+			<InputComp {form} {errors} name="name" label={m.common_name()} required />
+			<InputComp {form} {errors} name="email" type="email" label={m.common_email()} required />
+			<InputComp
+				{form}
+				{errors}
+				name="role"
+				type="select"
+				label={m.admin_users_col_role()}
+				items={data.roleList}
+			/>
 			<InputComp
 				{form}
 				{errors}
 				name="branchId"
 				type="select"
-				label="Home branch"
+				label={m.admin_users_col_home_branch()}
 				items={data.branchList}
-				description="Where they usually work: the default on their forms."
+				description={m.admin_users_home_branch_desc()}
 			/>
 			{#if data.branchChoices.length > 1}
 				<InputComp
@@ -142,9 +162,9 @@
 					{errors}
 					name="branchIds"
 					type="checkbox"
-					label="Works in"
+					label={m.admin_users_col_works_in()}
 					items={data.branchChoices}
-					description="Tick the branches whose stock they may see and move. None ticked: every branch. Owners and managers (who may work in every branch) see everything anyway."
+					description={m.admin_users_works_in_desc()}
 				/>
 			{/if}
 			<InputComp
@@ -152,10 +172,10 @@
 				{errors}
 				name="status"
 				type="select"
-				label="Status"
+				label={m.common_status()}
 				items={[
-					{ value: true, name: 'Active' },
-					{ value: false, name: 'Inactive — cannot sign in' }
+					{ value: true, name: m.common_active() },
+					{ value: false, name: m.admin_users_inactive_no_signin() }
 				]}
 			/>
 			<InputComp
@@ -163,8 +183,8 @@
 				{errors}
 				name="editPermission"
 				type="checkboxSingle"
-				label="Own permissions"
-				placeholder="Give this user their own permissions instead of the role’s"
+				label={m.admin_users_own_perms()}
+				placeholder={m.admin_users_own_perms_placeholder()}
 			/>
 			{#if $form.editPermission}
 				<InputComp
@@ -172,12 +192,13 @@
 					{errors}
 					name="permissionsList"
 					type="checkbox"
-					label="Permissions"
+					label={m.admin_users_permissions()}
 					items={data.allPerms}
 				/>
 			{/if}
 			<Button type="submit" form="edit">
-				{#if $delayed}<LoadingBtn name="Saving" />{:else}<Save /> Save changes{/if}
+				{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}<Save />
+					{m.admin_save_changes()}{/if}
 			</Button>
 		</form>
 	{:else}
@@ -186,7 +207,7 @@
 </SingleView>
 
 <section class="mt-8">
-	<h2 class="mb-2 text-lg font-semibold">What {data.person.name} may do</h2>
+	<h2 class="mb-2 text-lg font-semibold">{m.admin_users_may_do({ name: data.person.name })}</h2>
 	<ul class="divide-y rounded-md border">
 		{#each data.permissionList as permission (permission.value)}
 			<li class="px-4 py-2">
@@ -194,7 +215,7 @@
 				<p class="font-mono text-xs text-muted-foreground">{permission.description}</p>
 			</li>
 		{:else}
-			<li class="px-4 py-2 text-muted-foreground">Nothing</li>
+			<li class="px-4 py-2 text-muted-foreground">{m.admin_nothing()}</li>
 		{/each}
 	</ul>
 </section>

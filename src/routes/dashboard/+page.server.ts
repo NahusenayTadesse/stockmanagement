@@ -15,6 +15,7 @@ import { location, stockDocument } from '$lib/server/db/schema';
 import { pendingApprovals } from '$lib/server/approvals';
 import { branchScope, scopeWhere } from '$lib/server/scope';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 const toLoc = alias(location, 'to_loc');
 
@@ -84,6 +85,6 @@ export const actions: Actions = {
 	logout: async (event) => {
 		if (!event.locals.session) return fail(401);
 		await auth.api.signOut({ headers: event.request.headers });
-		redirect('/login', { type: 'success', message: 'Signed out' }, event.cookies);
+		redirect('/login', { type: 'success', message: m.admin_signed_out() }, event.cookies);
 	}
 };

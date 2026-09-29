@@ -11,6 +11,7 @@
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { PURPOSE_CHOICES } from '$lib/schemas/transactions';
+	import { m } from '$lib/paraglide/messages.js';
 	import {
 		customerColumns,
 		registerColumns,
@@ -26,18 +27,18 @@
 	let { data } = $props();
 
 	const ANALYSIS = [
-		{ href: '/dashboard/reports/slow-moving', label: 'Slow & dead stock' },
-		{ href: '/dashboard/reports/abc', label: 'ABC analysis' },
-		{ href: '/dashboard/reports/stock-outs', label: 'Stock-outs' },
-		{ href: '/dashboard/reports/trend', label: 'Stock trend' },
-		{ href: '/dashboard/reports/serials', label: 'Serial lookup' }
+		{ href: '/dashboard/reports/slow-moving', label: m.nav_slow_moving },
+		{ href: '/dashboard/reports/abc', label: m.nav_abc },
+		{ href: '/dashboard/reports/stock-outs', label: m.nav_stock_outs },
+		{ href: '/dashboard/reports/trend', label: m.nav_trend },
+		{ href: '/dashboard/reports/serials', label: m.nav_serials }
 	] as const;
 
 	const f = $derived(data.filters);
 	// svelte-ignore state_referenced_locally
 	let tab = $state(data.tab);
 	const ethiopian = (day: string) => formatEthiopianDate(new Date(`${day}T12:00:00+03:00`));
-	const period = $derived(`${f.from} to ${f.to}`);
+	const period = $derived(m.reports_period({ from: f.from, to: f.to }));
 	const select = 'h-9 rounded-md border bg-background px-2 text-sm';
 
 	function href(from: string, to: string) {
@@ -57,7 +58,7 @@
 	function topSeven(list: { label: string; value: number }[]) {
 		if (list.length <= 8) return list;
 		const rest = list.slice(7).reduce((s, x) => s + x.value, 0);
-		return [...list.slice(0, 7), { label: 'Other', value: Math.round(rest * 100) / 100 }];
+		return [...list.slice(0, 7), { label: m.reports_other(), value: Math.round(rest * 100) / 100 }];
 	}
 	const slices = (
 		key: string,
@@ -74,7 +75,7 @@
 			kind: 'doughnut',
 			money: true,
 			labels: top.map((x) => x.label),
-			series: [{ label: 'Value', data: top.map((x) => x.value) }]
+			series: [{ label: m.reports_value(), data: top.map((x) => x.value) }]
 		};
 	};
 
@@ -88,31 +89,31 @@
 	const stockTiles = $derived<Stat[]>([
 		{
 			key: 'value',
-			label: 'Stock value now',
+			label: m.reports_stock_value_now(),
 			value: data.stock.total,
 			format: 'money',
 			group: 'stock',
-			hint: 'On hand at average cost'
+			hint: m.reports_stock_value_now_hint()
 		},
 		{
 			key: 'items',
-			label: 'Items in stock',
+			label: m.reports_items_in_stock(),
 			value: data.stock.items.length,
 			format: 'count',
 			group: 'stock'
 		},
 		{
 			key: 'expired',
-			label: 'Expired, still held',
+			label: m.reports_expired_held(),
 			value: data.stock.expiredValue,
 			format: 'money',
 			group: 'stock',
 			tone: data.stock.expiredValue > 0 ? 'negative' : 'neutral',
-			hint: 'Quarantine or write it off'
+			hint: m.reports_expired_held_hint()
 		},
 		{
 			key: 'waste',
-			label: 'Written off in period',
+			label: m.reports_written_off(),
 			value: wasteTotal,
 			format: 'money',
 			group: 'stock',
@@ -123,111 +124,110 @@
 	const flowTiles = $derived<Stat[]>([
 		{
 			key: 'in',
-			label: 'Received',
+			label: m.common_move_receipt(),
 			value: received,
 			format: 'money',
 			group: 'flow',
 			tone: 'positive',
-			hint: 'Posted receipts, at cost'
+			hint: m.reports_received_hint()
 		},
 		{
 			key: 'out',
-			label: 'Issued',
+			label: m.common_move_issue(),
 			value: issued,
 			format: 'money',
 			group: 'flow',
-			hint: 'Issues, at cost'
+			hint: m.reports_issued_hint()
 		},
 		{
 			key: 'adj',
-			label: 'Adjusted out',
+			label: m.common_move_adjustment_out(),
 			value: data.movements.adjustedOut.reduce((s, v) => s + v, 0),
 			format: 'money',
 			group: 'flow',
 			tone: 'warning',
-			hint: 'Write-offs and count shortages'
+			hint: m.reports_adjusted_hint()
 		}
 	]);
 
 	const flowChart = $derived<ReportChartData>({
 		key: 'flow',
-		title: 'Stock in and out',
-		description: `Value at cost, by ${data.movements.byDay ? 'day' : 'Ethiopian month'}`,
+		title: m.reports_flow_title(),
+		description: data.movements.byDay ? m.reports_flow_desc_day() : m.reports_flow_desc_month(),
 		group: 'flow',
 		kind: 'bar',
 		money: true,
 		wide: true,
 		labels: data.movements.labels,
 		series: [
-			{ label: 'Received', data: data.movements.received },
-			{ label: 'Issued', data: data.movements.issued },
-			{ label: 'Adjusted out', data: data.movements.adjustedOut }
+			{ label: m.common_move_receipt(), data: data.movements.received },
+			{ label: m.common_move_issue(), data: data.movements.issued },
+			{ label: m.common_move_adjustment_out(), data: data.movements.adjustedOut }
 		]
 	});
 
 	const topChart = $derived<ReportChartData>({
 		key: 'top',
-		title: 'Most issued items',
-		description: 'Value at cost over the period',
+		title: m.reports_top_issued(),
+		description: m.reports_top_issued_desc(),
 		group: 'flow',
 		kind: 'bar',
 		money: true,
 		wide: true,
 		labels: data.issued.slice(0, 10).map((i) => i.item),
-		series: [{ label: 'Issued', data: data.issued.slice(0, 10).map((i) => i.value) }]
+		series: [{ label: m.common_move_issue(), data: data.issued.slice(0, 10).map((i) => i.value) }]
 	});
 
 	const supplierChart = $derived<ReportChartData>({
 		key: 'suppliers',
-		title: 'Delivered by supplier',
-		description: 'Posted receipts over the period, at cost',
+		title: m.reports_by_supplier(),
+		description: m.reports_by_supplier_desc(),
 		group: 'purchasing',
 		kind: 'bar',
 		money: true,
 		wide: true,
 		labels: data.suppliers.slice(0, 12).map((s) => s.supplier),
 		series: [
-			{ label: 'Delivered', data: data.suppliers.slice(0, 12).map((s) => s.delivered) },
-			{ label: 'Ordered', data: data.suppliers.slice(0, 12).map((s) => s.orderedValue) }
+			{ label: m.reports_delivered(), data: data.suppliers.slice(0, 12).map((s) => s.delivered) },
+			{ label: m.reports_ordered(), data: data.suppliers.slice(0, 12).map((s) => s.orderedValue) }
 		]
 	});
 
 	const moneyChart = $derived<ReportChartData | null>(
 		data.money && {
 			key: 'money',
-			title: 'Money in and out',
-			description: `Voided transactions left out · by ${data.movements.byDay ? 'day' : 'Ethiopian month'}`,
+			title: m.reports_money_title(),
+			description: data.movements.byDay ? m.reports_money_desc_day() : m.reports_money_desc_month(),
 			group: 'money',
 			kind: 'bar',
 			money: true,
 			wide: true,
 			labels: data.money.labels,
 			series: [
-				{ label: 'In', data: data.money.moneyIn },
-				{ label: 'Out', data: data.money.moneyOut }
+				{ label: m.reports_in(), data: data.money.moneyIn },
+				{ label: m.reports_out(), data: data.money.moneyOut }
 			]
 		}
 	);
 </script>
 
 <svelte:head>
-	<title>Reports</title>
+	<title>{m.nav_reports()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div>
-		<h1 class="text-2xl font-semibold">Reports</h1>
+		<h1 class="text-2xl font-semibold">{m.nav_reports()}</h1>
 		<p class="text-muted-foreground">
-			Stock value as it stands now; everything else for {ethiopian(f.from)} – {ethiopian(f.to)}.
-			Every table exports to CSV or PDF, and every chart shows its numbers as a table.
+			{m.reports_intro({ from: ethiopian(f.from), to: ethiopian(f.to) })}
 		</p>
 	</div>
 
 	<Card.Root>
 		<Card.Content class="flex flex-wrap items-center gap-2 pt-6">
-			<span class="mr-2 text-sm text-muted-foreground">Stock analysis:</span>
+			<span class="mr-2 text-sm text-muted-foreground">{m.reports_analysis()}</span>
 			{#each ANALYSIS as a (a.href)}
-				<Button href={resolve(a.href)} size="sm" variant="outline">{a.label}</Button>
+				<Button href={resolve(a.href)} size="sm" variant="outline">{a.label()}</Button>
 			{/each}
 		</Card.Content>
 	</Card.Root>
@@ -246,37 +246,37 @@
 			<form method="GET" class="flex flex-wrap items-end gap-3">
 				<input type="hidden" name="tab" value={tab} />
 				<div class="flex flex-col gap-1">
-					<Label for="from">From</Label>
+					<Label for="from">{m.reports_from()}</Label>
 					<Input id="from" name="from" type="date" value={f.from} />
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="to">To</Label>
+					<Label for="to">{m.reports_to()}</Label>
 					<Input id="to" name="to" type="date" value={f.to} />
 				</div>
 				{#if data.branches.length > 1}
 					<div class="flex flex-col gap-1">
-						<Label for="branch">Branch</Label>
+						<Label for="branch">{m.common_branch()}</Label>
 						<select id="branch" name="branch" class={select} value={f.branchId}>
-							<option value={0}>All branches</option>
+							<option value={0}>{m.reports_all_branches()}</option>
 							{#each data.branches as b (b.value)}
 								<option value={b.value}>{b.name}</option>
 							{/each}
 						</select>
 					</div>
 				{/if}
-				<Button type="submit">Show</Button>
+				<Button type="submit">{m.reports_show()}</Button>
 			</form>
 		</Card.Content>
 	</Card.Root>
 
 	<Tabs.Root bind:value={tab}>
 		<Tabs.List class="flex h-auto flex-wrap">
-			<Tabs.Trigger value="stock">Stock value</Tabs.Trigger>
-			<Tabs.Trigger value="flow">Movements</Tabs.Trigger>
-			<Tabs.Trigger value="purchasing">Purchasing</Tabs.Trigger>
-			<Tabs.Trigger value="waste">Wastage</Tabs.Trigger>
-			{#if data.money}<Tabs.Trigger value="money">Money</Tabs.Trigger>{/if}
-			{#if data.vat}<Tabs.Trigger value="tax">VAT & withholding</Tabs.Trigger>{/if}
+			<Tabs.Trigger value="stock">{m.reports_tab_stock()}</Tabs.Trigger>
+			<Tabs.Trigger value="flow">{m.reports_tab_flow()}</Tabs.Trigger>
+			<Tabs.Trigger value="purchasing">{m.nav_purchasing()}</Tabs.Trigger>
+			<Tabs.Trigger value="waste">{m.reports_tab_waste()}</Tabs.Trigger>
+			{#if data.money}<Tabs.Trigger value="money">{m.reports_tab_money()}</Tabs.Trigger>{/if}
+			{#if data.vat}<Tabs.Trigger value="tax">{m.reports_tab_tax()}</Tabs.Trigger>{/if}
 		</Tabs.List>
 
 		<Tabs.Content value="stock" class="flex flex-col gap-4 pt-2">
@@ -287,24 +287,24 @@
 				<ReportChart
 					chart={slices(
 						'category',
-						'Stock value by category',
+						m.reports_by_category_title(),
 						data.stock.byCategory,
-						'At average cost'
+						m.reports_at_average_cost()
 					)}
 				/>
 				<ReportChart
 					chart={slices(
 						'location',
-						'Stock value by location',
+						m.reports_by_location_title(),
 						data.stock.byLocation,
-						'At average cost'
+						m.reports_at_average_cost()
 					)}
 				/>
 			</div>
 			<DataTable
 				data={data.stock.items}
 				columns={valuationColumns}
-				fileName="Stock valuation {f.to}"
+				fileName={m.reports_file_valuation({ date: f.to })}
 				facetKeys={['category']}
 			/>
 		</Tabs.Content>
@@ -317,35 +317,35 @@
 				<ReportChart chart={flowChart} />
 				<ReportChart chart={topChart} />
 			</div>
-			<h2 class="text-lg font-semibold">Most issued items</h2>
+			<h2 class="text-lg font-semibold">{m.reports_top_issued()}</h2>
 			<DataTable
 				data={data.issued}
 				columns={issuedColumns}
-				fileName="Most issued {period}"
+				fileName={m.reports_file_most_issued({ period })}
 				height="auto"
 			/>
-			<h2 class="text-lg font-semibold">By kind of movement</h2>
+			<h2 class="text-lg font-semibold">{m.reports_by_kind()}</h2>
 			<DataTable
 				data={data.movements.byKind}
 				columns={kindColumns}
-				fileName="Movements {period}"
+				fileName={m.reports_file_movements({ period })}
 				height="auto"
 			/>
 			{#if data.byCustomer}
-				<h2 class="text-lg font-semibold">Issued by customer</h2>
+				<h2 class="text-lg font-semibold">{m.reports_by_customer()}</h2>
 				<div class="grid gap-4 lg:grid-cols-2">
 					<ReportChart
 						chart={slices(
 							'customers',
-							'Issued by customer',
+							m.reports_by_customer(),
 							data.byCustomer.map((c) => ({ label: c.customer, value: c.value })),
-							'At cost. Walk-in sales and internal issues have no customer named.'
+							m.reports_by_customer_desc()
 						)}
 					/>
 					<DataTable
 						data={data.byCustomer}
 						columns={customerColumns}
-						fileName="Issued by customer {period}"
+						fileName={m.reports_file_by_customer({ period })}
 						height="auto"
 					/>
 				</div>
@@ -356,14 +356,11 @@
 			<div class="grid gap-4 lg:grid-cols-2">
 				<ReportChart chart={supplierChart} />
 			</div>
-			<p class="text-sm text-muted-foreground">
-				"Arrived so far" is the share of the quantity ordered, on orders placed in the period, that
-				has been received.
-			</p>
+			<p class="text-sm text-muted-foreground">{m.reports_fill_rate_note()}</p>
 			<DataTable
 				data={data.suppliers}
 				columns={supplierColumns}
-				fileName="Purchases by supplier {period}"
+				fileName={m.reports_file_suppliers({ period })}
 				height="auto"
 			/>
 		</Tabs.Content>
@@ -373,27 +370,29 @@
 				<ReportChart
 					chart={slices(
 						'reason',
-						'Written off by reason',
+						m.reports_by_reason(),
 						data.waste.byReason,
-						'Adjustments out, at cost'
+						m.reports_by_reason_desc()
 					)}
 				/>
 				<StatCard
 					stat={{
 						key: 'waste-total',
-						label: 'Written off in period',
+						label: m.reports_written_off(),
 						value: wasteTotal,
 						format: 'money',
 						group: 'waste',
 						tone: wasteTotal > 0 ? 'warning' : 'neutral',
-						hint: `${data.waste.rows.length} line${data.waste.rows.length === 1 ? '' : 's'}`
+						hint: (data.waste.rows.length === 1 ? m.reports_line_one : m.reports_line_many)({
+							count: data.waste.rows.length
+						})
 					}}
 				/>
 			</div>
 			<DataTable
 				data={data.waste.rows}
 				columns={wasteColumns}
-				fileName="Wastage {period}"
+				fileName={m.reports_file_wastage({ period })}
 				facetKeys={['reasonName', 'location']}
 			/>
 		</Tabs.Content>
@@ -404,7 +403,7 @@
 					<StatCard
 						stat={{
 							key: 'in',
-							label: 'Money in',
+							label: m.reports_money_in(),
 							value: data.money.totalIn,
 							format: 'money',
 							group: 'money',
@@ -414,7 +413,7 @@
 					<StatCard
 						stat={{
 							key: 'out',
-							label: 'Money out',
+							label: m.reports_money_out(),
 							value: data.money.totalOut,
 							format: 'money',
 							group: 'money',
@@ -424,7 +423,7 @@
 					<StatCard
 						stat={{
 							key: 'net',
-							label: 'Net',
+							label: m.reports_net(),
 							value: data.money.totalIn - data.money.totalOut,
 							format: 'money',
 							group: 'money'
@@ -436,7 +435,7 @@
 					<ReportChart
 						chart={slices(
 							'purpose',
-							'Money out by purpose',
+							m.reports_out_by_purpose(),
 							data.money.byPurpose
 								.filter((p) => p.out > 0)
 								.map((p) => ({ label: purposeName(p.label), value: p.out }))
@@ -445,32 +444,33 @@
 					<ReportChart
 						chart={slices(
 							'method',
-							'Money in by method',
+							m.reports_in_by_method(),
 							data.money.byMethod
 								.filter((m) => m.in > 0)
 								.map((m) => ({ label: m.label, value: m.in }))
 						)}
 					/>
 				</div>
-				<h2 class="text-lg font-semibold">By purpose</h2>
+				<h2 class="text-lg font-semibold">{m.reports_by_purpose()}</h2>
 				<DataTable
 					data={data.money.byPurpose.map((p) => ({ ...p, label: purposeName(p.label) }))}
-					columns={splitColumns('Purpose')}
-					fileName="Money by purpose {period}"
+					columns={splitColumns(m.reports_col_purpose())}
+					fileName={m.reports_file_money_purpose({ period })}
 					height="auto"
 				/>
-				<h2 class="text-lg font-semibold">By method</h2>
+				<h2 class="text-lg font-semibold">{m.reports_by_method()}</h2>
 				<DataTable
 					data={data.money.byMethod}
-					columns={splitColumns('Method')}
-					fileName="Money by method {period}"
+					columns={splitColumns(m.reports_col_method())}
+					fileName={m.reports_file_money_method({ period })}
 					height="auto"
 				/>
 				<p class="text-sm text-muted-foreground">
-					Every transaction behind these numbers is on the <a
-						class="underline underline-offset-4"
-						href={resolve('/dashboard/transactions')}>Transactions</a
-					> page.
+					{m.reports_money_note_before()}
+					<a class="underline underline-offset-4" href={resolve('/dashboard/transactions')}
+						>{m.nav_transactions()}</a
+					>
+					{m.reports_money_note_after()}
 				</p>
 			</Tabs.Content>
 		{/if}
@@ -478,40 +478,37 @@
 			{@const v = data.vat.totals}
 			{@const w = data.withholding.totals}
 			<Tabs.Content value="tax" class="flex flex-col gap-4 pt-2">
-				<p class="text-sm text-muted-foreground">
-					From posted documents dated in the period. Returns reduce the register they correct. Check
-					the figures against your invoices before filing.
-				</p>
+				<p class="text-sm text-muted-foreground">{m.reports_tax_note()}</p>
 				<div class="grid gap-4 sm:grid-cols-3">
 					<StatCard
 						stat={{
 							key: 'out',
-							label: 'Output VAT (on sales)',
+							label: m.reports_output_vat(),
 							value: v.outputVat,
 							format: 'money',
 							group: 'tax',
-							hint: `On ${formatETB(v.salesNet)} of sales before VAT`
+							hint: m.reports_output_vat_hint({ amount: formatETB(v.salesNet) })
 						}}
 					/>
 					<StatCard
 						stat={{
 							key: 'in',
-							label: 'Input VAT (on purchases)',
+							label: m.reports_input_vat(),
 							value: v.inputVat,
 							format: 'money',
 							group: 'tax',
-							hint: `On ${formatETB(v.purchasesNet)} of deliveries before VAT`
+							hint: m.reports_input_vat_hint({ amount: formatETB(v.purchasesNet) })
 						}}
 					/>
 					<StatCard
 						stat={{
 							key: 'payable',
-							label: v.payable >= 0 ? 'VAT payable' : 'VAT to carry forward',
+							label: v.payable >= 0 ? m.reports_vat_payable() : m.reports_vat_carry(),
 							value: Math.abs(v.payable),
 							format: 'money',
 							group: 'tax',
 							tone: v.payable > 0 ? 'negative' : 'positive',
-							hint: 'Output less input VAT'
+							hint: m.reports_vat_payable_hint()
 						}}
 					/>
 				</div>
@@ -519,27 +516,27 @@
 					<StatCard
 						stat={{
 							key: 'tot',
-							label: 'Turnover tax (TOT) on sales',
+							label: m.reports_tot(),
 							value: v.tot,
 							format: 'money',
 							group: 'tax',
 							tone: 'negative',
-							hint: 'Payable instead of VAT by a business that is not VAT-registered'
+							hint: m.reports_tot_hint()
 						}}
 					/>
 				{/if}
-				<h2 class="text-lg font-semibold">Sales register</h2>
+				<h2 class="text-lg font-semibold">{m.reports_sales_register()}</h2>
 				<DataTable
 					data={data.vat.sales}
 					columns={registerColumns}
-					fileName="VAT sales register {period}"
+					fileName={m.reports_file_vat_sales({ period })}
 					height="auto"
 				/>
-				<h2 class="text-lg font-semibold">Purchase register</h2>
+				<h2 class="text-lg font-semibold">{m.reports_purchase_register()}</h2>
 				<DataTable
 					data={data.vat.purchases}
 					columns={registerColumns}
-					fileName="VAT purchase register {period}"
+					fileName={m.reports_file_vat_purchases({ period })}
 					height="auto"
 				/>
 
@@ -547,29 +544,29 @@
 					<StatCard
 						stat={{
 							key: 'byUs',
-							label: 'Withheld by you',
+							label: m.reports_withheld_by_you(),
 							value: w.byUs,
 							format: 'money',
 							group: 'tax',
 							tone: w.byUs ? 'warning' : 'neutral',
-							hint: 'Kept back from suppliers: pay it to the tax office'
+							hint: m.reports_withheld_by_you_hint()
 						}}
 					/>
 					<StatCard
 						stat={{
 							key: 'fromUs',
-							label: 'Withheld from you',
+							label: m.reports_withheld_from_you(),
 							value: w.fromUs,
 							format: 'money',
 							group: 'tax',
 							tone: 'positive',
-							hint: 'Kept back by customers: a credit against your tax'
+							hint: m.reports_withheld_from_you_hint()
 						}}
 					/>
 					<StatCard
 						stat={{
 							key: 'missing',
-							label: 'Missing withholding receipts',
+							label: m.reports_missing_receipts(),
 							value: w.missingReceipts,
 							format: 'count',
 							group: 'tax',
@@ -577,18 +574,18 @@
 						}}
 					/>
 				</div>
-				<h2 class="text-lg font-semibold">Withheld by you</h2>
+				<h2 class="text-lg font-semibold">{m.reports_withheld_by_you()}</h2>
 				<DataTable
 					data={data.withholding.byUs}
 					columns={withholdingColumns}
-					fileName="Withholding by us {period}"
+					fileName={m.reports_file_wh_by_us({ period })}
 					height="auto"
 				/>
-				<h2 class="text-lg font-semibold">Withheld from you</h2>
+				<h2 class="text-lg font-semibold">{m.reports_withheld_from_you()}</h2>
 				<DataTable
 					data={data.withholding.fromUs}
 					columns={withholdingColumns}
-					fileName="Withholding from us {period}"
+					fileName={m.reports_file_wh_from_us({ period })}
 					height="auto"
 				/>
 			</Tabs.Content>

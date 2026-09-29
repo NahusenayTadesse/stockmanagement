@@ -8,6 +8,7 @@ import { customerList, customerValues, duplicateCustomer } from '$lib/server/cus
 import { creditSummary } from '$lib/server/credit';
 import { priceListOptions } from '$lib/server/options';
 import { customerSchema } from '$lib/schemas/customers';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -45,15 +46,13 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(customerSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		const values = customerValues(form.data);
 		const dup = await duplicateCustomer(orgId, values.name, values.phone);
 		if (dup) {
-			const text = values.phone
-				? 'A customer with this name and phone is already on the list.'
-				: 'A customer with this name and no phone is already on the list. Add a phone to tell them apart.';
+			const text = values.phone ? m.sales_dup_name_phone() : m.sales_dup_name_no_phone();
 			setError(form, values.phone ? 'phone' : 'name', text);
 			return message(form, { type: 'error', text }, { status: 409 });
 		}
@@ -62,7 +61,7 @@ export const actions: Actions = {
 			.insert(customer)
 			.values({ ...values, orgId, createdBy: event.locals.user?.id })
 			.$returningId();
-		form.message = { type: 'success', text: `${values.name} added` };
+		form.message = { type: 'success', text: m.sales_customer_added({ name: values.name }) };
 		return {
 			form,
 			customer: {

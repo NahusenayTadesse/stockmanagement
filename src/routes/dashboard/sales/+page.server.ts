@@ -7,6 +7,7 @@ import { orgIdOf } from '$lib/server/tenant';
 import { branchScope, scopeWhere } from '$lib/server/scope';
 import { datePresets } from '$lib/server/transactions';
 import { lineNetSql, lineTotSql, lineVatSql } from '$lib/server/tax';
+import { m } from '$lib/paraglide/messages.js';
 import type { PageServerLoad } from './$types';
 
 const isDay = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -50,9 +51,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			number: stockDocument.number,
 			status: stockDocument.status,
 			docDate: stockDocument.docDate,
-			buyer: sql<string>`COALESCE(${customer.name}, ${stockDocument.party}, 'Walk-in')`,
+			buyer: sql<string>`COALESCE(${customer.name}, ${stockDocument.party}, ${m.sales_pos_walk_in()})`,
 			customerId: stockDocument.customerId,
-			channel: sql<string>`CASE WHEN ${stockDocument.shiftId} IS NOT NULL THEN 'Till' WHEN ${stockDocument.quoteId} IS NOT NULL THEN 'Proforma' ELSE 'Office' END`,
+			shiftId: stockDocument.shiftId,
+			quoteId: stockDocument.quoteId,
 			total,
 			paid,
 			priced,
@@ -83,7 +85,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			const p = Math.round(Number(r.paid) * 100) / 100;
 			return {
 				...r,
-				kind: r.type === 'sales_return' ? 'Return' : 'Sale',
+				kind: r.type === 'sales_return' ? m.sales_kind_return() : m.sales_kind_sale(),
+				channel: r.shiftId
+					? m.sales_channel_till()
+					: r.quoteId
+						? m.sales_channel_proforma()
+						: m.sales_channel_office(),
 				total: sign * t,
 				paid: sign * p,
 				balance: r.status === 'posted' ? sign * Math.max(0, Math.round((t - p) * 100) / 100) : 0
@@ -98,7 +105,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			sold: posted.reduce((s, r) => s + r.total, 0),
 			collected: posted.reduce((s, r) => s + r.paid, 0),
 			onAccount: posted.reduce((s, r) => s + r.balance, 0),
-			count: posted.filter((r) => r.kind === 'Sale').length
+			count: posted.filter((r) => r.type === 'issue').length
 		}
 	};
 };

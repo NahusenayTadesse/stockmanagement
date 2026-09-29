@@ -1,22 +1,33 @@
 import { z } from 'zod/v4';
+import { m } from '$lib/paraglide/messages.js';
+import { labels } from '$lib/format';
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick a date');
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.purchasing_v_pick_date() });
 
 export const orderHeader = z.object({
-	supplierId: z.coerce.number().int().positive('Choose the supplier, or add a new one'),
-	locationId: z.coerce.number().int().positive('Choose where it should be delivered'),
+	supplierId: z.coerce
+		.number()
+		.int()
+		.positive({ error: () => m.purchasing_v_choose_supplier() }),
+	locationId: z.coerce
+		.number()
+		.int()
+		.positive({ error: () => m.purchasing_v_choose_delivery() }),
 	orderDate: day,
 	expectedDate: z
 		.string()
-		.regex(/^(\d{4}-\d{2}-\d{2})?$/, 'Pick a date')
+		.regex(/^(\d{4}-\d{2}-\d{2})?$/, { error: () => m.purchasing_v_pick_date() })
 		.default(''),
 	reference: z.string().trim().max(80).default(''),
 	note: z.string().trim().max(2000).default('')
 });
 
 export const orderLineAdd = z.object({
-	itemId: z.coerce.number().int().positive('Choose an item'),
-	quantity: z.coerce.number().positive('Enter how many'),
+	itemId: z.coerce
+		.number()
+		.int()
+		.positive({ error: () => m.purchasing_v_choose_item() }),
+	quantity: z.coerce.number().positive({ error: () => m.purchasing_v_enter_quantity() }),
 	/** 0 = the item's base unit. */
 	uomId: z.coerce.number().int().min(0).default(0),
 	unitPrice: z.number().min(0).nullable().default(null),
@@ -24,11 +35,12 @@ export const orderLineAdd = z.object({
 });
 export const orderLineEdit = orderLineAdd.extend({ id: z.coerce.number() });
 
-export const PO_STATUS_LABELS: Record<string, string> = {
-	draft: 'Draft',
-	ordered: 'Ordered',
-	partially_received: 'Partly received',
-	received: 'Received',
-	closed: 'Closed',
-	cancelled: 'Cancelled'
-};
+/** Read in the viewer's language when read (see `labels`). */
+export const PO_STATUS_LABELS: Record<string, string> = labels({
+	draft: m.purchasing_po_status_draft,
+	ordered: m.purchasing_po_status_ordered,
+	partially_received: m.purchasing_po_status_partially_received,
+	received: m.purchasing_po_status_received,
+	closed: m.purchasing_po_status_closed,
+	cancelled: m.purchasing_po_status_cancelled
+});

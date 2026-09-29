@@ -8,6 +8,7 @@ import { orgIdOf } from '$lib/server/tenant';
 import { permissionOptions, ungrantable } from '$lib/server/users';
 import { roleSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async () => ({
 	form: await superValidate(zod4(roleSchema)),
@@ -19,14 +20,14 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(roleSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		const refused = await ungrantable(event.locals, form.data.permissions);
 		if (refused === null || refused.length) {
 			const text = refused
-				? `You cannot grant permissions you do not hold: ${refused.join(', ')}`
-				: 'Choose permissions from the list.';
+				? m.admin_users_cannot_grant({ names: refused.join(', ') })
+				: m.admin_users_choose_permissions();
 			setError(form, 'permissions._errors', text);
 			return message(form, { type: 'error', text }, { status: 403 });
 		}
@@ -49,16 +50,16 @@ export const actions: Actions = {
 			});
 		} catch (err) {
 			if (isDuplicateKey(err)) {
-				setError(form, 'name', 'A role with this name already exists.');
-				return message(form, { type: 'error', text: 'That role already exists.' }, { status: 409 });
+				setError(form, 'name', m.admin_roles_name_exists());
+				return message(form, { type: 'error', text: m.admin_roles_exists() }, { status: 409 });
 			}
 			console.error('role create failed', err);
-			return message(form, { type: 'error', text: 'Could not add the role.' }, { status: 500 });
+			return message(form, { type: 'error', text: m.admin_roles_add_failed() }, { status: 500 });
 		}
 
 		redirect(
 			`/dashboard/admin-panel/roles/${id}`,
-			{ type: 'success', message: 'Role added' },
+			{ type: 'success', message: m.admin_roles_added() },
 			event.cookies
 		);
 	}

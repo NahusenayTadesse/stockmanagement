@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
 	import Printer from '@lucide/svelte/icons/printer';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
@@ -15,24 +16,25 @@
 </script>
 
 <svelte:head>
-	<title>Labels{data.source ? ` · ${data.source}` : ''}</title>
+	<title>{m.stock_labels_word()}{data.source ? ` · ${data.source}` : ''}</title>
 </svelte:head>
 
 <div class="flex flex-wrap items-center gap-3 p-4 print:hidden">
-	<Button onclick={() => window.print()}><Printer class="size-4" /> Print</Button>
+	<Button onclick={() => window.print()}><Printer class="size-4" /> {m.common_print()}</Button>
 	<a
 		class="text-sm text-primary underline-offset-4 hover:underline"
-		href={resolve('/dashboard/items/labels')}>Back to labels</a
+		href={resolve('/dashboard/items/labels')}>{m.stock_back_to_labels()}</a
 	>
 	<span class="text-sm text-muted-foreground">
-		{sheet.length} label(s){data.source ? ` for ${data.source}` : ''} on A4 label sheets. Print at 100%
-		scale, with no margins added by the browser.
-		{#if data.truncated}At most 2,000 labels print at once.{/if}
+		{data.source
+			? m.stock_labels_sheet_hint_for({ count: sheet.length, source: data.source })
+			: m.stock_labels_sheet_hint({ count: sheet.length })}
+		{#if data.truncated}{m.stock_labels_truncated()}{/if}
 	</span>
 </div>
 
 {#if !sheet.length}
-	<p class="p-8 text-center text-muted-foreground">No labels chosen.</p>
+	<p class="p-8 text-center text-muted-foreground">{m.stock_no_labels()}</p>
 {:else}
 	<div class="sheet {data.type}">
 		{#each sheet as l (l.key)}

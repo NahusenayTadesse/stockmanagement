@@ -12,6 +12,7 @@ import { orgRole, setUserBranches } from '$lib/server/users';
 import { addUserSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
 import { and, inArray } from 'drizzle-orm';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
@@ -23,7 +24,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return {
 		form,
 		roleList,
-		branchList: [{ value: 0, name: 'Any branch' }, ...branchList],
+		branchList: [{ value: 0, name: m.admin_users_any_branch() }, ...branchList],
 		branchChoices: branchList
 	};
 };
@@ -38,26 +39,22 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(addUserSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		const { name, email, password, role, branchId, branchIds } = form.data;
 
 		const target = await orgRole(orgId, role);
 		if (!target) {
-			setError(form, 'role', 'Choose a role from the list.');
-			return message(
-				form,
-				{ type: 'error', text: 'Choose a role from the list.' },
-				{ status: 400 }
-			);
+			setError(form, 'role', m.admin_users_choose_role());
+			return message(form, { type: 'error', text: m.admin_users_choose_role() }, { status: 400 });
 		}
 		// Only an owner can make another owner: the owner role holds every permission.
 		if (target.isOwner && !event.locals.isSuperAdmin) {
-			setError(form, 'role', 'Only an owner can add another owner.');
+			setError(form, 'role', m.admin_users_only_owner_add_owner());
 			return message(
 				form,
-				{ type: 'error', text: 'Only an owner can add another owner.' },
+				{ type: 'error', text: m.admin_users_only_owner_add_owner() },
 				{ status: 403 }
 			);
 		}
@@ -67,10 +64,10 @@ export const actions: Actions = {
 				.from(branch)
 				.where(and(eq(branch.id, branchId), eq(branch.orgId, orgId)));
 			if (!b) {
-				setError(form, 'branchId', 'Choose a branch from the list.');
+				setError(form, 'branchId', m.admin_users_choose_branch());
 				return message(
 					form,
-					{ type: 'error', text: 'Choose a branch from the list.' },
+					{ type: 'error', text: m.admin_users_choose_branch() },
 					{ status: 400 }
 				);
 			}
@@ -82,10 +79,10 @@ export const actions: Actions = {
 				.from(branch)
 				.where(and(eq(branch.orgId, orgId), inArray(branch.id, branchIds)));
 			if (mine.length !== new Set(branchIds).size) {
-				setError(form, 'branchIds._errors', 'Choose branches from the list.');
+				setError(form, 'branchIds._errors', m.admin_users_choose_branches());
 				return message(
 					form,
-					{ type: 'error', text: 'Choose branches from the list.' },
+					{ type: 'error', text: m.admin_users_choose_branches() },
 					{ status: 400 }
 				);
 			}
@@ -93,12 +90,8 @@ export const actions: Actions = {
 
 		const [taken] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
 		if (taken) {
-			setError(form, 'email', 'An account with this email already exists.');
-			return message(
-				form,
-				{ type: 'error', text: 'That email is already in use.' },
-				{ status: 409 }
-			);
+			setError(form, 'email', m.admin_register_email_taken());
+			return message(form, { type: 'error', text: m.admin_users_email_in_use() }, { status: 409 });
 		}
 
 		let id: string;
@@ -117,13 +110,13 @@ export const actions: Actions = {
 		} catch (err) {
 			console.error('user create failed', err);
 			const text =
-				err instanceof APIError && err.message ? err.message : 'Could not create the user.';
+				err instanceof APIError && err.message ? err.message : m.admin_users_create_failed();
 			return message(form, { type: 'error', text }, { status: 500 });
 		}
 
 		redirect(
 			`/dashboard/admin-panel/users/${id}`,
-			{ type: 'success', message: `${name} can now sign in` },
+			{ type: 'success', message: m.admin_users_can_sign_in({ name }) },
 			event.cookies
 		);
 	}

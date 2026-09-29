@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import Save from '@lucide/svelte/icons/save';
 	import Send from '@lucide/svelte/icons/send';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
@@ -29,29 +30,29 @@
 	const testDelayed = test.delayed;
 
 	const onOff = [
-		{ value: false, name: 'Off' },
-		{ value: true, name: 'On' }
+		{ value: false, name: m.common_off() },
+		{ value: true, name: m.common_on() }
 	];
 	const signature = $derived(String($form.smsSignature || data.businessName));
 	const monthStats = $derived<Stat[]>([
 		{
 			key: 'sent',
-			label: 'Sent, last 30 days',
+			label: m.admin_sms_stat_sent(),
 			value: data.month.sent,
 			format: 'count',
 			group: 'sms'
 		},
 		{
 			key: 'units',
-			label: 'Message units charged',
+			label: m.admin_sms_stat_units(),
 			value: data.month.units,
 			format: 'count',
 			group: 'sms',
-			hint: 'As GeezSMS reports them'
+			hint: m.admin_sms_stat_units_hint()
 		},
 		{
 			key: 'failed',
-			label: 'Failed, last 30 days',
+			label: m.admin_sms_stat_failed(),
 			value: data.month.failed,
 			format: 'count',
 			group: 'sms',
@@ -60,25 +61,23 @@
 	]);
 </script>
 
-<svelte:head><title>SMS</title></svelte:head>
+<svelte:head><title>{m.admin_sms_title()}</title></svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-col gap-1">
-		<h1 class="text-2xl font-semibold">SMS</h1>
+		<h1 class="text-2xl font-semibold">{m.admin_sms_title()}</h1>
 		<p class="text-muted-foreground">
-			Text messages to customers, suppliers and your own staff, through GeezSMS. Messages start with
-			"{signature}:" and are at most 335 characters.
+			{m.admin_sms_intro({ signature })}
 		</p>
 	</div>
 
 	{#if !data.server.configured}
 		<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-			This server has no SMS account set up (<code>SMS_KEY</code>), so nothing can be sent yet.
+			{m.admin_sms_no_key()}
 		</div>
 	{:else if data.server.dryRun}
 		<div class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-			Test mode: messages are written to the log below but not sent (<code>SMS_DRY_RUN</code> is on for
-			this server).
+			{m.admin_sms_dry_run()}
 		</div>
 	{/if}
 
@@ -91,8 +90,8 @@
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Settings</Card.Title>
-				<Card.Description>Nothing is sent until SMS is on.</Card.Description>
+				<Card.Title>{m.admin_sms_settings()}</Card.Title>
+				<Card.Description>{m.admin_sms_settings_desc()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<form
@@ -108,9 +107,9 @@
 						{errors}
 						name="smsEnabled"
 						type="select"
-						label="SMS"
+						label={m.admin_sms_title()}
 						items={onOff}
-						description="On: the messages below go out, and people with the right to may text customers and suppliers (reminders, proformas, orders)."
+						description={m.admin_sms_enabled_desc()}
 					/>
 					{#if $form.smsEnabled}
 						<InputComp
@@ -118,37 +117,38 @@
 							{errors}
 							name="smsSales"
 							type="select"
-							label="Receipt after a sale"
+							label={m.admin_sms_sales()}
 							items={onOff}
-							description="A named customer with a mobile number gets the receipt number, total, what they paid and what they owe. At the till a receipt can also be texted to any number the customer gives."
+							description={m.admin_sms_sales_desc()}
 						/>
 						<InputComp
 							{form}
 							{errors}
 							name="smsPayments"
 							type="select"
-							label="Payment confirmation"
+							label={m.admin_sms_payments()}
 							items={onOff}
-							description="When money from a customer is recorded: how much, and what they still owe."
+							description={m.admin_sms_payments_desc()}
 						/>
 						<InputComp
 							{form}
 							{errors}
 							name="smsAlertPhones"
-							label="Staff alert numbers (optional)"
+							label={m.admin_sms_alert_phones()}
 							placeholder="0911 234 567, 0922 345 678"
-							description="These numbers hear of approvals waiting, transfers on the way to a branch (the branch's own phone too, if it is a mobile), requisitions submitted, and a short morning digest."
+							description={m.admin_sms_alert_phones_desc()}
 						/>
 						<InputComp
 							{form}
 							{errors}
 							name="smsSignature"
-							label="Sign messages as (optional)"
+							label={m.admin_sms_signature()}
 							placeholder={data.businessName}
 						/>
 					{/if}
 					<Button type="submit" form="sms-settings">
-						{#if $delayed}<LoadingBtn name="Saving" />{:else}<Save /> Save{/if}
+						{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}<Save />
+							{m.common_save()}{/if}
 					</Button>
 				</form>
 			</Card.Content>
@@ -156,8 +156,8 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Send a test</Card.Title>
-				<Card.Description>To your own phone, to see what arrives.</Card.Description>
+				<Card.Title>{m.admin_sms_test_title()}</Card.Title>
+				<Card.Description>{m.admin_sms_test_desc()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<form
@@ -172,7 +172,7 @@
 						errors={testErrors}
 						name="to"
 						type="tel"
-						label="Mobile number"
+						label={m.admin_sms_mobile()}
 						placeholder="0911 234 567"
 						required
 					/>
@@ -182,11 +182,12 @@
 						name="text"
 						type="textarea"
 						rows={3}
-						label="Message"
+						label={m.admin_sms_message()}
 						required
 					/>
 					<Button type="submit" form="sms-test" variant="outline">
-						{#if $testDelayed}<LoadingBtn name="Sending" />{:else}<Send /> Send{/if}
+						{#if $testDelayed}<LoadingBtn name={m.common_sending()} />{:else}<Send />
+							{m.common_send()}{/if}
 					</Button>
 				</form>
 			</Card.Content>
@@ -194,8 +195,8 @@
 	</div>
 
 	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">Messages</h2>
-		<p class="text-sm text-muted-foreground">The last 500, newest first.</p>
-		<DataTable data={data.log} {columns} fileName="SMS messages" />
+		<h2 class="text-xl font-semibold">{m.admin_sms_messages()}</h2>
+		<p class="text-sm text-muted-foreground">{m.admin_sms_last_500()}</p>
+		<DataTable data={data.log} {columns} fileName={m.admin_sms_export_name()} />
 	</section>
 </div>

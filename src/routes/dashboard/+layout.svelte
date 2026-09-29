@@ -9,6 +9,8 @@
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import KitProvider from '@nahu/admin-kit/components/KitProvider.svelte';
 	import AppSidebar from '$lib/components/AppSidebar.svelte';
+	import LanguageSwitch from '$lib/components/LanguageSwitch.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 	import Search from '@nahu/admin-kit/components/shell/Search.svelte';
 	import DarkMode from '@nahu/admin-kit/components/shell/DarkMode.svelte';
 	import { access } from '$lib/access';
@@ -35,7 +37,7 @@
 >
 	<Sidebar.Provider>
 		<AppSidebar
-			name={data.organization?.name ?? 'Dashboard'}
+			name={data.organization?.name ?? m.common_dashboard()}
 			logo={data.organization?.logo ?? null}
 		/>
 		<main class="min-w-0 flex-1 px-2">
@@ -45,11 +47,12 @@
 				<Sidebar.Trigger />
 				<div class="flex items-center gap-2">
 					<Search />
+					<LanguageSwitch />
 					<DarkMode />
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger>
 							{#snippet child({ props })}
-								<Button {...props} variant="ghost" size="icon" aria-label="Your account">
+								<Button {...props} variant="ghost" size="icon" aria-label={m.common_your_account()}>
 									<CircleUser />
 								</Button>
 							{/snippet}
@@ -63,12 +66,13 @@
 							<DropdownMenu.Item>
 								{#snippet child({ props })}
 									<a {...props} href={resolve('/dashboard/change-password')}
-										><KeyRound /> Change password</a
+										><KeyRound /> {m.common_change_password()}</a
 									>
 								{/snippet}
 							</DropdownMenu.Item>
 							<DropdownMenu.Item onSelect={() => logoutForm?.requestSubmit()}>
-								<LogOut /> Sign out
+								<LogOut />
+								{m.common_sign_out()}
 							</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>

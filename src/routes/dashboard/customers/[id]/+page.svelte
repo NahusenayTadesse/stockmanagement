@@ -19,6 +19,14 @@
 	import CustomerFields from '$lib/components/CustomerFields.svelte';
 	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { customerEdit, receivePayment } from '$lib/schemas/customers';
+	import { m } from '$lib/paraglide/messages.js';
+
+	const SMS_STATUS: Record<string, () => string> = {
+		sent: m.sales_sms_status_sent,
+		failed: m.sales_sms_status_failed,
+		skipped: m.sales_sms_status_skipped,
+		dry_run: m.sales_sms_status_dry_run
+	};
 
 	let { data } = $props();
 	let open = $state(false);
@@ -58,61 +66,63 @@
 	/** A plain list, not the kit's detail table, which capitalises emails. */
 	const details = $derived([
 		{
-			name: 'Phone',
+			name: m.common_phone(),
 			value: c.phone ?? '—',
 			href: c.phone ? `tel:${c.phone.replace(/[^+0-9]/g, '')}` : null
 		},
-		{ name: 'Email', value: c.email ?? '—', href: c.email ? `mailto:${c.email}` : null },
-		{ name: 'Address', value: c.address ?? '—', href: null },
+		{ name: m.common_email(), value: c.email ?? '—', href: c.email ? `mailto:${c.email}` : null },
+		{ name: m.common_address(), value: c.address ?? '—', href: null },
 		{ name: 'TIN', value: c.tin ?? '—', href: null },
 		{
-			name: 'Credit',
+			name: m.sales_credit_label(),
 			value:
 				c.creditLimit === null
-					? `No limit · ${c.creditDays} days to pay`
+					? m.sales_credit_no_limit_days({ days: c.creditDays })
 					: c.creditLimit === 0
-						? 'Cash only'
-						: `Up to ${formatETB(c.creditLimit)} · ${c.creditDays} days to pay`,
+						? m.sales_cash_only()
+						: m.sales_credit_up_to({ amount: formatETB(c.creditLimit), days: c.creditDays }),
 			href: null
 		},
-		{ name: 'Note', value: c.note ?? '—', href: null }
+		{ name: m.common_note(), value: c.note ?? '—', href: null }
 	]);
 
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'owed',
-			label: credit.balance < 0 ? 'In credit' : 'Owes',
+			label: credit.balance < 0 ? m.sales_tile_in_credit() : m.sales_owes(),
 			value: Math.abs(credit.balance),
 			format: 'money',
 			group: 'c',
 			hint:
 				credit.available === null
-					? 'No credit limit'
+					? m.sales_no_credit_limit()
 					: credit.overLimit
-						? `Over the limit of ${formatETB(credit.creditLimit)}`
-						: `${formatETB(credit.available)} of credit left`,
+						? m.sales_over_limit_of({ amount: formatETB(credit.creditLimit) })
+						: m.sales_credit_left({ amount: formatETB(credit.available) }),
 			tone: credit.overLimit ? 'negative' : credit.balance > 0 ? 'warning' : 'positive'
 		},
 		{
 			key: 'overdue',
-			label: 'Overdue',
+			label: m.sales_overdue(),
 			value: credit.overdue,
 			format: 'money',
 			group: 'c',
-			hint: credit.overdue ? `Oldest ${credit.oldestOverdueDays} days late` : 'Nothing late',
+			hint: credit.overdue
+				? m.sales_oldest_days_late({ days: credit.oldestOverdueDays })
+				: m.sales_nothing_late(),
 			tone: credit.overdue ? 'negative' : 'neutral'
 		},
 		{
 			key: 'sold',
-			label: 'Bought',
+			label: m.sales_bought(),
 			value: credit.sold,
 			format: 'money',
 			group: 'c',
-			hint: `At sale prices · ${formatETB(data.totals.taken)} at cost`
+			hint: m.sales_bought_hint({ amount: formatETB(data.totals.taken) })
 		},
 		{
 			key: 'paid',
-			label: 'Paid',
+			label: m.sales_paid(),
 			value: credit.paid,
 			format: 'money',
 			group: 'c',
@@ -128,18 +138,20 @@
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">Customer</p>
+			<p class="text-sm text-muted-foreground">{m.sales_customer()}</p>
 			<h1 class="flex items-center gap-2 text-2xl font-semibold">
 				{c.name}
-				{#if !c.isActive}<Badge variant="secondary">inactive</Badge>{/if}
-				{#if credit.overLimit}<Badge variant="destructive">over credit limit</Badge>{/if}
+				{#if !c.isActive}<Badge variant="secondary">{m.sales_inactive_badge()}</Badge>{/if}
+				{#if credit.overLimit}<Badge variant="destructive"
+						>{m.sales_over_credit_limit_badge()}</Badge
+					>{/if}
 			</h1>
 		</div>
 		<div class="flex flex-wrap gap-2">
 			<Button
 				href={resolve('/dashboard/customers/[id]/statement', { id: String(c.id) })}
 				target="_blank"
-				variant="outline"><Printer /> Statement</Button
+				variant="outline"><Printer /> {m.sales_statement()}</Button
 			>
 			{#if data.canManage && c.email}
 				<form
@@ -155,7 +167,7 @@
 				>
 					<Button type="submit" variant="outline" disabled={emailing}>
 						<Mail />
-						{emailing ? 'Sending…' : 'Email statement'}
+						{emailing ? m.common_sending() : m.sales_email_statement()}
 					</Button>
 				</form>
 			{/if}
@@ -163,17 +175,21 @@
 				{#if credit.balance > 0}
 					<SmsDialog
 						action="?/smsRemind"
-						title="Text reminder"
+						title={m.sales_text_reminder()}
 						phone={c.phone}
-						preview="Their balance of {formatETB(credit.balance)}{credit.overdue > 0
-							? `, ${formatETB(credit.overdue)} of it overdue`
-							: ''}, and a request to pay."
+						preview={m.sales_reminder_preview({
+							amount: formatETB(credit.balance),
+							overdue:
+								credit.overdue > 0
+									? m.sales_of_it_overdue({ amount: formatETB(credit.overdue) })
+									: ''
+						})}
 					/>
 				{/if}
-				<SmsDialog action="?/smsText" title="Send SMS" phone={c.phone} withText />
+				<SmsDialog action="?/smsText" title={m.sales_send_sms()} phone={c.phone} withText />
 			{/if}
 			{#if data.canManage}
-				<DialogComp bind:open title="Edit customer" variant="outline" IconComp={Pencil}>
+				<DialogComp bind:open title={m.sales_edit_customer()} variant="outline" IconComp={Pencil}>
 					<form
 						method="POST"
 						action="?/edit"
@@ -188,14 +204,14 @@
 							{errors}
 							name="status"
 							type="select"
-							label="Status"
+							label={m.common_status()}
 							items={[
-								{ value: true, name: 'Active' },
-								{ value: false, name: 'Inactive — hidden from the pickers, history kept' }
+								{ value: true, name: m.common_active() },
+								{ value: false, name: m.sales_inactive_hint() }
 							]}
 						/>
 						<Button type="submit" form="edit-customer">
-							{#if $delayed}<LoadingBtn name="Saving" />{:else}Save{/if}
+							{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.common_save()}{/if}
 						</Button>
 					</form>
 				</DialogComp>
@@ -203,7 +219,7 @@
 			{#if data.canReceive}
 				<DialogComp
 					bind:open={payOpen}
-					title="Receive payment"
+					title={m.sales_receive_payment()}
 					variant="default"
 					IconComp={Banknote}
 				>
@@ -215,8 +231,10 @@
 						class="flex flex-col gap-4"
 					>
 						<p class="text-sm text-muted-foreground">
-							{c.name} owes {formatETB(Math.max(0, credit.balance))}. The payment is applied to the
-							oldest purchases first.
+							{m.sales_owes_applied({
+								name: c.name,
+								amount: formatETB(Math.max(0, credit.balance))
+							})}
 						</p>
 						<Errors allErrors={$payAll} />
 						<InputComp
@@ -225,7 +243,7 @@
 							name="amount"
 							type="number"
 							step="0.01"
-							label="Amount (ETB)"
+							label={m.sales_amount_etb()}
 							required
 						/>
 						<InputComp
@@ -233,7 +251,7 @@
 							errors={payErrors}
 							name="occurredOn"
 							type="date"
-							label="Date received"
+							label={m.sales_date_received()}
 							year
 							required
 						/>
@@ -242,22 +260,22 @@
 							errors={payErrors}
 							name="paymentMethodId"
 							type="select"
-							label="Paid by"
+							label={m.sales_paid_by()}
 							items={data.methods}
 						/>
 						<InputComp
 							form={payData}
 							errors={payErrors}
 							name="reference"
-							label="Transaction reference"
-							placeholder="Bank FT number, Telebirr ID, cheque no."
-							description="Checked against every other transaction: the same payment cannot be recorded twice."
+							label={m.sales_tx_reference()}
+							placeholder={m.sales_tx_reference_placeholder()}
+							description={m.sales_tx_reference_hint()}
 						/>
 						<InputComp
 							form={payData}
 							errors={payErrors}
 							name="receiptNumber"
-							label="Receipt no. given"
+							label={m.sales_receipt_no_given()}
 						/>
 						<InputComp
 							form={payData}
@@ -265,22 +283,27 @@
 							name="withheld"
 							type="number"
 							step="0.01"
-							label="Tax they withheld (ETB)"
-							description={c.withholdsTax
-								? 'A withholding agent: they keep back part of the amount before VAT and give you a withholding receipt. It counts as paid.'
-								: 'Only if they kept back tax and gave you a withholding receipt.'}
+							label={m.sales_tax_they_withheld()}
+							description={c.withholdsTax ? m.sales_withheld_hint_agent() : m.sales_withheld_hint()}
 						/>
 						{#if Number($payData.withheld) > 0}
 							<InputComp
 								form={payData}
 								errors={payErrors}
 								name="withholdingReceipt"
-								label="Withholding receipt no."
+								label={m.sales_withholding_receipt_no()}
 							/>
 						{/if}
-						<InputComp form={payData} errors={payErrors} name="description" label="Note" />
+						<InputComp
+							form={payData}
+							errors={payErrors}
+							name="description"
+							label={m.common_note()}
+						/>
 						<Button type="submit" form="receive-payment">
-							{#if $payDelayed}<LoadingBtn name="Saving" />{:else}Record payment{/if}
+							{#if $payDelayed}<LoadingBtn
+									name={m.common_saving()}
+								/>{:else}{m.sales_record_payment()}{/if}
 						</Button>
 					</form>
 				</DialogComp>
@@ -295,10 +318,8 @@
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Unpaid purchases</Card.Title>
-				<Card.Description
-					>Oldest first; payments are applied to them in this order.</Card.Description
-				>
+				<Card.Title>{m.sales_unpaid_purchases()}</Card.Title>
+				<Card.Description>{m.sales_unpaid_intro()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<ul class="divide-y">
@@ -310,19 +331,20 @@
 								>{o.number ?? `#${o.id}`}</a
 							>
 							<span class="text-sm text-muted-foreground">
-								{day(o.docDate)} · due {day(o.dueDate)}
+								{day(o.docDate)} · {m.sales_due_date({ date: day(o.dueDate) })}
 							</span>
 							<span class="flex items-center gap-2">
 								<span class="font-medium">{formatETB(o.remaining)}</span>
 								{#if o.remaining < o.value}<span class="text-xs text-muted-foreground"
-										>of {formatETB(o.value)}</span
+										>{m.sales_of_amount({ amount: formatETB(o.value) })}</span
 									>{/if}
-								{#if o.daysOverdue > 0}<Badge variant="destructive">{o.daysOverdue} days late</Badge
+								{#if o.daysOverdue > 0}<Badge variant="destructive"
+										>{m.sales_days_late({ days: o.daysOverdue })}</Badge
 									>{/if}
 							</span>
 						</li>
 					{:else}
-						<li class="py-2 text-muted-foreground">Nothing unpaid.</li>
+						<li class="py-2 text-muted-foreground">{m.sales_nothing_unpaid()}</li>
 					{/each}
 				</ul>
 			</Card.Content>
@@ -330,7 +352,7 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Contact</Card.Title>
+				<Card.Title>{m.sales_contact()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
@@ -354,18 +376,18 @@
 
 	<Card.Root>
 		<Card.Header>
-			<Card.Title>Recent account activity</Card.Title>
-			<Card.Description>The full history is on the statement.</Card.Description>
+			<Card.Title>{m.sales_recent_activity()}</Card.Title>
+			<Card.Description>{m.sales_full_history()}</Card.Description>
 		</Card.Header>
 		<Card.Content class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead class="text-left text-muted-foreground">
 					<tr>
-						<th class="py-1 pr-2">Date</th>
-						<th class="py-1 pr-2">What</th>
-						<th class="py-1 pr-2 text-right">Bought</th>
-						<th class="py-1 pr-2 text-right">Paid</th>
-						<th class="py-1 text-right">Balance</th>
+						<th class="py-1 pr-2">{m.common_date()}</th>
+						<th class="py-1 pr-2">{m.sales_what()}</th>
+						<th class="py-1 pr-2 text-right">{m.sales_bought()}</th>
+						<th class="py-1 pr-2 text-right">{m.sales_paid()}</th>
+						<th class="py-1 text-right">{m.sales_balance()}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -395,10 +417,7 @@
 							<td class="py-1.5 text-right font-medium">{formatETB(e.balance)}</td>
 						</tr>
 					{:else}
-						<tr
-							><td colspan="5" class="py-3 text-muted-foreground">No purchases or payments yet.</td
-							></tr
-						>
+						<tr><td colspan="5" class="py-3 text-muted-foreground">{m.sales_no_activity()}</td></tr>
 					{/each}
 				</tbody>
 			</table>
@@ -408,8 +427,8 @@
 	{#if data.texts.length}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Text messages</Card.Title>
-				<Card.Description>The last 20 sent to this customer.</Card.Description>
+				<Card.Title>{m.sales_text_messages()}</Card.Title>
+				<Card.Description>{m.sales_last_20_texts()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<ul class="flex flex-col divide-y text-sm">
@@ -421,9 +440,7 @@
 								· {t.kind} ·
 								<span
 									class={t.status === 'failed' || t.status === 'skipped' ? 'text-destructive' : ''}
-									>{t.status === 'dry_run' ? 'test mode, not sent' : t.status}{t.error
-										? `: ${t.error}`
-										: ''}</span
+									>{SMS_STATUS[t.status]?.() ?? t.status}{t.error ? `: ${t.error}` : ''}</span
 								>
 							</span>
 							<span>{t.body}</span>

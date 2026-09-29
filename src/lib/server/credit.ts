@@ -16,6 +16,7 @@
  * Imported by the posting service, so this file sticks to the database and plain helpers — no
  * form or Vite-only code.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { addLocalDays, localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
@@ -30,12 +31,20 @@ const cents = (n: number) => Math.round(n * 100) / 100;
 export const lineValueSql = sql<number>`COALESCE(SUM(${lineNetSql} + ${lineVatSql} + ${lineTotSql}), 0)`;
 
 export type Bucket = 'current' | 'd1_30' | 'd31_60' | 'd61_90' | 'd90_plus';
+/** A bucket whose label is read in the viewer's language when it is read. */
+const bucket = (key: Bucket, label: () => string) => ({
+	key,
+	get label() {
+		return label();
+	}
+});
+
 export const BUCKETS: { key: Bucket; label: string }[] = [
-	{ key: 'current', label: 'Not yet due' },
-	{ key: 'd1_30', label: '1–30 days overdue' },
-	{ key: 'd31_60', label: '31–60 days' },
-	{ key: 'd61_90', label: '61–90 days' },
-	{ key: 'd90_plus', label: 'Over 90 days' }
+	bucket('current', m.sales_bucket_current),
+	bucket('d1_30', m.sales_bucket_d1_30),
+	bucket('d31_60', m.sales_bucket_d31_60),
+	bucket('d61_90', m.sales_bucket_d61_90),
+	bucket('d90_plus', m.sales_bucket_d90_plus)
 ];
 
 function bucketOf(daysOverdue: number): Bucket {
@@ -252,7 +261,7 @@ export async function customerStatement(
 			kind: 'return' as const,
 			id: r.id,
 			date: r.docDate,
-			label: `Goods returned ${r.number ?? `#${r.id}`}`,
+			label: m.sales_goods_returned({ number: r.number ?? `#${r.id}` }),
 			reference: r.reference,
 			debit: 0,
 			credit: r.value
@@ -262,7 +271,7 @@ export async function customerStatement(
 				kind: p.direction === 'in' ? ('payment' as const) : ('refund' as const),
 				id: p.id,
 				date: p.occurredOn,
-				label: p.direction === 'in' ? 'Payment received' : 'Refund paid',
+				label: p.direction === 'in' ? m.sales_payment_received() : m.sales_refund_paid(),
 				reference: p.reference ?? p.receiptNumber,
 				debit: p.direction === 'out' ? p.amount : 0,
 				credit: p.direction === 'in' ? p.amount : 0
@@ -273,7 +282,7 @@ export async function customerStatement(
 							kind: 'withholding' as const,
 							id: p.id,
 							date: p.occurredOn,
-							label: 'Tax withheld by you',
+							label: m.sales_tax_withheld_by_you(),
 							reference: p.withholdingReceipt,
 							debit: 0,
 							credit: p.withheld
@@ -324,7 +333,7 @@ export async function creditCheck(
 				isNull(customer.deletedAt)
 			)
 		);
-	if (!c) return 'The customer on this sale no longer exists.';
+	if (!c) return m.sales_credit_customer_gone();
 
 	const lines = await reader
 		.select({
@@ -339,7 +348,11 @@ export async function creditCheck(
 		);
 	const unpriced = lines.filter((l) => l.unitPrice === null).length;
 	if (unpriced) {
-		return `This is a sale to ${c.name}: give every line a sale price — ${unpriced} ${unpriced === 1 ? 'has' : 'have'} none. It is what they will owe.`;
+		return m.sales_credit_unpriced({
+			name: c.name,
+			count: unpriced,
+			count_word: unpriced === 1 ? m.sales_has() : m.sales_have()
+		});
 	}
 	if (c.creditLimit === null || input.allowOverLimit) return null;
 
@@ -355,6 +368,6 @@ export async function creditCheck(
 	const etb = (n: number) =>
 		`ETB ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 	return c.creditLimit === 0
-		? `${c.name} buys for cash only. Record the payment of ${etb(after)} on this sale before posting it.`
-		: `This sale would take ${c.name} to ${etb(after)} owed, over their credit limit of ${etb(c.creditLimit)}. Record a payment first, or have someone allowed to exceed credit limits post it.`;
+		? m.sales_credit_cash_only({ name: c.name, amount: etb(after) })
+		: m.sales_credit_over_limit({ name: c.name, amount: etb(after), limit: etb(c.creditLimit) });
 }

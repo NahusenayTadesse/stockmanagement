@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { SuperValidated } from 'sveltekit-superforms';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
@@ -25,7 +26,7 @@
 
 <DialogComp
 	bind:open
-	title="Add variant"
+	title={m.stock_add_variant()}
 	variant="outline"
 	IconComp={Plus}
 	triggerClass="self-start"
@@ -38,30 +39,29 @@
 		class="flex flex-col gap-4"
 	>
 		<p class="text-sm text-muted-foreground">
-			It copies this item's unit, category, supplier, tracking, VAT and pack units. Its stock is
-			counted separately.
+			{m.stock_variant_copies()}
 		</p>
 		<Errors allErrors={$allErrors} />
 		<InputComp
 			{form}
 			{errors}
 			name="variantLabel"
-			label="What tells it apart"
-			placeholder="Red / XL, 500 mg, 1 litre"
+			label={m.stock_what_tells_apart()}
+			placeholder={m.stock_variant_placeholder()}
 			required
 		/>
-		<InputComp {form} {errors} name="sku" label="Code / SKU" required />
+		<InputComp {form} {errors} name="sku" label={m.stock_f_code_sku()} required />
 		<InputComp
 			{form}
 			{errors}
 			name="salePrice"
 			type="number"
 			step="0.01"
-			label="Sale price before VAT (empty: same as this item)"
+			label={m.stock_variant_price()}
 		/>
-		<InputComp {form} {errors} name="barcode" label="Barcode (optional)" />
+		<InputComp {form} {errors} name="barcode" label={m.stock_barcode_optional()} />
 		<Button type="submit" form="variant-form">
-			{#if $delayed}<LoadingBtn name="Saving" />{:else}Add variant{/if}
+			{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.stock_add_variant()}{/if}
 		</Button>
 	</form>
 </DialogComp>

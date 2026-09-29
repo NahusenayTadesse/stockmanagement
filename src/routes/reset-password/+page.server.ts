@@ -5,6 +5,7 @@ import { redirect } from 'sveltekit-flash-message/server';
 import { auth } from '$lib/server/auth';
 import { resetSchema } from '$lib/schemas/auth';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 /**
  * Where the emailed link lands. better-auth checks the token first (at
@@ -31,21 +32,17 @@ export const actions: Actions = {
 				headers: event.request.headers
 			});
 		} catch {
-			setError(form, 'password', 'This reset link has expired or was already used.');
+			setError(form, 'password', m.admin_reset_invalid());
 			return message(
 				form,
 				{
 					type: 'error',
-					text: 'This reset link has expired or was already used. Ask for a new one.'
+					text: m.admin_reset_invalid_ask()
 				},
 				{ status: 400 }
 			);
 		}
 
-		redirect(
-			'/login',
-			{ type: 'success', message: 'Password changed. Sign in with the new one.' },
-			event.cookies
-		);
+		redirect('/login', { type: 'success', message: m.admin_reset_done() }, event.cookies);
 	}
 };

@@ -2,7 +2,9 @@
  * The money side of a stock document: the transaction a delivery was paid with, or a sale was
  * paid by. Loaded into, and posted from, the document's own page.
  */
-import { resultNote, smsPaymentReceived } from '$lib/server/sms';
+import { m } from '$lib/paraglide/messages.js';
+import { smsPaymentReceived } from '$lib/server/sms';
+import { smsNote } from '$lib/server/afterSale';
 import { fail, type RequestEvent } from '@sveltejs/kit';
 import { and, eq, isNull, ne } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
@@ -171,8 +173,8 @@ export async function paymentSection(orgId: number, doc: Doc, locals: App.Locals
 		suggestedAmount: amount,
 		totals: totals && { net: totals.net, vat: totals.vat, gross: totals.gross },
 		withholding,
-		methods: [{ value: 0, name: '— Not said —' }, ...methods],
-		branches: [{ value: 0, name: 'Whole business' }, ...branches],
+		methods: [{ value: 0, name: m.stock_not_said() }, ...methods],
+		branches: [{ value: 0, name: m.stock_whole_business() }, ...branches],
 		suppliers,
 		customers,
 		linkable
@@ -191,18 +193,14 @@ export const paymentActions = {
 	recordPayment: async (event: RequestEvent) => {
 		const form = await superValidate(event.request, zod4(transactionAdd));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		const { orgId, doc } = await payableDocument(event);
 
 		if (doc.status === 'cancelled') {
-			return message(form, { type: 'error', text: 'This document is cancelled.' }, { status: 409 });
+			return message(form, { type: 'error', text: m.stock_doc_is_cancelled() }, { status: 409 });
 		}
 		if (doc.transactionId) {
-			return message(
-				form,
-				{ type: 'error', text: 'This document already has a payment.' },
-				{ status: 409 }
-			);
+			return message(form, { type: 'error', text: m.stock_doc_has_payment() }, { status: 409 });
 		}
 
 		let transactionId: number;
@@ -233,23 +231,22 @@ export const paymentActions = {
 				return message(form, { type: 'error', text: err.message }, { status: 400 });
 			}
 			console.error('record payment failed', err);
-			return message(
-				form,
-				{ type: 'error', text: 'Could not record the payment.' },
-				{ status: 500 }
-			);
+			return message(form, { type: 'error', text: m.stock_payment_failed() }, { status: 500 });
 		}
 		// Money from a named customer: a text confirming it, when the business sends them.
 		const sms = await smsPaymentReceived(orgId, transactionId, event.locals.user?.id);
-		const note = sms && resultNote(sms, 'the customer');
-		return message(form, { type: 'success', text: `Payment recorded${note ? ` · ${note}` : ''}` });
+		const note = sms && smsNote(sms, m.sales_the_customer());
+		return message(form, {
+			type: 'success',
+			text: `${m.stock_payment_recorded()}${note ? ` · ${note}` : ''}`
+		});
 	},
 
 	/** Links a transaction that already exists — one payment can cover several deliveries. */
 	linkTransaction: async (event: RequestEvent) => {
 		const form = await superValidate(event.request, zod4(linkSchema));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Choose a transaction' }, { status: 400 });
+			return message(form, { type: 'error', text: m.stock_choose_transaction() }, { status: 400 });
 		const { orgId, doc } = await payableDocument(event);
 
 		const [txn] = await db
@@ -264,10 +261,10 @@ export const paymentActions = {
 				)
 			);
 		if (!txn) {
-			setError(form, 'transactionId', 'Choose a transaction from the list.');
+			setError(form, 'transactionId', m.stock_choose_transaction_list());
 			return message(
 				form,
-				{ type: 'error', text: 'Choose a transaction from the list.' },
+				{ type: 'error', text: m.stock_choose_transaction_list() },
 				{ status: 400 }
 			);
 		}
@@ -276,7 +273,7 @@ export const paymentActions = {
 			.update(stockDocument)
 			.set({ transactionId: txn.id, updatedBy: event.locals.user?.id })
 			.where(eq(stockDocument.id, doc.id));
-		return message(form, { type: 'success', text: `Linked to transaction #${txn.id}` });
+		return message(form, { type: 'success', text: m.stock_linked_to({ id: txn.id }) });
 	},
 
 	/** Takes the link off. The transaction itself stays, on the transactions list. */
@@ -286,10 +283,7 @@ export const paymentActions = {
 			.update(stockDocument)
 			.set({ transactionId: null, updatedBy: event.locals.user?.id })
 			.where(eq(stockDocument.id, doc.id));
-		setFlash(
-			{ type: 'success', message: 'Payment unlinked; the transaction is still recorded.' },
-			event.cookies
-		);
+		setFlash({ type: 'success', message: m.stock_payment_unlinked() }, event.cookies);
 		return doc.transactionId ? { unlinked: true } : fail(409);
 	}
 };

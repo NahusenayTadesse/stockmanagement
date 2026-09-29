@@ -6,6 +6,7 @@ import { redirect } from 'sveltekit-flash-message/server';
 import { auth } from '$lib/server/auth';
 import { loginSchema } from '$lib/schemas/auth';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async (event) => {
 	if (event.locals.user) redirect(302, '/dashboard');
@@ -25,17 +26,13 @@ export const actions: Actions = {
 		} catch {
 			// The same words for an unknown email, a wrong password and an inactive account, so the
 			// form cannot be used to find out which emails have accounts.
-			return message(
-				form,
-				{ type: 'error', text: 'That email and password did not match.' },
-				{ status: 401 }
-			);
+			return message(form, { type: 'error', text: m.admin_login_failed() }, { status: 401 });
 		}
 
 		// Same-origin paths only: `//evil.com` and `/\evil.com` both start with a slash.
 		const redirectTo = event.url.searchParams.get('redirectTo');
 		const safe = redirectTo && /^\/(?![/\\])/.test(redirectTo) ? redirectTo : '/dashboard';
 
-		redirect(safe, { type: 'success', message: 'Signed in' }, event.cookies);
+		redirect(safe, { type: 'success', message: m.admin_login_signed_in() }, event.cookies);
 	}
 };

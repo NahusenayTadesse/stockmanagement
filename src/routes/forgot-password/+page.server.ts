@@ -5,6 +5,7 @@ import { redirect } from 'sveltekit-flash-message/server';
 import { auth } from '$lib/server/auth';
 import { forgotSchema } from '$lib/schemas/auth';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (locals.user) redirect(302, '/dashboard');
@@ -29,7 +30,7 @@ export const actions: Actions = {
 
 		return message(form, {
 			type: 'success',
-			text: 'If that email has an account, a reset link is on its way. Check your inbox and spam folder.'
+			text: m.admin_forgot_done()
 		});
 	}
 };

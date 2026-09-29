@@ -14,7 +14,8 @@
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import SupplierFields from '$lib/components/SupplierFields.svelte';
 	import { supplierEdit } from '$lib/schemas/suppliers';
-	import { qty } from '$lib/format';
+	import { DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
+	import { m } from '$lib/paraglide/messages.js';
 	import { signed } from '../../transactions/columns';
 
 	let { data } = $props();
@@ -38,35 +39,41 @@
 	 */
 	const details = $derived([
 		{
-			name: 'Phone',
-			value: s.phone || '⚠ Missing — add it',
+			name: m.common_phone(),
+			value: s.phone || m.purchasing_phone_missing_add(),
 			href: s.phone ? `tel:${s.phone.replace(/[^+0-9]/g, '')}` : null
 		},
-		{ name: 'Email', value: s.email ?? '—', href: s.email ? `mailto:${s.email}` : null },
-		{ name: 'Address', value: s.address ?? '—', href: null },
-		{ name: 'TIN', value: s.tin ?? '—', href: null },
-		{ name: 'Contact person', value: s.contactPerson ?? '—', href: null },
+		{ name: m.common_email(), value: s.email ?? '—', href: s.email ? `mailto:${s.email}` : null },
+		{ name: m.common_address(), value: s.address ?? '—', href: null },
+		{ name: m.purchasing_f_tin(), value: s.tin ?? '—', href: null },
+		{ name: m.purchasing_f_contact_person(), value: s.contactPerson ?? '—', href: null },
 		{
-			name: 'Lead time',
+			name: m.purchasing_f_lead_time(),
 			value:
-				s.leadTimeDays === null ? '—' : `${s.leadTimeDays} day${s.leadTimeDays === 1 ? '' : 's'}`,
+				s.leadTimeDays === null
+					? '—'
+					: s.leadTimeDays === 1
+						? m.purchasing_n_day_one()
+						: m.purchasing_n_days({ n: s.leadTimeDays }),
 			href: null
 		},
-		{ name: 'Note', value: s.note ?? '—', href: null }
+		{ name: m.common_note(), value: s.note ?? '—', href: null }
 	]);
 
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'received',
-			label: 'Received',
+			label: m.purchasing_col_received_value(),
 			value: data.totals.received,
 			format: 'money',
 			group: 's',
-			hint: `${data.deliveries.filter((d) => d.status === 'posted').length} posted deliveries`
+			hint: m.purchasing_n_posted_deliveries({
+				n: data.deliveries.filter((d) => d.status === 'posted').length
+			})
 		},
 		{
 			key: 'paid',
-			label: 'Paid',
+			label: m.purchasing_col_paid(),
 			value: data.totals.paid,
 			format: 'money',
 			group: 's',
@@ -74,7 +81,7 @@
 		},
 		{
 			key: 'owed',
-			label: data.totals.owed >= 0 ? 'Still owed' : 'Paid in advance',
+			label: data.totals.owed >= 0 ? m.purchasing_sup_owed_tile() : m.purchasing_paid_in_advance(),
 			value: Math.abs(data.totals.owed),
 			format: 'money',
 			group: 's',
@@ -90,14 +97,19 @@
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">Supplier</p>
+			<p class="text-sm text-muted-foreground">{m.purchasing_supplier()}</p>
 			<h1 class="flex items-center gap-2 text-2xl font-semibold">
 				{s.name}
-				{#if !s.isActive}<Badge variant="secondary">inactive</Badge>{/if}
+				{#if !s.isActive}<Badge variant="secondary">{m.purchasing_inactive_badge()}</Badge>{/if}
 			</h1>
 		</div>
 		{#if data.canManage}
-			<DialogComp bind:open title="Edit supplier" variant="outline" IconComp={Pencil}>
+			<DialogComp
+				bind:open
+				title={m.purchasing_edit_supplier()}
+				variant="outline"
+				IconComp={Pencil}
+			>
 				<form
 					method="POST"
 					action="?/edit"
@@ -112,14 +124,14 @@
 						{errors}
 						name="status"
 						type="select"
-						label="Status"
+						label={m.common_status()}
 						items={[
-							{ value: true, name: 'Active' },
-							{ value: false, name: 'Inactive — hidden from the pickers, history kept' }
+							{ value: true, name: m.common_active() },
+							{ value: false, name: m.purchasing_status_inactive_hint() }
 						]}
 					/>
 					<Button type="submit" form="edit-supplier">
-						{#if $delayed}<LoadingBtn name="Saving" />{:else}Save{/if}
+						{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.common_save()}{/if}
 					</Button>
 				</form>
 			</DialogComp>
@@ -133,7 +145,7 @@
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Contact</Card.Title>
+				<Card.Title>{m.purchasing_contact()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
@@ -156,8 +168,8 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Items</Card.Title>
-				<Card.Description>Items with this supplier as their main supplier.</Card.Description>
+				<Card.Title>{m.common_items()}</Card.Title>
+				<Card.Description>{m.purchasing_items_main_supplier()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<ul class="divide-y">
@@ -167,10 +179,12 @@
 								class="hover:underline"
 								href={resolve('/dashboard/items/[id]', { id: String(it.id) })}>{it.name}</a
 							>
-							<span class="text-sm text-muted-foreground">{qty(it.onHand, it.unit)} on hand</span>
+							<span class="text-sm text-muted-foreground"
+								>{m.purchasing_n_on_hand({ quantity: qty(it.onHand, it.unit) })}</span
+							>
 						</li>
 					{:else}
-						<li class="py-2 text-muted-foreground">None</li>
+						<li class="py-2 text-muted-foreground">{m.common_none()}</li>
 					{/each}
 				</ul>
 			</Card.Content>
@@ -180,10 +194,8 @@
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Deliveries</Card.Title>
-				<Card.Description
-					>At the price paid, VAT included; returns to them count against.</Card.Description
-				>
+				<Card.Title>{m.purchasing_deliveries()}</Card.Title>
+				<Card.Description>{m.purchasing_deliveries_desc()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<ul class="divide-y">
@@ -193,19 +205,23 @@
 								class="hover:underline"
 								href={resolve('/dashboard/stock/documents/[id]', { id: String(d.id) })}
 							>
-								{d.number ?? `Draft #${d.id}`}
+								{d.number ?? m.purchasing_draft_number({ id: d.id })}
 							</a>
-							{#if d.type === 'purchase_return'}<Badge variant="outline">returned to them</Badge
+							{#if d.type === 'purchase_return'}<Badge variant="outline"
+									>{m.purchasing_returned_to_them()}</Badge
 								>{/if}
 							<span class="text-sm text-muted-foreground">
 								{day(d.docDate)} · {formatETB(d.value)}
-								{#if d.status === 'draft'}<Badge variant="secondary">draft</Badge>{/if}
-								{#if !d.paymentId && d.status === 'posted'}<Badge variant="outline">unpaid</Badge
+								{#if d.status === 'draft'}<Badge variant="secondary"
+										>{DOCUMENT_STATUS_LABELS.draft}</Badge
+									>{/if}
+								{#if !d.paymentId && d.status === 'posted'}<Badge variant="outline"
+										>{m.purchasing_unpaid()}</Badge
 									>{/if}
 							</span>
 						</li>
 					{:else}
-						<li class="py-2 text-muted-foreground">No deliveries yet.</li>
+						<li class="py-2 text-muted-foreground">{m.purchasing_no_deliveries()}</li>
 					{/each}
 				</ul>
 			</Card.Content>
@@ -213,7 +229,7 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Payments</Card.Title>
+				<Card.Title>{m.purchasing_payments()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<ul class="divide-y">
@@ -234,7 +250,7 @@
 							</span>
 						</li>
 					{:else}
-						<li class="py-2 text-muted-foreground">No payments recorded.</li>
+						<li class="py-2 text-muted-foreground">{m.purchasing_no_payments()}</li>
 					{/each}
 				</ul>
 			</Card.Content>

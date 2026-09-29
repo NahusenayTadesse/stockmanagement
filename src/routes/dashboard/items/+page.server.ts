@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { item } from '$lib/server/db/schema';
 import { orgCrud, orgIdOf } from '$lib/server/tenant';
@@ -16,7 +17,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 const crud = orgCrud({
 	table: item,
-	label: 'Item',
+	label: () => m.common_rec_item(),
 	addSchema: itemAdd,
 	editSchema: itemEdit,
 	permission: 'items.manage',
@@ -91,10 +92,8 @@ export const actions: Actions = {
 			{
 				type: given || !clashes ? 'success' : 'error',
 				message:
-					(given ? `${given} item(s) given a barcode.` : 'Every item already has a barcode.') +
-					(clashes
-						? ` ${clashes} could not be: its in-store code is already typed onto another item.`
-						: '')
+					(given ? m.stock_barcodes_given({ count: given }) : m.stock_barcodes_all_have()) +
+					(clashes ? m.stock_barcodes_clashes({ count: clashes }) : '')
 			},
 			cookies
 		);

@@ -2,6 +2,7 @@ import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
 import { ethiopianDate } from '@nahu/admin-kit/tableCells';
+import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
 
 type Summary = PageData['report']['items'][number];
@@ -11,24 +12,91 @@ const itemLink = (row: { itemId: number; item: string }) =>
 	renderComponent(DataTableLinks, { id: row.itemId, name: row.item, entity: 'item' });
 
 export const summaryColumns: ColumnDef<Summary>[] = [
-	{ accessorKey: 'item', header: 'Item', cell: ({ row }) => itemLink(row.original) },
-	{ accessorKey: 'sku', header: 'Code' },
-	{ accessorKey: 'location', header: 'Location' },
-	{ id: 'now', header: 'Now', accessorFn: (r) => (r.stillOut ? 'Out of stock' : 'Back in stock') },
-	{ accessorKey: 'times', header: 'Times out' },
-	{ accessorKey: 'days', header: 'Days out (in period)' },
-	{ accessorKey: 'lastOut', header: 'Last ran out', cell: (i) => ethiopianDate(i.getValue()) }
+	{
+		accessorKey: 'item',
+		get header() {
+			return m.common_item();
+		},
+		cell: ({ row }) => itemLink(row.original)
+	},
+	{
+		accessorKey: 'sku',
+		get header() {
+			return m.reports_col_code();
+		}
+	},
+	{
+		accessorKey: 'location',
+		get header() {
+			return m.common_location();
+		}
+	},
+	{
+		id: 'now',
+		get header() {
+			return m.reports_col_now();
+		},
+		accessorFn: (r) => (r.stillOut ? m.reports_out_of_stock() : m.reports_back_in_stock())
+	},
+	{
+		accessorKey: 'times',
+		get header() {
+			return m.reports_col_times_out();
+		}
+	},
+	{
+		accessorKey: 'days',
+		get header() {
+			return m.reports_col_days_out();
+		}
+	},
+	{
+		accessorKey: 'lastOut',
+		get header() {
+			return m.reports_col_last_out();
+		},
+		cell: (i) => ethiopianDate(i.getValue())
+	}
 ];
 
 export const periodColumns: ColumnDef<Period>[] = [
-	{ accessorKey: 'item', header: 'Item', cell: ({ row }) => itemLink(row.original) },
-	{ accessorKey: 'sku', header: 'Code' },
-	{ accessorKey: 'location', header: 'Location' },
-	{ accessorKey: 'outFrom', header: 'Ran out', cell: (i) => ethiopianDate(i.getValue()) },
+	{
+		accessorKey: 'item',
+		get header() {
+			return m.common_item();
+		},
+		cell: ({ row }) => itemLink(row.original)
+	},
+	{
+		accessorKey: 'sku',
+		get header() {
+			return m.reports_col_code();
+		}
+	},
+	{
+		accessorKey: 'location',
+		get header() {
+			return m.common_location();
+		}
+	},
+	{
+		accessorKey: 'outFrom',
+		get header() {
+			return m.reports_col_ran_out();
+		},
+		cell: (i) => ethiopianDate(i.getValue())
+	},
 	{
 		accessorKey: 'backIn',
-		header: 'Back in stock',
-		cell: (i) => (i.getValue() ? ethiopianDate(i.getValue()) : 'Still out')
+		get header() {
+			return m.reports_back_in_stock();
+		},
+		cell: (i) => (i.getValue() ? ethiopianDate(i.getValue()) : m.reports_still_out())
 	},
-	{ accessorKey: 'days', header: 'Days out (in period)' }
+	{
+		accessorKey: 'days',
+		get header() {
+			return m.reports_col_days_out();
+		}
+	}
 ];

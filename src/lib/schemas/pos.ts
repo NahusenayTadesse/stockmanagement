@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { m } from '$lib/paraglide/messages.js';
 
 /** What the till sends when a sale is completed. */
 export const checkoutPayload = z.object({
@@ -16,7 +17,7 @@ export const checkoutPayload = z.object({
 				serials: z.array(z.string().trim().min(1).max(60)).max(500).default([])
 			})
 		)
-		.min(1, 'The cart is empty.')
+		.min(1, { error: () => m.sales_err_cart_empty() })
 		.max(300),
 	payments: z
 		.array(

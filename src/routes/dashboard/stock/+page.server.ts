@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { localToday } from '@nahu/admin-kit/time';
 import { orgIdOf } from '$lib/server/tenant';
 import { onHandRows } from '$lib/server/stock/queries';
@@ -23,7 +24,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 			if (hold) left.set(key, Math.round(((left.get(key) ?? 0) - hold) * 1e4) / 1e4);
 			return {
 				...r,
-				location: r.locationKind === 'transit' ? `${r.location} (on the road)` : r.location,
+				location:
+					r.locationKind === 'transit' ? m.stock_on_the_road({ location: r.location }) : r.location,
 				held: hold,
 				free: Math.round((quantity - hold) * 1e4) / 1e4
 			};

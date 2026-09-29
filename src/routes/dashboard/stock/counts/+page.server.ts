@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
@@ -67,7 +68,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			differences: Number(c.differences)
 		})),
 		locations,
-		categories: [{ value: 0, name: 'Everything at the location' }, ...categories],
+		categories: [{ value: 0, name: m.stock_everything_at_location() }, ...categories],
 		form,
 		canCount: hasPermission(locals, 'stock.draft')
 	};
@@ -79,7 +80,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(countOpen));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 
 		// Only a location in the viewer's branches, and never the system's transit locations.
 		const [loc] = await db
@@ -87,12 +88,8 @@ export const actions: Actions = {
 			.from(location)
 			.where(and(eq(location.id, form.data.locationId), eq(location.orgId, orgId)));
 		if (!loc || loc.kind === 'transit' || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setError(form, 'locationId', 'Choose a location from the list.');
-			return message(
-				form,
-				{ type: 'error', text: 'Choose a location from the list.' },
-				{ status: 400 }
-			);
+			setError(form, 'locationId', m.stock_err_location_list());
+			return message(form, { type: 'error', text: m.stock_err_location_list() }, { status: 400 });
 		}
 
 		let id: number;
@@ -117,7 +114,7 @@ export const actions: Actions = {
 		}
 		redirect(
 			`/dashboard/stock/counts/${id}`,
-			{ type: 'success', message: `Count #${id} opened — enter what is on the shelf` },
+			{ type: 'success', message: m.stock_count_opened({ id }) },
 			event.cookies
 		);
 	}

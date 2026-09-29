@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
@@ -11,12 +12,30 @@ type StockRow = PageData['stock'][number];
 type CardRow = PageData['card'][number];
 
 export const stockColumns: ColumnDef<StockRow>[] = [
-	{ accessorKey: 'branch', header: 'Branch' },
-	{ accessorKey: 'location', header: 'Location' },
-	{ accessorKey: 'lotNumber', header: 'Lot', cell: (info) => info.getValue() ?? '—' },
+	{
+		accessorKey: 'branch',
+		get header() {
+			return m.common_branch();
+		}
+	},
+	{
+		accessorKey: 'location',
+		get header() {
+			return m.common_location();
+		}
+	},
+	{
+		accessorKey: 'lotNumber',
+		get header() {
+			return m.stock_col_lot();
+		},
+		cell: (info) => info.getValue() ?? '—'
+	},
 	{
 		accessorKey: 'expiryDate',
-		header: 'Expiry',
+		get header() {
+			return m.stock_col_expiry();
+		},
 		cell: ({ row }) =>
 			renderComponent(ExpiryCell, {
 				expiresOn: row.original.expiryDate,
@@ -24,20 +43,51 @@ export const stockColumns: ColumnDef<StockRow>[] = [
 				noneText: '—'
 			})
 	},
-	{ accessorKey: 'lotStatus', header: 'Lot status', cell: (info) => info.getValue() ?? '—' },
+	{
+		accessorKey: 'lotStatus',
+		get header() {
+			return m.stock_lot_status();
+		},
+		cell: (info) => {
+			const v = info.getValue() as string | null;
+			return v === 'available'
+				? m.stock_lot_state_available()
+				: v === 'quarantine'
+					? m.stock_lot_state_quarantine()
+					: v === 'recalled'
+						? m.stock_lot_state_recalled()
+						: (v ?? '—');
+		}
+	},
 	{
 		accessorKey: 'quantity',
-		header: 'Quantity',
+		get header() {
+			return m.common_quantity();
+		},
 		cell: ({ row }) => qty(row.original.quantity, row.original.unit)
 	},
-	{ accessorKey: 'value', header: 'Value', cell: (info) => formatETB(Number(info.getValue())) }
+	{
+		accessorKey: 'value',
+		get header() {
+			return m.stock_col_value();
+		},
+		cell: (info) => formatETB(Number(info.getValue()))
+	}
 ];
 
 export const cardColumns: ColumnDef<CardRow>[] = [
-	{ accessorKey: 'docDate', header: 'Date', cell: (info) => ethiopianDate(info.getValue()) },
+	{
+		accessorKey: 'docDate',
+		get header() {
+			return m.common_date();
+		},
+		cell: (info) => ethiopianDate(info.getValue())
+	},
 	{
 		accessorKey: 'number',
-		header: 'Document',
+		get header() {
+			return m.stock_document();
+		},
 		cell: ({ row }) =>
 			renderComponent(DataTableLinks, {
 				id: row.original.documentId,
@@ -47,27 +97,58 @@ export const cardColumns: ColumnDef<CardRow>[] = [
 	},
 	{
 		accessorKey: 'kind',
-		header: 'Movement',
+		get header() {
+			return m.stock_col_movement();
+		},
 		cell: (info) => MOVEMENT_LABELS[info.getValue() as string]
 	},
-	{ accessorKey: 'party', header: 'From / to', cell: (info) => info.getValue() ?? '' },
-	{ accessorKey: 'location', header: 'Location' },
-	{ accessorKey: 'lotNumber', header: 'Lot', cell: (info) => info.getValue() ?? '—' },
+	{
+		accessorKey: 'party',
+		get header() {
+			return m.stock_from_to();
+		},
+		cell: (info) => info.getValue() ?? ''
+	},
+	{
+		accessorKey: 'location',
+		get header() {
+			return m.common_location();
+		}
+	},
+	{
+		accessorKey: 'lotNumber',
+		get header() {
+			return m.stock_col_lot();
+		},
+		cell: (info) => info.getValue() ?? '—'
+	},
 	{
 		id: 'in',
-		header: 'In',
+		get header() {
+			return m.stock_in();
+		},
 		cell: ({ row }) => (Number(row.original.quantity) > 0 ? qty(row.original.quantity) : '')
 	},
 	{
 		id: 'out',
-		header: 'Out',
+		get header() {
+			return m.stock_out();
+		},
 		cell: ({ row }) =>
 			Number(row.original.quantity) < 0 ? qty(-Number(row.original.quantity)) : ''
 	},
-	{ accessorKey: 'balance', header: 'Balance', cell: (info) => qty(info.getValue() as number) },
+	{
+		accessorKey: 'balance',
+		get header() {
+			return m.stock_balance();
+		},
+		cell: (info) => qty(info.getValue() as number)
+	},
 	{
 		accessorKey: 'unitCost',
-		header: 'Unit cost',
+		get header() {
+			return m.stock_col_unit_cost();
+		},
 		cell: (info) => formatETB(Number(info.getValue()))
 	}
 ];

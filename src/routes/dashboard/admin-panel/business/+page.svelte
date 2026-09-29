@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import Save from '@lucide/svelte/icons/save';
 	import Trash from '@lucide/svelte/icons/trash';
@@ -30,22 +31,21 @@
 </script>
 
 <svelte:head>
-	<title>Business profile</title>
+	<title>{m.nav_business_profile()}</title>
 </svelte:head>
 
 <div class="flex max-w-5xl flex-col gap-6">
 	<div>
-		<h1 class="text-2xl font-semibold">Business profile</h1>
+		<h1 class="text-2xl font-semibold">{m.nav_business_profile()}</h1>
 		<p class="text-muted-foreground">
-			How your business appears in the menu and on every printed receipt, issue voucher and transfer
-			note.
+			{m.admin_biz_intro()}
 		</p>
 	</div>
 
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Details</Card.Title>
+				<Card.Title>{m.admin_biz_details()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<form
@@ -56,46 +56,52 @@
 					class="flex flex-col gap-4"
 				>
 					<Errors allErrors={$allErrors} />
-					<InputComp {form} {errors} name="name" label="Business name" required />
+					<InputComp
+						{form}
+						{errors}
+						name="name"
+						label={m.admin_register_business_name()}
+						required
+					/>
 					<InputComp
 						{form}
 						{errors}
 						name="tin"
-						label="TIN"
-						placeholder="10 digits"
-						description="Printed on your documents."
+						label={m.admin_register_tin()}
+						placeholder={m.admin_biz_tin_placeholder()}
+						description={m.admin_register_tin_description()}
 					/>
-					<InputComp {form} {errors} name="phone" type="tel" label="Phone" />
+					<InputComp {form} {errors} name="phone" type="tel" label={m.common_phone()} />
 					<InputComp
 						{form}
 						{errors}
 						name="address"
-						label="Address"
-						placeholder="Sub-city, woreda, street"
+						label={m.common_address()}
+						placeholder={m.admin_biz_address_placeholder()}
 					/>
 					<InputComp
 						{form}
 						{errors}
 						name="sellsToCustomers"
 						type="select"
-						label="Customers"
+						label={m.admin_biz_customers()}
 						items={[
-							{ value: true, name: 'We sell — keep a customer list (always optional on a sale)' },
-							{ value: false, name: 'Internal store only — we issue to departments, never sell' }
+							{ value: true, name: m.admin_biz_sells() },
+							{ value: false, name: m.admin_biz_internal() }
 						]}
-						description="The internal setting hides the customer list and every customer picker. Nothing recorded is lost; switch back at any time."
+						description={m.admin_biz_customers_desc()}
 					/>
 					<InputComp
 						{form}
 						{errors}
 						name="vatRegistered"
 						type="select"
-						label="VAT"
+						label={m.admin_biz_vat()}
 						items={[
-							{ value: false, name: 'Not VAT-registered — no VAT on sales' },
-							{ value: true, name: 'VAT-registered — sales add VAT' }
+							{ value: false, name: m.admin_biz_vat_no() },
+							{ value: true, name: m.admin_biz_vat_yes() }
 						]}
-						description="Applies to sales posted from now on; posted invoices keep the VAT they were posted with."
+						description={m.admin_biz_vat_desc()}
 					/>
 					{#if $form.vatRegistered}
 						<InputComp
@@ -104,7 +110,7 @@
 							name="vatRate"
 							type="number"
 							step="0.01"
-							label="VAT rate (%)"
+							label={m.admin_biz_vat_rate()}
 						/>
 					{/if}
 					<InputComp
@@ -112,15 +118,15 @@
 						{errors}
 						name="withholdingAgent"
 						type="select"
-						label="Withholding"
+						label={m.admin_biz_withholding()}
 						items={[
-							{ value: false, name: 'Not a withholding agent' },
+							{ value: false, name: m.admin_biz_wh_no() },
 							{
 								value: true,
-								name: 'Withholding agent — keep back tax on large purchases'
+								name: m.admin_biz_wh_yes()
 							}
 						]}
-						description="Payments for deliveries at or above the threshold suggest the tax to keep back (30% if the supplier has no TIN)."
+						description={m.admin_biz_wh_desc()}
 					/>
 					{#if $form.withholdingAgent}
 						<InputComp
@@ -129,7 +135,7 @@
 							name="withholdingRate"
 							type="number"
 							step="0.01"
-							label="Withholding rate (%)"
+							label={m.admin_biz_wh_rate()}
 						/>
 						<InputComp
 							{form}
@@ -137,7 +143,7 @@
 							name="withholdingThreshold"
 							type="number"
 							step="0.01"
-							label="From a purchase of (ETB, before VAT)"
+							label={m.admin_biz_wh_threshold()}
 						/>
 					{/if}
 					{#if !$form.vatRegistered}
@@ -147,8 +153,8 @@
 							name="totRate"
 							type="number"
 							step="0.01"
-							label="Turnover tax (TOT) rate on goods (%, optional)"
-							description="Only for a TOT payer that is not VAT-registered. Empty: no TOT. Items can set their own rate (services are often higher)."
+							label={m.admin_biz_tot()}
+							description={m.admin_biz_tot_desc()}
 						/>
 					{/if}
 					<InputComp
@@ -157,78 +163,82 @@
 						name="maxDiscountPercent"
 						type="number"
 						step="0.1"
-						label="Largest discount a seller may give (%, optional)"
-						description="At the till and on proformas. Bigger discounts need the 'give discounts above the limit' permission. Empty: no limit."
+						label={m.admin_biz_discount()}
+						description={m.admin_biz_discount_desc()}
 					/>
 					<InputComp
 						{form}
 						{errors}
 						name="einvoiceMode"
 						type="select"
-						label="E-invoicing (Ministry of Revenues)"
+						label={m.admin_biz_einvoice()}
 						items={[
-							{ value: '', name: 'Off' },
-							{ value: 'sandbox', name: 'Sandbox — try the flow; nothing is sent' },
-							{ value: 'live', name: 'Live — send every sale to the endpoint below' }
+							{ value: '', name: m.common_off() },
+							{ value: 'sandbox', name: m.admin_biz_einv_sandbox() },
+							{ value: 'live', name: m.admin_biz_einv_live() }
 						]}
-						description="Optional. Invoices are sent after a sale is posted; a failure never blocks the sale and can be retried."
+						description={m.admin_biz_einv_desc()}
 					/>
 					{#if $form.einvoiceMode === 'live'}
 						<InputComp
 							{form}
 							{errors}
 							name="einvoiceEndpoint"
-							label="Invoice endpoint URL"
-							placeholder="From your e-invoicing registration"
+							label={m.admin_biz_einv_endpoint()}
+							placeholder={m.admin_biz_einv_endpoint_placeholder()}
 						/>
 						<InputComp
 							{form}
 							{errors}
 							name="einvoiceTokenUrl"
-							label="Token URL (optional)"
-							description="For OAuth client-credentials sign-in. Empty: the client ID and secret are sent as Basic auth."
+							label={m.admin_biz_einv_token()}
+							description={m.admin_biz_einv_token_desc()}
 						/>
-						<InputComp {form} {errors} name="einvoiceClientId" label="Client ID" />
+						<InputComp
+							{form}
+							{errors}
+							name="einvoiceClientId"
+							label={m.admin_biz_einv_client_id()}
+						/>
 						<InputComp
 							{form}
 							{errors}
 							name="einvoiceSecret"
-							label="Client secret"
-							placeholder={data.hasEinvoiceSecret ? 'Stored — leave empty to keep it' : ''}
-							description="Stored encrypted; never shown again."
+							label={m.admin_biz_einv_secret()}
+							placeholder={data.hasEinvoiceSecret ? m.admin_biz_einv_secret_stored() : ''}
+							description={m.admin_biz_einv_secret_desc()}
 						/>
 					{/if}
-					<h3 class="mt-2 font-semibold">Stock control</h3>
+					<h3 class="mt-2 font-semibold">{m.admin_biz_stock_control()}</h3>
 					<InputComp
 						{form}
 						{errors}
 						name="costingMethod"
 						type="select"
-						label="Costing"
+						label={m.admin_biz_costing()}
 						items={[
-							{ value: 'average', name: 'Moving average — every unit of an item costs the same' },
-							{ value: 'fifo', name: 'FIFO — the oldest purchases are used up first' }
+							{ value: 'average', name: m.admin_biz_costing_avg() },
+							{ value: 'fifo', name: m.admin_biz_costing_fifo() }
 						]}
-						description="How stock that leaves (sold, written off, returned) is valued. Switching to FIFO starts from what is on hand at today's average cost; switching back carries on from FIFO's figures. Posted documents keep their values."
+						description={m.admin_biz_costing_desc()}
 					/>
 					<InputComp
 						{form}
 						{errors}
 						name="reserveStock"
 						type="select"
-						label="Reservations"
+						label={m.admin_biz_reservations()}
 						items={[
-							{ value: false, name: 'Off — stock is first come, first served' },
+							{ value: false, name: m.admin_biz_res_off() },
 							{
 								value: true,
-								name: 'Hold stock for accepted proformas and approved requisitions'
+								name: m.admin_biz_res_on()
 							}
 						]}
-						description="When on, the till and other issues cannot take what is held for someone else. It is released when their sale or issue is posted, or the proforma is cancelled or runs out."
+						description={m.admin_biz_res_desc()}
 					/>
 					<p class="text-sm text-muted-foreground">
-						Approvals (maker-checker): anything at or over these amounts, at cost, waits for someone
-						else with the right to approve. Leave empty for no approval.
+						{m.admin_biz_approvals_intro()}
 					</p>
 					<InputComp
 						{form}
@@ -236,19 +246,19 @@
 						name="approveAdjustmentsOver"
 						type="number"
 						step="0.01"
-						label="Adjustments worth (ETB, optional)"
+						label={m.admin_biz_adj_over()}
 					/>
 					<InputComp
 						{form}
 						{errors}
 						name="approveWriteOffs"
 						type="select"
-						label="Write-offs"
+						label={m.admin_biz_writeoffs()}
 						items={[
-							{ value: false, name: 'Only over the adjustment limit above' },
-							{ value: true, name: 'Always need approval, whatever the value' }
+							{ value: false, name: m.admin_biz_wo_limit() },
+							{ value: true, name: m.admin_biz_wo_always() }
 						]}
-						description="A write-off is any adjustment that takes stock out: damage, expiry, loss."
+						description={m.admin_biz_wo_desc()}
 					/>
 					<InputComp
 						{form}
@@ -256,7 +266,7 @@
 						name="approveCountsOver"
 						type="number"
 						step="0.01"
-						label="Stock counts whose differences come to (ETB, optional)"
+						label={m.admin_biz_counts_over()}
 					/>
 					<InputComp
 						{form}
@@ -264,10 +274,11 @@
 						name="approveOrdersOver"
 						type="number"
 						step="0.01"
-						label="Purchase orders worth (ETB, optional)"
+						label={m.admin_biz_orders_over()}
 					/>
 					<Button type="submit" form="details">
-						{#if $delayed}<LoadingBtn name="Saving" />{:else}<Save /> Save{/if}
+						{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}<Save />
+							{m.common_save()}{/if}
 					</Button>
 				</form>
 			</Card.Content>
@@ -275,28 +286,26 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Logo</Card.Title>
-				<Card.Description
-					>PNG, JPG or WebP, up to 2 MB. A square or wide image works best.</Card.Description
-				>
+				<Card.Title>{m.admin_biz_logo()}</Card.Title>
+				<Card.Description>{m.admin_biz_logo_desc()}</Card.Description>
 			</Card.Header>
 			<Card.Content class="flex flex-col gap-4">
 				{#if data.org.logo}
 					<div class="flex items-center gap-4">
 						<img
 							src={fileUrl(data.org.logo)}
-							alt="{data.org.name} logo"
+							alt={m.admin_biz_logo_alt({ name: data.org.name })}
 							class="h-24 max-w-48 rounded border bg-white object-contain p-2"
 						/>
 						<form method="POST" action="?/removeLogo" use:enhance>
 							<Button type="submit" variant="ghost" class="text-destructive"
-								><Trash /> Remove</Button
+								><Trash /> {m.admin_biz_remove()}</Button
 							>
 						</form>
 					</div>
 				{:else}
 					<p class="text-sm text-muted-foreground">
-						No logo yet — the business name is shown instead.
+						{m.admin_biz_no_logo()}
 					</p>
 				{/if}
 
@@ -308,12 +317,12 @@
 					id="logo"
 					class="flex flex-col gap-3"
 				>
-					<FileUpload form={logoData} name="logo" placeholder="PNG, JPG or WebP (max 2 MB)" />
+					<FileUpload form={logoData} name="logo" placeholder={m.admin_biz_logo_placeholder()} />
 					{#if $logoErrors.logo}<span class="text-sm text-destructive">{$logoErrors.logo}</span
 						>{/if}
 					<Button type="submit" form="logo" variant="outline">
-						{#if $logoDelayed}<LoadingBtn name="Uploading" />{:else}<Upload />
-							{data.org.logo ? 'Replace logo' : 'Upload logo'}{/if}
+						{#if $logoDelayed}<LoadingBtn name={m.admin_biz_uploading()} />{:else}<Upload />
+							{data.org.logo ? m.admin_biz_replace_logo() : m.admin_biz_upload_logo()}{/if}
 					</Button>
 				</form>
 			</Card.Content>

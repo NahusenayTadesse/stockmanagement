@@ -6,6 +6,7 @@
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
 	import ReportFilterBar from '../ReportFilterBar.svelte';
 	import { columns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -14,37 +15,40 @@
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'dead',
-			label: 'Dead stock',
+			label: m.reports_dead_stock(),
 			value: data.report.deadValue,
 			format: 'money',
 			group: 'slow',
 			tone: data.report.deadValue > 0 ? 'negative' : 'neutral',
-			hint: `Idle ${data.deadDays}+ days · ${rows.filter((r) => r.status === 'dead').length} items`
+			hint: m.reports_dead_hint({
+				days: data.deadDays,
+				count: rows.filter((r) => r.status === 'dead').length
+			})
 		},
 		{
 			key: 'slow',
-			label: 'Slow-moving stock',
+			label: m.reports_slow_stock(),
 			value: data.report.slowValue,
 			format: 'money',
 			group: 'slow',
 			tone: data.report.slowValue > 0 ? 'warning' : 'neutral',
-			hint: `Idle ${data.slowDays}–${data.deadDays - 1} days · ${rows.filter((r) => r.status === 'slow').length} items`
+			hint: m.reports_slow_hint({
+				from: data.slowDays,
+				to: data.deadDays - 1,
+				count: rows.filter((r) => r.status === 'slow').length
+			})
 		}
 	]);
 </script>
 
 <svelte:head>
-	<title>Slow-moving and dead stock</title>
+	<title>{m.reports_slow_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div>
-		<h1 class="text-2xl font-semibold">Slow-moving and dead stock</h1>
-		<p class="text-muted-foreground">
-			Stock on hand that nobody has sold or used for a while — money sitting on the shelf. "Days
-			idle" counts from the last issue, or from when the stock first arrived if it was never issued.
-			Discount it, return it to the supplier, or stop reordering it.
-		</p>
+		<h1 class="text-2xl font-semibold">{m.reports_slow_title()}</h1>
+		<p class="text-muted-foreground">{m.reports_slow_intro()}</p>
 	</div>
 
 	<ReportFilterBar
@@ -54,20 +58,20 @@
 		locationId={data.locationId}
 	>
 		<div class="flex flex-col gap-1">
-			<Label for="category">Category</Label>
+			<Label for="category">{m.reports_category()}</Label>
 			<select id="category" name="category" class={select} value={data.categoryId}>
-				<option value={0}>All categories</option>
+				<option value={0}>{m.reports_all_categories()}</option>
 				{#each data.categories as c (c.value)}
 					<option value={c.value}>{c.name}</option>
 				{/each}
 			</select>
 		</div>
 		<div class="flex w-28 flex-col gap-1">
-			<Label for="slow">Slow after (days)</Label>
+			<Label for="slow">{m.reports_slow_after()}</Label>
 			<Input id="slow" name="slow" type="number" min="1" value={data.slowDays} />
 		</div>
 		<div class="flex w-28 flex-col gap-1">
-			<Label for="dead">Dead after (days)</Label>
+			<Label for="dead">{m.reports_dead_after()}</Label>
 			<Input id="dead" name="dead" type="number" min="1" value={data.deadDays} />
 		</div>
 	</ReportFilterBar>
@@ -79,8 +83,8 @@
 	<DataTable
 		data={rows}
 		{columns}
-		fileName="Slow and dead stock {data.today}"
+		fileName={m.reports_file_slow({ date: data.today })}
 		facetKeys={['statusName', 'category']}
-		facetLabels={{ statusName: 'Status', category: 'Category' }}
+		facetLabels={{ statusName: m.common_status(), category: m.reports_category() }}
 	/>
 </div>

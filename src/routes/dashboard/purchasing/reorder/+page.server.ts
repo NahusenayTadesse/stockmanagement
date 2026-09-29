@@ -10,6 +10,7 @@ import { StockError } from '$lib/server/stock/post';
 import { branchScope, inScope } from '$lib/server/scope';
 import { location } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -49,10 +50,7 @@ export const actions: Actions = {
 			.from(location)
 			.where(and(eq(location.id, locationId), eq(location.orgId, orgId)));
 		if (!loc || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setFlash(
-				{ type: 'error', message: 'Choose where the orders should be delivered.' },
-				event.cookies
-			);
+			setFlash({ type: 'error', message: m.purchasing_reorder_choose_delivery() }, event.cookies);
 			return fail(400);
 		}
 
@@ -75,7 +73,10 @@ export const actions: Actions = {
 			throw err;
 		}
 
-		const text = `${ids.length} draft order${ids.length === 1 ? '' : 's'} created — check the prices, then mark them as ordered`;
+		const text =
+			ids.length === 1
+				? m.purchasing_reorder_created_one()
+				: m.purchasing_reorder_created_many({ n: ids.length });
 		redirect(
 			ids.length === 1 ? `/dashboard/purchasing/${ids[0]}` : '/dashboard/purchasing',
 			{ type: 'success', message: text },

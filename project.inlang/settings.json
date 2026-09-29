@@ -5,7 +5,15 @@
 		"https://cdn.jsdelivr.net/npm/@inlang/plugin-m-function-matcher@2/dist/index.js"
 	],
 	"plugin.inlang.messageFormat": {
-		"pathPattern": "./messages/{locale}.json"
+		"pathPattern": [
+			"./messages/{locale}/common.json",
+			"./messages/{locale}/kit.json",
+			"./messages/{locale}/stock.json",
+			"./messages/{locale}/sales.json",
+			"./messages/{locale}/purchasing.json",
+			"./messages/{locale}/admin.json",
+			"./messages/{locale}/reports.json"
+		]
 	},
 	"baseLocale": "en",
 	"locales": ["en", "am"]

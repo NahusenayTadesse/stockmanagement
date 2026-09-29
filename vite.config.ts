@@ -25,7 +25,10 @@ export default defineConfig({
 		paraglideVitePlugin({
 			project: './project.inlang',
 			outdir: './src/lib/paraglide',
-			emitTsDeclarations: true
+			emitTsDeclarations: true,
+			// The language lives in a cookie (the switcher sets it), else the browser's preference.
+			// No /am/ URLs: every link and bookmark works in both languages.
+			strategy: ['cookie', 'preferredLanguage', 'baseLocale']
 		})
 	],
 	test: {

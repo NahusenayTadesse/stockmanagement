@@ -34,13 +34,15 @@ import { branchScope, inScope, requireBranch } from '$lib/server/scope';
 import { orderHeader, orderLineAdd, orderLineEdit } from '$lib/schemas/purchasing';
 import { supplierSchema } from '$lib/schemas/suppliers';
 import { smsOrder } from '$lib/server/sms';
+import { m } from '$lib/paraglide/messages.js';
+import { PO_STATUS_LABELS } from '$lib/schemas/purchasing';
 import { canText, textAction, typedNumber } from '$lib/server/smsActions';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const lines = childCrud({
 	table: purchaseOrderLine,
 	ownerColumn: 'purchaseOrderId',
-	label: 'Line',
+	label: () => m.common_rec_line(),
 	addSchema: orderLineAdd,
 	editSchema: orderLineEdit,
 	permission: 'purchasing.manage',
@@ -50,8 +52,7 @@ const lines = childCrud({
 /** Lines change only while the order is a draft: once sent, the supplier is working from them. */
 async function draftOwner(event: RequestEvent) {
 	const order = await scopedOrder(event);
-	if (order.status !== 'draft')
-		error(409, 'This order has been sent and its lines can no longer change.');
+	if (order.status !== 'draft') error(409, m.purchasing_po_lines_locked());
 	return order.id;
 }
 
@@ -103,7 +104,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		createdBy: people?.createdBy ?? null,
 		lines: { ...lineSection, rows },
 		items,
-		units: [{ value: 0, name: 'Base unit' }, ...units],
+		units: [{ value: 0, name: m.purchasing_base_unit() }, ...units],
 		receipts,
 		total: Math.round(detailed.reduce((s, l) => s + l.value, 0) * 100) / 100,
 		headerForm: await superValidate(
@@ -151,7 +152,7 @@ export const actions: Actions = {
 	/** The order, short enough for a text, to the supplier's phone. */
 	sms: async (event) => {
 		requirePermission(event.locals, 'purchasing.manage');
-		return textAction(event, 'Order', (orgId, form) =>
+		return textAction(event, m.purchasing_sms_what_order(), (orgId, form) =>
 			smsOrder(orgId, Number(event.params.id), {
 				to: typedNumber(form),
 				userId: event.locals.user?.id
@@ -166,12 +167,12 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(orderHeader));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		const order = await scopedOrder(event);
 		if (order.status !== 'draft') {
 			return message(
 				form,
-				{ type: 'error', text: 'Only a draft order can change.' },
+				{ type: 'error', text: m.purchasing_po_only_draft_changes() },
 				{ status: 409 }
 			);
 		}
@@ -199,18 +200,18 @@ export const actions: Actions = {
 				)
 		]);
 		if (!sup) {
-			setError(form, 'supplierId', 'Choose a supplier from the list.');
+			setError(form, 'supplierId', m.purchasing_v_supplier_from_list());
 			return message(
 				form,
-				{ type: 'error', text: 'Choose a supplier from the list.' },
+				{ type: 'error', text: m.purchasing_v_supplier_from_list() },
 				{ status: 400 }
 			);
 		}
 		if (!loc || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setError(form, 'locationId', 'Choose a location from the list.');
+			setError(form, 'locationId', m.purchasing_v_location_from_list());
 			return message(
 				form,
-				{ type: 'error', text: 'Choose a location from the list.' },
+				{ type: 'error', text: m.purchasing_v_location_from_list() },
 				{ status: 400 }
 			);
 		}
@@ -228,7 +229,7 @@ export const actions: Actions = {
 				updatedBy: event.locals.user?.id
 			})
 			.where(eq(purchaseOrder.id, order.id));
-		return message(form, { type: 'success', text: 'Saved' });
+		return message(form, { type: 'success', text: m.common_saved() });
 	},
 
 	/** Sent to the supplier: the order gets its number and its lines are fixed. */
@@ -240,7 +241,7 @@ export const actions: Actions = {
 			const number = await db.transaction((tx) =>
 				markOrdered(tx, { orgId, orderId: order.id, userId: event.locals.user?.id })
 			);
-			setFlash({ type: 'success', message: `Ordered as ${number}` }, event.cookies);
+			setFlash({ type: 'success', message: m.purchasing_po_ordered_as({ number }) }, event.cookies);
 			return { done: true };
 		} catch (err) {
 			// Over the business's limit: it waits for a second person instead.
@@ -254,7 +255,7 @@ export const actions: Actions = {
 				setFlash(
 					{
 						type: 'success',
-						message: `Sent for approval: ${err.reason}. It is ordered once someone else approves it.`
+						message: m.purchasing_po_sent_for_approval({ reason: err.reason })
 					},
 					event.cookies
 				);
@@ -294,8 +295,7 @@ export const actions: Actions = {
 			`/dashboard/stock/documents/${documentId}`,
 			{
 				type: 'success',
-				message:
-					'Receipt drafted from the order — correct the quantities to what arrived, then post'
+				message: m.purchasing_po_receipt_drafted()
 			},
 			event.cookies
 		);
@@ -308,17 +308,14 @@ export const actions: Actions = {
 		await scopedOrder(event);
 		const { order, details, lines } = await orderForSupplier(orgId, Number(event.params.id));
 		if (order.status === 'draft' || order.status === 'cancelled') {
-			setFlash(
-				{ type: 'error', message: 'Only an order that has been placed can be emailed.' },
-				event.cookies
-			);
+			setFlash({ type: 'error', message: m.purchasing_po_email_only_placed() }, event.cookies);
 			return fail(409);
 		}
 		if (!details.supplierEmail) {
 			setFlash(
 				{
 					type: 'error',
-					message: `${details.supplier} has no email address. Add one on the supplier's page.`
+					message: m.purchasing_po_supplier_no_email({ supplier: details.supplier })
 				},
 				event.cookies
 			);
@@ -333,16 +330,24 @@ export const actions: Actions = {
 		const sent = await sendMail(
 			details.supplierEmail,
 			{
-				subject: `Purchase order ${order.number} from ${org.name}`,
-				heading: `Purchase order ${order.number}`,
+				subject: m.purchasing_mail_subject({ number: order.number ?? '', org: org.name }),
+				heading: m.purchasing_mail_heading({ number: order.number ?? '' }),
 				body: [
-					`Dear ${details.supplier},`,
-					`${org.name} would like to order the following, delivered to ${details.location} (${details.branch}${details.branchAddress ? `, ${details.branchAddress}` : ''}).`,
-					...(order.expectedDate ? [`We expect delivery by ${order.expectedDate}.`] : []),
+					m.purchasing_mail_dear({ supplier: details.supplier }),
+					m.purchasing_mail_intro({
+						org: org.name,
+						place: `${details.location} (${details.branch}${details.branchAddress ? `, ${details.branchAddress}` : ''})`
+					}),
+					...(order.expectedDate ? [m.purchasing_mail_expect({ date: order.expectedDate })] : []),
 					...(order.note ? [order.note] : [])
 				],
 				table: {
-					head: ['Item', 'Quantity', 'Unit price', 'Amount'],
+					head: [
+						m.purchasing_mail_col_item(),
+						m.purchasing_mail_col_quantity(),
+						m.purchasing_mail_col_unit_price(),
+						m.purchasing_mail_col_amount()
+					],
 					rows: [
 						...lines.map((l) => [
 							l.item,
@@ -350,13 +355,13 @@ export const actions: Actions = {
 							l.unitPrice == null ? '' : formatETB(l.unitPrice),
 							l.unitPrice == null ? '' : formatETB(l.value)
 						]),
-						['Total', '', '', formatETB(total)]
+						[m.purchasing_mail_total(), '', '', formatETB(total)]
 					]
 				},
 				footnote: [
 					org.tin ? `${org.name}, TIN ${org.tin}.` : org.name,
-					details.branchPhone ? `Questions: ${details.branchPhone}.` : '',
-					'Please quote the order number on your delivery note and invoice.'
+					details.branchPhone ? m.purchasing_mail_questions({ phone: details.branchPhone }) : '',
+					m.purchasing_mail_quote_number()
 				]
 					.filter(Boolean)
 					.join(' ')
@@ -364,13 +369,13 @@ export const actions: Actions = {
 			org.name
 		);
 		if (!sent) {
-			setFlash(
-				{ type: 'error', message: 'The email could not be sent. Try again, or print the order.' },
-				event.cookies
-			);
+			setFlash({ type: 'error', message: m.purchasing_mail_failed() }, event.cookies);
 			return fail(502);
 		}
-		setFlash({ type: 'success', message: `Emailed to ${details.supplierEmail}` }, event.cookies);
+		setFlash(
+			{ type: 'success', message: m.purchasing_mail_sent({ email: details.supplierEmail }) },
+			event.cookies
+		);
 		return { emailed: true };
 	},
 
@@ -380,13 +385,13 @@ export const actions: Actions = {
 		return attempt(event, async () => {
 			const order = await scopedOrder(event);
 			if (order.status !== 'ordered' && order.status !== 'partially_received') {
-				throw new StockError('Only an open order can be closed.');
+				throw new StockError(m.purchasing_po_only_open_close());
 			}
 			await db
 				.update(purchaseOrder)
 				.set({ status: 'closed', updatedBy: event.locals.user?.id })
 				.where(eq(purchaseOrder.id, order.id));
-			return 'Order closed; what is still due is no longer expected';
+			return m.purchasing_po_closed();
 		});
 	},
 
@@ -399,19 +404,18 @@ export const actions: Actions = {
 			if (order.status !== 'draft' && order.status !== 'ordered') {
 				throw new StockError(
 					order.status === 'partially_received'
-						? 'Part of this order has arrived; close it instead.'
-						: `This order is ${order.status}.`
+						? m.purchasing_po_part_arrived()
+						: m.purchasing_po_is({ status: PO_STATUS_LABELS[order.status].toLowerCase() })
 				);
 			}
 			const receipts = await orderReceipts(orgId, order.id);
-			if (receipts.length)
-				throw new StockError('A receipt is open against this order; cancel it first.');
+			if (receipts.length) throw new StockError(m.purchasing_po_receipt_open());
 			await db
 				.update(purchaseOrder)
 				.set({ status: 'cancelled', updatedBy: event.locals.user?.id })
 				.where(eq(purchaseOrder.id, order.id));
 			await closePendingFor(orgId, { kind: 'purchase_order', purchaseOrderId: order.id });
-			return 'Order cancelled';
+			return m.purchasing_po_cancelled();
 		});
 	}
 };

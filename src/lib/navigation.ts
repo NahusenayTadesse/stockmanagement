@@ -33,81 +33,265 @@ import ChartLine from '@lucide/svelte/icons/chart-line';
 import ScanSearch from '@lucide/svelte/icons/scan-search';
 import MessageSquare from '@lucide/svelte/icons/message-square';
 import type { Component } from 'svelte';
+import { m } from '$lib/paraglide/messages.js';
 import type { IconProps } from '@lucide/svelte';
 import type { NavItem } from '@nahu/admin-kit/navigation';
 
-/** The sidebar and the search palette. Each entry is shown only if `access` lets the viewer in. */
+/**
+ * The sidebar and the search palette. Each entry is shown only if `access` lets the viewer in.
+ * Titles are getters, so they are read in the viewer's language when the menu is drawn.
+ */
 export const NAVIGATION: NavItem[] = [
-	{ title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
 	{
-		title: 'Items',
+		get title() {
+			return m.nav_dashboard();
+		},
+		url: '/dashboard',
+		icon: LayoutDashboard
+	},
+	{
+		get title() {
+			return m.nav_items();
+		},
 		url: '/dashboard/items',
 		icon: Package,
 		items: [
-			{ title: 'Items', url: '/dashboard/items', icon: Package },
-			{ title: 'Labels & barcodes', url: '/dashboard/items/labels', icon: Barcode }
+			{
+				get title() {
+					return m.nav_items();
+				},
+				url: '/dashboard/items',
+				icon: Package
+			},
+			{
+				get title() {
+					return m.nav_labels();
+				},
+				url: '/dashboard/items/labels',
+				icon: Barcode
+			}
 		]
 	},
 	{
-		title: 'Sales',
+		get title() {
+			return m.nav_sales();
+		},
 		url: '/dashboard/sales',
 		icon: ShoppingBag,
 		items: [
-			{ title: 'Till (POS)', url: '/dashboard/pos', icon: Calculator },
-			{ title: 'Sales & invoices', url: '/dashboard/sales', icon: ShoppingBag },
-			{ title: 'Proformas', url: '/dashboard/sales/quotes', icon: FileText },
-			{ title: 'Till shifts', url: '/dashboard/pos/shifts', icon: Clock }
+			{
+				get title() {
+					return m.nav_pos();
+				},
+				url: '/dashboard/pos',
+				icon: Calculator
+			},
+			{
+				get title() {
+					return m.nav_sales_invoices();
+				},
+				url: '/dashboard/sales',
+				icon: ShoppingBag
+			},
+			{
+				get title() {
+					return m.nav_proformas();
+				},
+				url: '/dashboard/sales/quotes',
+				icon: FileText
+			},
+			{
+				get title() {
+					return m.nav_shifts();
+				},
+				url: '/dashboard/pos/shifts',
+				icon: Clock
+			}
 		]
 	},
 	{
-		title: 'Stock',
+		get title() {
+			return m.nav_stock();
+		},
 		url: '/dashboard/stock',
 		icon: Warehouse,
 		items: [
-			{ title: 'On hand', url: '/dashboard/stock', icon: Warehouse },
-			{ title: 'Documents', url: '/dashboard/stock/documents', icon: FileText },
-			{ title: 'Transfers in transit', url: '/dashboard/stock/transfers', icon: Route },
-			{ title: 'Requisitions', url: '/dashboard/requisitions', icon: ClipboardList },
-			{ title: 'Counts', url: '/dashboard/stock/counts', icon: ClipboardCheck },
-			{ title: 'Expiry follow-up', url: '/dashboard/stock/expiry', icon: TriangleAlert },
-			{ title: 'Lots & expiry', url: '/dashboard/lots', icon: CalendarClock }
+			{
+				get title() {
+					return m.nav_on_hand();
+				},
+				url: '/dashboard/stock',
+				icon: Warehouse
+			},
+			{
+				get title() {
+					return m.nav_documents();
+				},
+				url: '/dashboard/stock/documents',
+				icon: FileText
+			},
+			{
+				get title() {
+					return m.nav_transfers();
+				},
+				url: '/dashboard/stock/transfers',
+				icon: Route
+			},
+			{
+				get title() {
+					return m.nav_requisitions();
+				},
+				url: '/dashboard/requisitions',
+				icon: ClipboardList
+			},
+			{
+				get title() {
+					return m.nav_counts();
+				},
+				url: '/dashboard/stock/counts',
+				icon: ClipboardCheck
+			},
+			{
+				get title() {
+					return m.nav_expiry();
+				},
+				url: '/dashboard/stock/expiry',
+				icon: TriangleAlert
+			},
+			{
+				get title() {
+					return m.nav_lots();
+				},
+				url: '/dashboard/lots',
+				icon: CalendarClock
+			}
 		]
 	},
 	{
-		title: 'Purchasing',
+		get title() {
+			return m.nav_purchasing();
+		},
 		url: '/dashboard/purchasing',
 		icon: ShoppingCart,
 		items: [
-			{ title: 'Purchase orders', url: '/dashboard/purchasing', icon: ShoppingCart },
-			{ title: 'Reorder', url: '/dashboard/purchasing/reorder', icon: RefreshCw }
+			{
+				get title() {
+					return m.nav_purchase_orders();
+				},
+				url: '/dashboard/purchasing',
+				icon: ShoppingCart
+			},
+			{
+				get title() {
+					return m.nav_reorder();
+				},
+				url: '/dashboard/purchasing/reorder',
+				icon: RefreshCw
+			}
 		]
 	},
-	{ title: 'Suppliers', url: '/dashboard/suppliers', icon: Truck },
 	{
-		title: 'Customers',
+		get title() {
+			return m.nav_suppliers();
+		},
+		url: '/dashboard/suppliers',
+		icon: Truck
+	},
+	{
+		get title() {
+			return m.nav_customers();
+		},
 		url: '/dashboard/customers',
 		icon: Contact,
 		items: [
-			{ title: 'Customers', url: '/dashboard/customers', icon: Contact },
-			{ title: 'Credit & ageing', url: '/dashboard/customers/credit', icon: Clock }
+			{
+				get title() {
+					return m.nav_customers();
+				},
+				url: '/dashboard/customers',
+				icon: Contact
+			},
+			{
+				get title() {
+					return m.nav_credit();
+				},
+				url: '/dashboard/customers/credit',
+				icon: Clock
+			}
 		]
 	},
-	{ title: 'Approvals', url: '/dashboard/approvals', icon: ShieldCheck },
-	{ title: 'Transactions', url: '/dashboard/transactions', icon: Banknote },
 	{
-		title: 'Reports',
+		get title() {
+			return m.nav_approvals();
+		},
+		url: '/dashboard/approvals',
+		icon: ShieldCheck
+	},
+	{
+		get title() {
+			return m.nav_transactions();
+		},
+		url: '/dashboard/transactions',
+		icon: Banknote
+	},
+	{
+		get title() {
+			return m.nav_reports();
+		},
 		url: '/dashboard/reports',
 		icon: ChartColumn,
 		items: [
-			{ title: 'Overview', url: '/dashboard/reports', icon: ChartColumn },
-			{ title: 'Slow & dead stock', url: '/dashboard/reports/slow-moving', icon: Snail },
-			{ title: 'ABC analysis', url: '/dashboard/reports/abc', icon: ChartPie },
-			{ title: 'Stock-outs', url: '/dashboard/reports/stock-outs', icon: PackageX },
-			{ title: 'Stock trend', url: '/dashboard/reports/trend', icon: ChartLine },
-			{ title: 'Serial lookup', url: '/dashboard/reports/serials', icon: ScanSearch }
+			{
+				get title() {
+					return m.nav_reports_overview();
+				},
+				url: '/dashboard/reports',
+				icon: ChartColumn
+			},
+			{
+				get title() {
+					return m.nav_slow_moving();
+				},
+				url: '/dashboard/reports/slow-moving',
+				icon: Snail
+			},
+			{
+				get title() {
+					return m.nav_abc();
+				},
+				url: '/dashboard/reports/abc',
+				icon: ChartPie
+			},
+			{
+				get title() {
+					return m.nav_stock_outs();
+				},
+				url: '/dashboard/reports/stock-outs',
+				icon: PackageX
+			},
+			{
+				get title() {
+					return m.nav_trend();
+				},
+				url: '/dashboard/reports/trend',
+				icon: ChartLine
+			},
+			{
+				get title() {
+					return m.nav_serials();
+				},
+				url: '/dashboard/reports/serials',
+				icon: ScanSearch
+			}
 		]
 	},
-	{ title: 'Admin panel', url: '/dashboard/admin-panel', icon: Settings }
+	{
+		get title() {
+			return m.nav_admin();
+		},
+		url: '/dashboard/admin-panel',
+		icon: Settings
+	}
 ];
 
 /** The admin panel's index cards. */
@@ -118,55 +302,153 @@ export const SETTINGS_SECTIONS: {
 	items: NavItem[];
 }[] = [
 	{
-		title: 'Business',
-		description: 'Your business name, TIN, contact details and logo.',
+		get title() {
+			return m.nav_section_business();
+		},
+		get description() {
+			return m.nav_section_business_desc();
+		},
 		icon: Store,
 		items: [
-			{ title: 'Business profile', url: '/dashboard/admin-panel/business', icon: Store },
-			{ title: 'SMS', url: '/dashboard/admin-panel/sms', icon: MessageSquare }
+			{
+				get title() {
+					return m.nav_business_profile();
+				},
+				url: '/dashboard/admin-panel/business',
+				icon: Store
+			},
+			{
+				get title() {
+					return m.nav_sms();
+				},
+				url: '/dashboard/admin-panel/sms',
+				icon: MessageSquare
+			}
 		]
 	},
 	{
-		title: 'Where stock is kept',
-		description: 'Branches, and the stores, shelves and fridges inside them.',
+		get title() {
+			return m.nav_section_places();
+		},
+		get description() {
+			return m.nav_section_places_desc();
+		},
 		icon: Building2,
 		items: [
-			{ title: 'Branches', url: '/dashboard/admin-panel/branches', icon: Building2 },
-			{ title: 'Locations', url: '/dashboard/admin-panel/locations', icon: Warehouse }
+			{
+				get title() {
+					return m.nav_branches();
+				},
+				url: '/dashboard/admin-panel/branches',
+				icon: Building2
+			},
+			{
+				get title() {
+					return m.nav_locations();
+				},
+				url: '/dashboard/admin-panel/locations',
+				icon: Warehouse
+			}
 		]
 	},
 	{
-		title: 'Catalogue',
-		description: 'The lists items are described with.',
+		get title() {
+			return m.nav_section_catalogue();
+		},
+		get description() {
+			return m.nav_section_catalogue_desc();
+		},
 		icon: Package,
 		items: [
-			{ title: 'Categories', url: '/dashboard/admin-panel/categories', icon: Package },
-			{ title: 'Units of measure', url: '/dashboard/admin-panel/units', icon: Package }
+			{
+				get title() {
+					return m.nav_categories();
+				},
+				url: '/dashboard/admin-panel/categories',
+				icon: Package
+			},
+			{
+				get title() {
+					return m.nav_units();
+				},
+				url: '/dashboard/admin-panel/units',
+				icon: Package
+			}
 		]
 	},
 	{
-		title: 'Money',
-		description: 'How money moves: cash, Telebirr, bank accounts, and the fiscal devices.',
+		get title() {
+			return m.nav_section_money();
+		},
+		get description() {
+			return m.nav_section_money_desc();
+		},
 		icon: Wallet,
 		items: [
-			{ title: 'Payment methods', url: '/dashboard/admin-panel/payment-methods', icon: Wallet },
-			{ title: 'Price lists', url: '/dashboard/admin-panel/price-lists', icon: Tags },
-			{ title: 'Fiscal devices', url: '/dashboard/admin-panel/fiscal-devices', icon: Receipt }
+			{
+				get title() {
+					return m.nav_payment_methods();
+				},
+				url: '/dashboard/admin-panel/payment-methods',
+				icon: Wallet
+			},
+			{
+				get title() {
+					return m.nav_price_lists();
+				},
+				url: '/dashboard/admin-panel/price-lists',
+				icon: Tags
+			},
+			{
+				get title() {
+					return m.nav_fiscal_devices();
+				},
+				url: '/dashboard/admin-panel/fiscal-devices',
+				icon: Receipt
+			}
 		]
 	},
 	{
-		title: 'Getting started',
-		description: 'Bring in items, suppliers, customers and opening stock from a spreadsheet.',
+		get title() {
+			return m.nav_section_start();
+		},
+		get description() {
+			return m.nav_section_start_desc();
+		},
 		icon: Upload,
-		items: [{ title: 'Import', url: '/dashboard/admin-panel/import', icon: Upload }]
+		items: [
+			{
+				get title() {
+					return m.nav_import();
+				},
+				url: '/dashboard/admin-panel/import',
+				icon: Upload
+			}
+		]
 	},
 	{
-		title: 'People',
-		description: 'Who can sign in, and what each role may do.',
+		get title() {
+			return m.nav_section_people();
+		},
+		get description() {
+			return m.nav_section_people_desc();
+		},
 		icon: Users,
 		items: [
-			{ title: 'Users', url: '/dashboard/admin-panel/users', icon: Users },
-			{ title: 'Roles', url: '/dashboard/admin-panel/roles', icon: Users }
+			{
+				get title() {
+					return m.nav_users();
+				},
+				url: '/dashboard/admin-panel/users',
+				icon: Users
+			},
+			{
+				get title() {
+					return m.nav_roles();
+				},
+				url: '/dashboard/admin-panel/roles',
+				icon: Users
+			}
 		]
 	}
 ];

@@ -20,6 +20,8 @@ import {
 	user
 } from '$lib/server/db/schema';
 import { documentTotals } from '$lib/server/tax';
+import { m } from '$lib/paraglide/messages.js';
+import { getLocale } from '$lib/paraglide/runtime';
 
 export async function saleForPrint(orgId: number, documentId: number) {
 	const [row] = await db
@@ -52,7 +54,7 @@ export async function saleForPrint(orgId: number, documentId: number) {
 		.leftJoin(user, eq(user.id, stockDocument.createdBy))
 		.where(and(eq(stockDocument.id, documentId), eq(stockDocument.orgId, orgId)));
 	if (!row || (row.doc.type !== 'issue' && row.doc.type !== 'sales_return')) {
-		error(404, 'Sale not found');
+		error(404, m.sales_sale_not_found());
 	}
 
 	const [lines, totals, payments] = await Promise.all([
@@ -60,6 +62,7 @@ export async function saleForPrint(orgId: number, documentId: number) {
 			.select({
 				id: stockDocumentLine.id,
 				item: item.name,
+				itemAm: item.nameAm,
 				sku: item.sku,
 				unit: uom.symbol,
 				quantity: stockDocumentLine.quantity,
@@ -113,6 +116,8 @@ export async function saleForPrint(orgId: number, documentId: number) {
 		quoteNumber: row.quoteBuyer?.number ?? null,
 		lines: lines.map((l) => ({
 			...l,
+			// The Amharic name on an Amharic paper, where the item has one.
+			item: getLocale() === 'am' && l.itemAm ? l.itemAm : l.item,
 			...(byLine.get(l.id) ?? { net: 0, vat: 0, tot: 0, gross: 0 })
 		})),
 		totals: totals && { net: totals.net, vat: totals.vat, tot: totals.tot, gross: totals.gross },
@@ -165,10 +170,40 @@ function words(n: number): string {
 	return String(n);
 }
 
-/** "Two thousand three hundred birr and fifty cents" — invoices here state the total in words. */
-export function amountInWords(amount: number) {
+const AM_ONES = ['', 'አንድ', 'ሁለት', 'ሦስት', 'አራት', 'አምስት', 'ስድስት', 'ሰባት', 'ስምንት', 'ዘጠኝ'];
+const AM_TENS = ['', 'አሥር', 'ሃያ', 'ሠላሳ', 'አርባ', 'ሃምሳ', 'ስልሳ', 'ሰባ', 'ሰማንያ', 'ዘጠና'];
+
+/** The same in Amharic: 2,350 → "ሁለት ሺህ ሦስት መቶ ሃምሳ". */
+function amharicWords(n: number): string {
+	if (n < 10) return AM_ONES[n];
+	if (n < 20) return n === 10 ? AM_TENS[1] : `አሥራ ${AM_ONES[n - 10]}`;
+	if (n < 100) return `${AM_TENS[Math.floor(n / 10)]}${n % 10 ? ` ${AM_ONES[n % 10]}` : ''}`;
+	if (n < 1000) {
+		return `${AM_ONES[Math.floor(n / 100)]} መቶ${n % 100 ? ` ${amharicWords(n % 100)}` : ''}`;
+	}
+	for (const [size, name] of [
+		[1e9, 'ቢሊዮን'],
+		[1e6, 'ሚሊዮን'],
+		[1e3, 'ሺህ']
+	] as const) {
+		if (n >= size) {
+			const rest = n % size;
+			return `${amharicWords(Math.floor(n / size))} ${name}${rest ? ` ${amharicWords(rest)}` : ''}`;
+		}
+	}
+	return String(n);
+}
+
+/**
+ * "Two thousand three hundred birr and fifty cents" — invoices here state the total in words.
+ * In Amharic: "ሁለት ሺህ ሦስት መቶ ብር ከሃምሳ ሳንቲም".
+ */
+export function amountInWords(amount: number, locale: string = getLocale()) {
 	const birr = Math.floor(amount);
 	const cents = Math.round((amount - birr) * 100);
+	if (locale === 'am') {
+		return `${birr ? amharicWords(birr) : 'ዜሮ'} ብር${cents ? ` ከ${amharicWords(cents)} ሳንቲም` : ''}`;
+	}
 	const text = `${birr ? words(birr) : 'zero'} birr${cents ? ` and ${words(cents)} cents` : ''}`;
 	return text.charAt(0).toUpperCase() + text.slice(1);
 }

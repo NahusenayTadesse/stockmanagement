@@ -6,6 +6,7 @@
  * sale is posted and committed — a device that is off or out of paper never loses a sale; the
  * failure is recorded on it and can be retried, or the number typed in from the device by hand.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
@@ -73,7 +74,7 @@ async function orgDevice(orgId: number, deviceId: number) {
 				isNull(fiscalDevice.deletedAt)
 			)
 		);
-	if (!d) throw new FiscalError('That fiscal device does not exist.');
+	if (!d) throw new FiscalError(m.sales_fis_no_device());
 	return d;
 }
 
@@ -90,10 +91,10 @@ export async function receiptFor(orgId: number, documentId: number, device: Devi
 		.leftJoin(transactions, eq(transactions.id, stockDocument.transactionId))
 		.leftJoin(paymentMethod, eq(paymentMethod.id, transactions.paymentMethodId))
 		.where(and(eq(stockDocument.id, documentId), eq(stockDocument.orgId, orgId)));
-	if (!doc) throw new FiscalError('That document does not exist.');
+	if (!doc) throw new FiscalError(m.sales_ret_no_doc());
 	const d = doc.doc;
 	if (d.status !== 'posted' || (d.type !== 'issue' && d.type !== 'sales_return')) {
-		throw new FiscalError('Only a posted sale or customer return has a fiscal receipt.');
+		throw new FiscalError(m.sales_fis_posted_only());
 	}
 
 	const lines = await db
@@ -109,7 +110,7 @@ export async function receiptFor(orgId: number, documentId: number, device: Devi
 		.innerJoin(item, eq(item.id, stockDocumentLine.itemId))
 		.where(and(eq(stockDocumentLine.documentId, d.id), isNull(stockDocumentLine.deletedAt)));
 	if (lines.some((l) => l.unitPrice === null)) {
-		throw new FiscalError('Every line needs a sale price before a fiscal receipt can be printed.');
+		throw new FiscalError(m.sales_fis_every_line_priced());
 	}
 
 	const groups = parseTaxGroups(device.taxGroups);
@@ -121,7 +122,7 @@ export async function receiptFor(orgId: number, documentId: number, device: Devi
 					? 'tot'
 					: String(Number(l.vatRate ?? 0));
 		const g = groups[key] ?? groups['0'];
-		if (!g) throw new FiscalError(`The device has no tax group for "${key}". Set its tax groups.`);
+		if (!g) throw new FiscalError(m.sales_fis_no_tax_group({ key }));
 		return g;
 	};
 	const receiptLines = lines.map((l) => ({
@@ -186,11 +187,11 @@ export async function printFiscal(
 		.select({ branchId: stockDocument.branchId, fs: stockDocument.fiscalReceiptNumber })
 		.from(stockDocument)
 		.where(and(eq(stockDocument.id, documentId), eq(stockDocument.orgId, orgId)));
-	if (!d) return { ok: false, error: 'That document does not exist.' };
-	if (d.fs) return { ok: false, error: `This sale already has fiscal receipt ${d.fs}.` };
+	if (!d) return { ok: false, error: m.sales_ret_no_doc() };
+	if (d.fs) return { ok: false, error: m.sales_fis_already({ number: d.fs }) };
 
 	const device = deviceId ? await orgDevice(orgId, deviceId) : await deviceFor(orgId, d.branchId);
-	if (!device) return { ok: false, error: 'No fiscal device is set up for this branch.' };
+	if (!device) return { ok: false, error: m.sales_fis_none_for_branch() };
 
 	try {
 		const receipt = await receiptFor(orgId, documentId, device);
@@ -210,11 +211,9 @@ export async function printFiscal(
 		let machineCode = device.machineCode;
 		if (kind === 'datecs_tcp') {
 			if (receipt.kind === 'refund') {
-				throw new FiscalError(
-					'Print the refund on the device itself, then type its receipt number in here.'
-				);
+				throw new FiscalError(m.sales_fis_refund_on_device());
 			}
-			if (!device.host || !device.port) throw new FiscalError('Set the device address and port.');
+			if (!device.host || !device.port) throw new FiscalError(m.sales_fis_set_address());
 			const conn = await DatecsConnection.connect(device.host, device.port);
 			try {
 				const printed = await printReceipt(conn, {
@@ -238,7 +237,7 @@ export async function printFiscal(
 				conn.close();
 			}
 		} else {
-			if (!device.bridgeUrl) throw new FiscalError('Set the bridge URL.');
+			if (!device.bridgeUrl) throw new FiscalError(m.sales_fis_set_bridge());
 			const printed = await bridgePrint(device.bridgeUrl, unseal(device.bridgeToken), {
 				kind: receipt.kind,
 				reference: receipt.doc.number ?? `#${receipt.doc.id}`,
@@ -261,7 +260,7 @@ export async function printFiscal(
 		});
 		return { ok: true, fsNumber };
 	} catch (err) {
-		const error = err instanceof Error ? err.message : 'The fiscal receipt could not be printed.';
+		const error = err instanceof Error ? err.message : m.sales_fis_print_failed();
 		await markFiscal(documentId, {
 			fiscalDeviceId: device.id,
 			fiscalStatus: 'failed',
@@ -290,42 +289,50 @@ export async function recordManualFiscal(
 		.where(and(eq(stockDocument.id, documentId), eq(stockDocument.orgId, orgId)));
 }
 
-/** Asks the device how it is. Harmless: prints nothing. */
+/**
+ * Asks the device how it is. Harmless: prints nothing. `ok` says whether it answered well — the
+ * message is in the viewer's language, so nothing should be read off its wording.
+ */
 export async function checkDevice(orgId: number, deviceId: number) {
 	const device = await orgDevice(orgId, deviceId);
 	let message: string;
+	let ok = true;
 	try {
 		if ((device.kind ?? 'manual') === 'manual') {
-			message = 'Manual device: nothing to connect to.';
+			message = m.sales_fis_manual_nothing();
 		} else if (device.kind === 'datecs_tcp') {
-			if (!device.host || !device.port) throw new FiscalError('Set the device address and port.');
+			if (!device.host || !device.port) throw new FiscalError(m.sales_fis_set_address());
 			const conn = await DatecsConnection.connect(device.host, device.port);
 			try {
 				const diag = await conn.send(CMD.diagnostics);
-				message = `Connected: ${diag.data || 'device answered'}`;
+				message = m.sales_fis_connected({ info: diag.data || m.sales_fis_device_answered() });
 			} finally {
 				conn.close();
 			}
 		} else {
-			if (!device.bridgeUrl) throw new FiscalError('Set the bridge URL.');
+			if (!device.bridgeUrl) throw new FiscalError(m.sales_fis_set_bridge());
 			const s = await bridgeStatus(device.bridgeUrl, unseal(device.bridgeToken));
-			message = `${s.ok ? 'Ready' : 'Not ready'}${s.message ? `: ${s.message}` : ''}`;
+			message = `${s.ok ? m.sales_fis_ready() : m.sales_fis_not_ready()}${s.message ? `: ${s.message}` : ''}`;
+			ok = s.ok;
 		}
 	} catch (err) {
-		message = `Failed: ${err instanceof Error ? err.message : 'no answer'}`;
+		ok = false;
+		message = m.sales_fis_failed({
+			error: err instanceof Error ? err.message : m.sales_fis_no_answer()
+		});
 	}
 	await db
 		.update(fiscalDevice)
 		.set({ lastStatus: message.slice(0, 255), lastCheckedAt: new Date() })
 		.where(eq(fiscalDevice.id, device.id));
-	return message;
+	return { ok, message };
 }
 
 /** The daily Z report: closes the fiscal day on the device. */
 export async function zReport(orgId: number, deviceId: number) {
 	const device = await orgDevice(orgId, deviceId);
 	if (device.kind === 'datecs_tcp') {
-		if (!device.host || !device.port) throw new FiscalError('Set the device address and port.');
+		if (!device.host || !device.port) throw new FiscalError(m.sales_fis_set_address());
 		const conn = await DatecsConnection.connect(device.host, device.port);
 		try {
 			await conn.send(CMD.dailyReport, '0');
@@ -333,11 +340,11 @@ export async function zReport(orgId: number, deviceId: number) {
 			conn.close();
 		}
 	} else if (device.kind === 'http_bridge') {
-		if (!device.bridgeUrl) throw new FiscalError('Set the bridge URL.');
+		if (!device.bridgeUrl) throw new FiscalError(m.sales_fis_set_bridge());
 		const r = await bridgeZReport(device.bridgeUrl, unseal(device.bridgeToken));
-		if (!r.ok) throw new FiscalError(r.message ?? 'The bridge did not print the Z report.');
+		if (!r.ok) throw new FiscalError(r.message ?? m.sales_fis_bridge_no_z());
 	} else {
-		throw new FiscalError('Run the Z report on the device itself.');
+		throw new FiscalError(m.sales_fis_z_on_device());
 	}
 	await db
 		.update(fiscalDevice)

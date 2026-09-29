@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
 	import Printer from '@lucide/svelte/icons/printer';
 	import X from '@lucide/svelte/icons/x';
@@ -48,56 +49,57 @@
 </script>
 
 <svelte:head>
-	<title>Labels & barcodes</title>
+	<title>{m.stock_labels_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div>
-		<h1 class="text-2xl font-semibold">Labels & barcodes</h1>
+		<h1 class="text-2xl font-semibold">{m.stock_labels_title()}</h1>
 		<p class="text-muted-foreground">
-			Shelf labels show the name, the price the customer pays and the barcode. Item labels are
-			small, for sticking on the goods. Items with no barcode print their SKU as a Code 128 barcode,
-			which a scanner reads too.
+			{m.stock_labels_intro()}
 		</p>
 		{#if bare}
 			<p class="mt-2 text-sm">
-				{bare} item(s) have no barcode.
+				{m.stock_labels_bare({ count: bare })}
 				{#if data.canManage}
 					<a
 						class="text-primary underline-offset-4 hover:underline"
-						href={resolve('/dashboard/items')}>Give them in-store barcodes</a
-					> on the items page first, so they print scannable EAN-13 codes.
+						href={resolve('/dashboard/items')}>{m.stock_labels_give()}</a
+					>
+					{m.stock_labels_give_after()}
 				{/if}
 			</p>
 		{/if}
 	</div>
 
 	<fieldset class="flex flex-wrap gap-2">
-		<legend class="mb-2 text-sm font-medium">Label</legend>
+		<legend class="mb-2 text-sm font-medium">{m.stock_label()}</legend>
 		<label
 			class="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm has-checked:border-primary has-checked:bg-primary/5"
 		>
-			<input type="radio" name="type" value="shelf" bind:group={type} /> Shelf label (63.5 × 38.1 mm,
-			21 per A4)
+			<input type="radio" name="type" value="shelf" bind:group={type} />
+			{m.stock_shelf_label()}
 		</label>
 		<label
 			class="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm has-checked:border-primary has-checked:bg-primary/5"
 		>
-			<input type="radio" name="type" value="item" bind:group={type} /> Item label (38.1 × 21.2 mm, 65
-			per A4)
+			<input type="radio" name="type" value="item" bind:group={type} />
+			{m.stock_item_label()}
 		</label>
 	</fieldset>
 
 	<div class="grid gap-4 lg:grid-cols-2">
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Choose items</Card.Title>
-				<Card.Description
-					>Search, then give each item the number of labels it needs.</Card.Description
-				>
+				<Card.Title>{m.stock_choose_items()}</Card.Title>
+				<Card.Description>{m.stock_choose_items_hint()}</Card.Description>
 			</Card.Header>
 			<Card.Content class="flex flex-col gap-3">
-				<Input placeholder="Name or SKU" bind:value={search} aria-label="Search items" />
+				<Input
+					placeholder={m.stock_name_or_sku()}
+					bind:value={search}
+					aria-label={m.stock_search_items()}
+				/>
 				<ul class="flex max-h-96 flex-col divide-y overflow-y-auto rounded-md border">
 					{#each matches as i (i.id)}
 						<li class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
@@ -105,7 +107,7 @@
 								{i.name}{i.variantLabel ? ` — ${i.variantLabel}` : ''}
 								<span class="text-muted-foreground">· {i.sku}</span>
 								{#if !i.hasBarcode}<span class="text-xs text-muted-foreground">
-										· no barcode</span
+										{m.stock_no_barcode()}</span
 									>{/if}
 							</span>
 							<Input
@@ -113,13 +115,15 @@
 								min="0"
 								max="500"
 								class="w-20"
-								aria-label="Labels for {i.name}"
+								aria-label={m.stock_labels_for({ item: i.name })}
 								value={copies[i.id] ?? 0}
 								oninput={(e) => setCopies(i.id, e.currentTarget.value)}
 							/>
 						</li>
 					{:else}
-						<li class="px-3 py-6 text-center text-sm text-muted-foreground">No item matches.</li>
+						<li class="px-3 py-6 text-center text-sm text-muted-foreground">
+							{m.stock_no_item_matches()}
+						</li>
 					{/each}
 				</ul>
 			</Card.Content>
@@ -128,11 +132,11 @@
 		<div class="flex flex-col gap-4">
 			<Card.Root>
 				<Card.Header>
-					<Card.Title>To print</Card.Title>
+					<Card.Title>{m.stock_to_print()}</Card.Title>
 					<Card.Description>
 						{chosen.length
-							? `${total} label(s) for ${chosen.length} item(s)`
-							: 'Nothing chosen yet.'}
+							? m.stock_labels_summary({ labels: total, items: chosen.length })
+							: m.stock_nothing_chosen()}
 					</Card.Description>
 				</Card.Header>
 				{#if chosen.length}
@@ -148,7 +152,7 @@
 									<Button
 										variant="ghost"
 										size="icon"
-										aria-label="Remove {i.name}"
+										aria-label={m.stock_remove_item({ item: i.name })}
 										onclick={() => setCopies(i.id, '0')}
 									>
 										<X class="size-4" />
@@ -157,7 +161,8 @@
 							{/each}
 						</ul>
 						<div>
-							<Button href={printUrl} target="_blank"><Printer class="size-4" /> Print sheet</Button
+							<Button href={printUrl} target="_blank"
+								><Printer class="size-4" /> {m.stock_print_sheet()}</Button
 							>
 						</div>
 					</Card.Content>
@@ -166,18 +171,18 @@
 
 			<Card.Root>
 				<Card.Header>
-					<Card.Title>Or label a delivery</Card.Title>
-					<Card.Description>One label for every unit a posted receipt brought in.</Card.Description>
+					<Card.Title>{m.stock_label_delivery()}</Card.Title>
+					<Card.Description>{m.stock_label_delivery_hint()}</Card.Description>
 				</Card.Header>
 				<Card.Content class="flex flex-col gap-3">
 					<div class="flex flex-col gap-2">
-						<Label for="receipt">Receipt</Label>
+						<Label for="receipt">{m.stock_receipt()}</Label>
 						<select
 							id="receipt"
 							bind:value={receipt}
 							class="h-9 rounded-md border bg-background px-3 text-sm"
 						>
-							<option value="">— Choose a receipt —</option>
+							<option value="">{m.stock_choose_receipt()}</option>
 							{#each data.receipts as r (r.id)}
 								<option value={String(r.id)}>{r.number} · {r.docDate} · {r.supplier ?? ''}</option>
 							{/each}
@@ -185,7 +190,8 @@
 					</div>
 					<div>
 						<Button href={receipt ? receiptUrl : undefined} disabled={!receipt} target="_blank">
-							<Printer class="size-4" /> Print its labels
+							<Printer class="size-4" />
+							{m.stock_print_its_labels()}
 						</Button>
 					</div>
 				</Card.Content>

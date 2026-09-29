@@ -10,10 +10,12 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import SupplierFields from '$lib/components/SupplierFields.svelte';
 	import { supplierSchema } from '$lib/schemas/suppliers';
-	import { columns } from './columns';
+	import { columns as supplierColumns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 	let open = $state(false);
+	const columns = supplierColumns();
 
 	// svelte-ignore state_referenced_locally
 	const { form, errors, enhance, delayed, allErrors } = createForm(data.form, supplierSchema, {
@@ -28,15 +30,15 @@
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'received',
-			label: 'Received from suppliers',
+			label: m.purchasing_sup_received_tile(),
 			value: data.suppliers.reduce((sum, s) => sum + s.received, 0),
 			format: 'money',
 			group: 'suppliers',
-			hint: 'Posted receipts, at cost'
+			hint: m.purchasing_sup_received_hint()
 		},
 		{
 			key: 'paid',
-			label: 'Paid to suppliers',
+			label: m.purchasing_sup_paid_tile(),
 			value: data.suppliers.reduce((sum, s) => sum + s.paid, 0),
 			format: 'money',
 			group: 'suppliers',
@@ -44,30 +46,32 @@
 		},
 		{
 			key: 'owed',
-			label: 'Still owed',
+			label: m.purchasing_sup_owed_tile(),
 			value: data.suppliers.reduce((sum, s) => sum + Math.max(0, s.owed), 0),
 			format: 'money',
 			group: 'suppliers',
-			hint: 'Received but not yet paid',
+			hint: m.purchasing_sup_owed_hint(),
 			tone: 'warning'
 		}
 	]);
 </script>
 
 <svelte:head>
-	<title>Suppliers</title>
+	<title>{m.purchasing_suppliers_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Suppliers ({data.suppliers.length})</h1>
+			<h1 class="text-2xl font-semibold">
+				{m.purchasing_suppliers_heading({ n: data.suppliers.length })}
+			</h1>
 			<p class="text-muted-foreground">
-				Who your stock comes from. Every delivery names one, and every movement of stock keeps it.
+				{m.purchasing_suppliers_intro()}
 			</p>
 		</div>
 		{#if data.canManage}
-			<DialogComp bind:open title="Add supplier" variant="default" IconComp={Plus}>
+			<DialogComp bind:open title={m.purchasing_add_supplier()} variant="default" IconComp={Plus}>
 				<form
 					method="POST"
 					action="?/add"
@@ -78,7 +82,9 @@
 					<Errors allErrors={$allErrors} />
 					<SupplierFields {form} {errors} />
 					<Button type="submit" form="add-supplier">
-						{#if $delayed}<LoadingBtn name="Saving" />{:else}Add supplier{/if}
+						{#if $delayed}<LoadingBtn
+								name={m.common_saving()}
+							/>{:else}{m.purchasing_add_supplier()}{/if}
 					</Button>
 				</form>
 			</DialogComp>
@@ -87,9 +93,9 @@
 
 	{#if missingPhone}
 		<p class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-			{missingPhone} supplier{missingPhone === 1 ? ' was' : 's were'} carried over from before suppliers
-			were tracked and {missingPhone === 1 ? 'has' : 'have'} no phone number yet. Open
-			{missingPhone === 1 ? 'it' : 'each one'} and add it.
+			{missingPhone === 1
+				? m.purchasing_missing_phone_one()
+				: m.purchasing_missing_phone_many({ n: missingPhone })}
 		</p>
 	{/if}
 
@@ -97,5 +103,5 @@
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
 	</div>
 
-	<DataTable data={data.suppliers} {columns} fileName="Suppliers" />
+	<DataTable data={data.suppliers} {columns} fileName={m.purchasing_suppliers_title()} />
 </div>

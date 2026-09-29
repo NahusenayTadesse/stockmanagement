@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
 	import { add, edit } from './schema';
 
@@ -9,19 +10,19 @@
 	{data}
 	schemas={{ add, edit }}
 	config={{
-		entity: 'Branch',
-		plural: 'Branches',
+		entity: m.admin_branch_entity(),
+		plural: m.admin_branch_plural(),
 		fields: [
-			{ name: 'name', label: 'Name', type: 'text' },
+			{ name: 'name', label: m.common_name(), type: 'text' },
 			{
 				name: 'code',
-				label: 'Code',
+				label: m.admin_branch_code(),
 				type: 'text',
-				placeholder: 'e.g. ADD — starts every document number from this branch'
+				placeholder: m.admin_branch_code_placeholder()
 			},
-			{ name: 'phone', label: 'Phone', type: 'text', required: false },
-			{ name: 'address', label: 'Address', type: 'text', required: false },
-			{ name: 'status', label: 'Status', type: 'boolean' }
+			{ name: 'phone', label: m.common_phone(), type: 'text', required: false },
+			{ name: 'address', label: m.common_address(), type: 'text', required: false },
+			{ name: 'status', label: m.common_status(), type: 'boolean' }
 		]
 	}}
 />

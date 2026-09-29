@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -25,7 +26,7 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
-	import { ADJUSTMENT_REASONS, DOCUMENT_LABELS } from '$lib/format';
+	import { ADJUSTMENT_REASONS, DOCUMENT_LABELS, DOCUMENT_STATUS_LABELS } from '$lib/format';
 	import { LANDED_COST_KINDS } from '$lib/constants';
 	import { documentHeader, lineAdd, lineEdit } from '$lib/schemas/stock';
 	import DocumentHeaderFields from '../DocumentHeaderFields.svelte';
@@ -59,19 +60,19 @@
 
 	const item: LookupField = {
 		name: 'itemId',
-		label: 'Item',
+		label: m.common_item(),
 		type: 'reference',
 		options: 'items',
 		display: 'item'
 	};
 	const quantity = $derived<LookupField>({
 		name: 'quantity',
-		label: type === 'adjustment' ? 'Quantity (+ adds, − removes)' : 'Quantity',
+		label: type === 'adjustment' ? m.stock_line_qty_adjust() : m.common_quantity(),
 		type: 'number'
 	});
 	const unit: LookupField = {
 		name: 'uomId',
-		label: 'Unit',
+		label: m.common_unit(),
 		type: 'reference',
 		options: 'units',
 		display: 'unit',
@@ -80,42 +81,44 @@
 	};
 	const unitCost = $derived<LookupField>({
 		name: 'unitCost',
-		label: doc.currency ? 'Unit cost in birr (per unit above)' : 'Unit cost (per unit above)',
+		label: doc.currency ? m.stock_line_unit_cost_birr() : m.stock_line_unit_cost(),
 		type: 'money',
 		required: false,
-		placeholder: doc.currency ? `Empty: the ${doc.currency} price × rate` : undefined
+		placeholder: doc.currency
+			? m.stock_line_unit_cost_placeholder({ currency: doc.currency })
+			: undefined
 	});
 	/** Receipts bought in another currency: the price as invoiced. */
 	const foreignUnitCost = $derived<LookupField>({
 		name: 'foreignUnitCost',
-		label: `Price in ${doc.currency} (per unit above)`,
+		label: m.stock_line_foreign_price({ currency: doc.currency ?? '' }),
 		type: 'number',
 		required: false
 	});
 	/** After posting: each line's share of freight, duty and the rest. */
 	const landedShare: LookupField = {
 		name: 'landedCost',
-		label: 'Landed cost',
+		label: m.stock_landed_cost(),
 		type: 'money',
 		required: false,
 		inForm: false
 	};
 	const lotNumber: LookupField = {
 		name: 'lotNumber',
-		label: 'Lot / batch no.',
+		label: m.stock_line_lot_number(),
 		type: 'text',
 		required: false,
-		placeholder: 'As printed on the pack'
+		placeholder: m.stock_line_lot_placeholder()
 	};
 	const expiryDate: LookupField = {
 		name: 'expiryDate',
-		label: 'Expiry',
+		label: m.stock_col_expiry(),
 		type: 'date',
 		required: false
 	};
 	const lotPick: LookupField = {
 		name: 'lotId',
-		label: 'From lot',
+		label: m.stock_line_from_lot(),
 		type: 'reference',
 		options: 'lots',
 		display: 'lot',
@@ -123,15 +126,15 @@
 	};
 	const unitPrice: LookupField = {
 		name: 'unitPrice',
-		label: 'Sale price (per unit above)',
+		label: m.stock_line_sale_price(),
 		type: 'money',
 		required: false,
-		placeholder: 'Empty: the item’s list price'
+		placeholder: m.stock_line_sale_price_placeholder()
 	};
 	const sells = $derived(Boolean(data.organization?.sellsToCustomers));
 	const serials: LookupField = {
 		name: 'serials',
-		label: 'Serial numbers (one per line)',
+		label: m.stock_line_serials(),
 		type: 'textarea',
 		rows: 3,
 		required: false,
@@ -161,37 +164,37 @@
 	const lineOptions = $derived({ itemId: data.items, uomId: data.units, lotId: data.lots });
 
 	const KIND_NAMES: Record<(typeof LANDED_COST_KINDS)[number], string> = {
-		freight: 'Freight',
-		insurance: 'Insurance',
-		duty: 'Customs duty',
-		excise: 'Excise tax',
-		surtax: 'Surtax',
-		clearing: 'Clearing agent',
-		transport: 'Transport',
-		other: 'Other'
+		freight: m.stock_lc_freight(),
+		insurance: m.stock_lc_insurance(),
+		duty: m.stock_lc_duty(),
+		excise: m.stock_lc_excise(),
+		surtax: m.stock_lc_surtax(),
+		clearing: m.stock_lc_clearing(),
+		transport: m.stock_lc_transport(),
+		other: m.stock_lc_other()
 	};
 	const costFields: LookupField[] = [
 		{
 			name: 'kind',
-			label: 'Cost',
+			label: m.stock_lc_cost(),
 			type: 'select',
 			choices: LANDED_COST_KINDS.map((k) => ({ value: k, name: KIND_NAMES[k] }))
 		},
-		{ name: 'description', label: 'Description', type: 'text', required: false },
-		{ name: 'amount', label: 'Amount (birr)', type: 'money' },
+		{ name: 'description', label: m.stock_lc_description(), type: 'text', required: false },
+		{ name: 'amount', label: m.stock_lc_amount(), type: 'money' },
 		{
 			name: 'method',
-			label: 'Shared by',
+			label: m.stock_lc_shared_by(),
 			type: 'select',
 			choices: [
-				{ value: 'value', name: 'Value (quantity × cost)' },
-				{ value: 'quantity', name: 'Quantity' },
-				{ value: 'weight', name: 'Weight (item weights)' }
+				{ value: 'value', name: m.stock_lc_by_value() },
+				{ value: 'quantity', name: m.common_quantity() },
+				{ value: 'weight', name: m.stock_lc_by_weight() }
 			]
 		},
 		{
 			name: 'supplierId',
-			label: 'Billed by (optional)',
+			label: m.stock_lc_billed_by(),
 			type: 'reference',
 			options: 'suppliers',
 			display: 'supplier',
@@ -204,85 +207,91 @@
 
 	const details = $derived(
 		[
-			{ name: 'Date', value: formatEthiopianDate(new Date(doc.docDate)) },
-			{ name: 'Branch', value: data.names.branch },
+			{ name: m.common_date(), value: formatEthiopianDate(new Date(doc.docDate)) },
+			{ name: m.common_branch(), value: data.names.branch },
 			doc.fromLocationId && {
-				name: type === 'adjustment' ? 'Location' : 'From',
+				name: type === 'adjustment' ? m.common_location() : m.stock_col_from(),
 				value: data.names.from
 			},
 			doc.toLocationId && {
-				name: type === 'receipt' ? 'Received into' : 'To',
+				name: type === 'receipt' ? m.stock_received_into() : m.stock_col_to(),
 				value: data.names.to
 			},
 			data.names.supplier && {
-				name: 'Supplier',
+				name: m.stock_supplier(),
 				value: `${data.names.supplier}${data.names.supplierPhone ? ` · ${data.names.supplierPhone}` : ''}`,
 				href: resolve('/dashboard/suppliers/[id]', { id: String(doc.supplierId) })
 			},
 			doc.purchaseOrderId && {
-				name: 'Against order',
-				value: data.names.purchaseOrder ?? `Draft #${doc.purchaseOrderId}`,
+				name: m.stock_against_order(),
+				value: data.names.purchaseOrder ?? m.stock_draft_number({ id: doc.purchaseOrderId }),
 				href: resolve('/dashboard/purchasing/[id]', { id: String(doc.purchaseOrderId) })
 			},
 			data.names.customer && {
-				name: 'Customer',
+				name: m.stock_customer(),
 				value: `${data.names.customer}${data.names.customerPhone ? ` · ${data.names.customerPhone}` : ''}`,
 				href: resolve('/dashboard/customers/[id]', { id: String(doc.customerId) })
 			},
 			data.original && {
-				name: type === 'sales_return' ? 'Returns sale' : 'Returns delivery',
+				name: type === 'sales_return' ? m.stock_returns_sale() : m.stock_returns_delivery(),
 				value: data.original.number ?? `#${data.original.id}`,
 				href: resolve('/dashboard/stock/documents/[id]', { id: String(data.original.id) })
 			},
 			doc.party && {
-				name: type === 'sales_return' ? 'Returned by' : 'Issued to',
+				name: type === 'sales_return' ? m.stock_returned_by() : m.stock_issued_to(),
 				value: doc.party
 			},
 			data.totals &&
 				data.totals.gross > 0 && {
-					name: 'Value',
+					name: m.stock_col_value(),
 					value:
 						(data.totals.vat || data.totals.tot
 							? `${formatETB(data.totals.net)}${data.totals.vat ? ` + VAT ${formatETB(data.totals.vat)}` : ''}${data.totals.tot ? ` + TOT ${formatETB(data.totals.tot)}` : ''} = ${formatETB(data.totals.gross)}`
 							: formatETB(data.totals.gross)) +
-						(isDraft && (type === 'issue' || type === 'receipt') ? ' (VAT fixed on posting)' : '') +
-						(data.unpriced ? ` · ${data.unpriced} line(s) unpriced` : '')
+						(isDraft && (type === 'issue' || type === 'receipt') ? ` ${m.stock_vat_fixed()}` : '') +
+						(data.unpriced ? ` · ${m.stock_lines_unpriced({ count: data.unpriced })}` : '')
 				},
 			doc.currency && {
-				name: 'Currency',
-				value: `${doc.currency} at ${doc.exchangeRate} birr`
+				name: m.stock_currency(),
+				value: m.stock_currency_at({ currency: doc.currency, rate: String(doc.exchangeRate) })
 			},
 			data.landed &&
 				data.landed.total > 0 && {
-					name: 'Landed costs',
-					value: `${formatETB(data.landed.total)} (freight, duty… — added to what the stock cost)`
+					name: m.stock_landed_costs(),
+					value: m.stock_landed_total({ amount: formatETB(data.landed.total) })
 				},
 			(doc.driverName || doc.vehiclePlate) && {
-				name: 'Carried by',
+				name: m.stock_carried_by(),
 				value: [doc.driverName, doc.vehiclePlate].filter(Boolean).join(' · ')
 			},
 			doc.receivedAt && {
-				name: 'Received',
-				value: `${ethiopianDateTime(doc.receivedAt)} by ${data.names.receivedBy ?? '—'}`
+				name: m.stock_received(),
+				value: m.stock_at_by({
+					when: ethiopianDateTime(doc.receivedAt),
+					who: data.names.receivedBy ?? '—'
+				})
 			},
-			doc.reference && { name: 'Reference', value: doc.reference },
+			doc.reference && { name: m.common_reference(), value: doc.reference },
 			doc.reason && {
-				name: 'Reason',
+				name: m.stock_reason(),
 				value: ADJUSTMENT_REASONS.find((r) => r.value === doc.reason)?.name ?? doc.reason
 			},
-			doc.note && { name: 'Note', value: doc.note },
-			{ name: 'Prepared by', value: data.names.createdBy ?? '—' },
+			doc.note && { name: m.common_note(), value: doc.note },
+			{ name: m.stock_prepared_by(), value: data.names.createdBy ?? '—' },
 			doc.postedAt && {
-				name: 'Posted',
-				value: `${ethiopianDateTime(doc.postedAt)} by ${data.names.postedBy ?? '—'}`,
-				...(doc.status === 'in_transit' || doc.receivedAt ? { name: 'Dispatched' } : {})
+				name:
+					doc.status === 'in_transit' || doc.receivedAt ? m.stock_dispatched() : m.stock_posted(),
+				value: m.stock_at_by({
+					when: ethiopianDateTime(doc.postedAt),
+					who: data.names.postedBy ?? '—'
+				})
 			}
 		].filter(Boolean) as { name: string; value: string | null; href?: string }[]
 	);
 </script>
 
 <svelte:head>
-	<title>{doc.number ?? `Draft ${DOCUMENT_LABELS[type].toLowerCase()}`}</title>
+	<title>{doc.number ?? m.stock_draft_title({ type: DOCUMENT_LABELS[type].toLowerCase() })}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
@@ -290,7 +299,7 @@
 		<div class="flex flex-col gap-1">
 			<p class="text-sm text-muted-foreground">{DOCUMENT_LABELS[type]}</p>
 			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{doc.number ?? `Draft #${doc.id}`}
+				{doc.number ?? m.stock_draft_number({ id: doc.id })}
 				<Badge
 					variant={doc.status === 'posted'
 						? 'default'
@@ -298,14 +307,19 @@
 							? 'destructive'
 							: 'secondary'}
 				>
-					{doc.status === 'in_transit' ? 'in transit' : doc.status}
+					{DOCUMENT_STATUS_LABELS[doc.status]}
 				</Badge>
 			</h1>
 		</div>
 
 		<div class="flex flex-wrap gap-2">
 			{#if isDraft && data.canDraft}
-				<DialogComp bind:open={editOpen} title="Edit document" variant="outline" IconComp={Pencil}>
+				<DialogComp
+					bind:open={editOpen}
+					title={m.stock_edit_document()}
+					variant="outline"
+					IconComp={Pencil}
+				>
 					<form
 						method="POST"
 						action="?/editHeader"
@@ -326,7 +340,9 @@
 							lockType
 						/>
 						<Button type="submit" form="header">
-							{#if $headerDelayed}<LoadingBtn name="Saving" />{:else}Save{/if}
+							{#if $headerDelayed}<LoadingBtn
+									name={m.common_saving()}
+								/>{:else}{m.common_save()}{/if}
 						</Button>
 					</form>
 				</DialogComp>
@@ -334,7 +350,7 @@
 
 			{#if isDraft && data.canPost && !data.approval?.pending}
 				<form method="POST" action="?/cancel" use:enhance>
-					<Button type="submit" variant="outline"><X /> Cancel draft</Button>
+					<Button type="submit" variant="outline"><X /> {m.stock_cancel_draft()}</Button>
 				</form>
 
 				<AlertDialog.Root>
@@ -342,19 +358,22 @@
 						class={buttonVariants({ variant: 'default' })}
 						disabled={!data.lines.rows.length}
 					>
-						<Check /> Post
+						<Check />
+						{m.stock_post()}
 					</AlertDialog.Trigger>
 					<AlertDialog.Content>
 						<AlertDialog.Header>
-							<AlertDialog.Title>Post this {DOCUMENT_LABELS[type].toLowerCase()}?</AlertDialog.Title
+							<AlertDialog.Title
+								>{m.stock_post_confirm_title({
+									type: DOCUMENT_LABELS[type].toLowerCase()
+								})}</AlertDialog.Title
 							>
 							<AlertDialog.Description>
-								Stock changes now, and the document gets its number. A posted document cannot be
-								edited; a mistake is corrected with another document.
+								{m.stock_post_confirm_body()}
 							</AlertDialog.Description>
 						</AlertDialog.Header>
 						<AlertDialog.Footer>
-							<AlertDialog.Cancel>Not yet</AlertDialog.Cancel>
+							<AlertDialog.Cancel>{m.stock_not_yet()}</AlertDialog.Cancel>
 							<form
 								method="POST"
 								action="?/post"
@@ -367,7 +386,7 @@
 								}}
 							>
 								<AlertDialog.Action type="submit" disabled={posting}>
-									{#if posting}<LoadingBtn name="Posting" />{:else}Post{/if}
+									{#if posting}<LoadingBtn name={m.stock_posting()} />{:else}{m.stock_post()}{/if}
 								</AlertDialog.Action>
 							</form>
 						</AlertDialog.Footer>
@@ -379,7 +398,7 @@
 				<form method="POST" action="?/startReturn" use:enhance>
 					<Button type="submit" variant="outline">
 						<Undo2 />
-						{type === 'issue' ? 'Customer return' : 'Return to supplier'}
+						{type === 'issue' ? m.common_doc_sales_return() : m.common_doc_purchase_return()}
 					</Button>
 				</form>
 			{/if}
@@ -387,7 +406,7 @@
 			{#if doc.status === 'posted' || doc.status === 'in_transit'}
 				<Button href="/dashboard/stock/documents/{doc.id}/print" target="_blank" variant="outline">
 					<Printer />
-					{doc.status === 'in_transit' ? 'Print dispatch note' : 'Print'}
+					{doc.status === 'in_transit' ? m.stock_print_dispatch_note() : m.common_print()}
 				</Button>
 			{/if}
 		</div>
@@ -405,19 +424,21 @@
 					: ''}"
 		>
 			<p>
-				<strong>{data.names.customer}</strong> owes {formatETB(c.balance)} now{c.overdue > 0
-					? `, ${formatETB(c.overdue)} of it overdue`
-					: ''}. Unless paid, this sale takes it to <strong>{formatETB(after)}</strong>.
+				<strong>{data.names.customer}</strong>
+				{m.stock_credit_owes({ balance: formatETB(c.balance) })}{c.overdue > 0
+					? m.stock_credit_overdue_part({ overdue: formatETB(c.overdue) })
+					: ''}. {m.stock_credit_takes_to()}
+				<strong>{formatETB(after)}</strong>{m.stock_credit_takes_to_after()}
 			</p>
 			<p class="text-muted-foreground">
 				{#if c.creditLimit === null}
-					No credit limit set.
+					{m.stock_credit_no_limit()}
 				{:else if c.creditLimit === 0}
-					Cash only: record the payment below before posting.
+					{m.stock_credit_cash_only()}
 				{:else}
-					Credit limit {formatETB(c.creditLimit)}{after > c.creditLimit
-						? ' — this sale goes over it. Record a payment first, or have someone allowed to exceed limits post it.'
-						: `; ${formatETB(c.creditLimit - after)} would remain.`}
+					{m.stock_credit_limit({ limit: formatETB(c.creditLimit) })}{after > c.creditLimit
+						? m.stock_credit_over()
+						: m.stock_credit_remain({ amount: formatETB(c.creditLimit - after) })}
 				{/if}
 			</p>
 		</div>
@@ -431,24 +452,27 @@
 			<p class="flex items-start gap-2">
 				<ShieldCheck class="mt-0.5 size-4 shrink-0" />
 				<span>
-					<strong>Waiting for approval</strong> — asked by {p.requestedBy ?? 'someone'}
-					{ethiopianDateTime(p.requestedAt)}: {p.reason}. It is posted when someone with the right
-					to approve does so on the
-					<a class="underline" href={resolve('/dashboard/approvals')}>Approvals</a> page.
+					<strong>{m.stock_waiting_approval()}</strong> — {m.stock_approval_asked_by({
+						who: p.requestedBy ?? m.stock_someone()
+					})}
+					{ethiopianDateTime(p.requestedAt)}: {p.reason}. {m.stock_approval_posted_when()}
+					<a class="underline" href={resolve('/dashboard/approvals')}>{m.nav_approvals()}</a>
+					{m.stock_approval_page_suffix()}
 				</span>
 			</p>
 			{#if data.canDraft}
 				<form method="POST" action="?/withdraw" use:enhance>
-					<Button type="submit" size="sm" variant="outline">Withdraw to change it</Button>
+					<Button type="submit" size="sm" variant="outline">{m.stock_withdraw_to_change()}</Button>
 				</form>
 			{/if}
 		</div>
 	{:else if data.approval?.last?.status === 'rejected'}
 		{@const l = data.approval.last}
 		<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-			<strong>Not approved</strong> by {l.decidedBy ?? 'someone'}{l.decisionNote
+			<strong>{m.stock_not_approved()}</strong>
+			{m.stock_not_approved_by({ who: l.decidedBy ?? m.stock_someone() })}{l.decisionNote
 				? `: ${l.decisionNote}`
-				: ''}. Change it and post again, or cancel it.
+				: ''}. {m.stock_change_and_post_again()}
 		</div>
 	{/if}
 
@@ -458,14 +482,13 @@
 			<Card.Header>
 				<Card.Title class="flex items-center gap-2">
 					<Truck class="size-5" />
-					{doc.status === 'in_transit' ? 'On the way' : 'What arrived'}
+					{doc.status === 'in_transit' ? m.stock_on_the_way() : m.stock_what_arrived()}
 				</Card.Title>
 				<Card.Description>
 					{#if doc.status === 'in_transit'}
-						Sent to {data.names.to}. It is in transit until {data.names.to} says what arrived; anything
-						that did not is written off as lost in transit.
+						{m.stock_transit_sent_to({ to: data.names.to ?? '' })}
 					{:else}
-						Sent and received quantities. Differences were written off as lost in transit.
+						{m.stock_transit_received_body()}
 					{/if}
 				</Card.Description>
 			</Card.Header>
@@ -482,10 +505,10 @@
 						<table class="w-full text-sm">
 							<thead class="bg-muted/50 text-left">
 								<tr>
-									<th class="px-3 py-2">Item</th>
-									<th class="px-3 py-2 text-right">Sent</th>
-									<th class="px-3 py-2 text-right">Arrived</th>
-									<th class="px-3 py-2 text-right">Missing</th>
+									<th class="px-3 py-2">{m.common_item()}</th>
+									<th class="px-3 py-2 text-right">{m.stock_sent()}</th>
+									<th class="px-3 py-2 text-right">{m.stock_arrived()}</th>
+									<th class="px-3 py-2 text-right">{m.stock_missing()}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -499,7 +522,7 @@
 												<textarea
 													name="serials_{l.id}"
 													rows={Math.min(6, (l.serials ?? '').split('\n').length)}
-													aria-label="Serials of {l.item} that arrived"
+													aria-label={m.stock_serials_arrived_aria({ item: l.item })}
 													class="w-48 rounded-md border bg-background px-2 py-1 font-mono text-xs"
 													>{l.serials}</textarea
 												>
@@ -512,7 +535,7 @@
 													step="any"
 													value={l.sent}
 													oninput={(e) => (arrived[l.id] = Number(e.currentTarget.value))}
-													aria-label="Quantity of {l.item} that arrived"
+													aria-label={m.stock_qty_arrived_aria({ item: l.item })}
 													class="h-9 w-24 rounded-md border bg-background px-2 text-right"
 												/>
 												<span class="ml-1 text-xs text-muted-foreground">{l.unit}</span>
@@ -541,8 +564,8 @@
 						</table>
 					</div>
 					{#if t.canReceive}
-						<Input name="note" placeholder="Note on the delivery (optional)" class="max-w-xl" />
-						<Button type="submit" class="self-start"><Check /> Receive</Button>
+						<Input name="note" placeholder={m.stock_delivery_note_placeholder()} class="max-w-xl" />
+						<Button type="submit" class="self-start"><Check /> {m.stock_receive()}</Button>
 					{/if}
 				</form>
 			</Card.Content>
@@ -554,7 +577,7 @@
 			class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm"
 		>
 			<CircleAlert class="mt-0.5 size-4 shrink-0 text-destructive" />
-			<p><strong>Not posted.</strong> {stockError} Nothing was changed.</p>
+			<p><strong>{m.stock_not_posted()}</strong> {stockError} {m.stock_nothing_changed()}</p>
 		</div>
 	{/if}
 
@@ -569,18 +592,22 @@
 		{@const f = data.fiscal}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Fiscal receipt & e-invoice</Card.Title>
+				<Card.Title>{m.stock_fiscal_title()}</Card.Title>
 			</Card.Header>
 			<Card.Content class="grid gap-6 md:grid-cols-2">
 				<div class="flex flex-col gap-2 text-sm">
 					<p class="font-medium">
-						Fiscal receipt
+						{m.stock_fiscal_receipt()}
 						{#if f.fsNumber}
-							<Badge>{f.fiscalStatus === 'manual' ? 'entered' : 'printed'}</Badge>
+							<Badge
+								>{f.fiscalStatus === 'manual'
+									? m.stock_fiscal_entered()
+									: m.stock_fiscal_printed()}</Badge
+							>
 						{:else if f.fiscalStatus === 'failed'}
-							<Badge variant="destructive">failed</Badge>
+							<Badge variant="destructive">{m.stock_fiscal_failed()}</Badge>
 						{:else if f.fiscalStatus === 'pending'}
-							<Badge variant="secondary">waiting for the FS No.</Badge>
+							<Badge variant="secondary">{m.stock_fiscal_waiting()}</Badge>
 						{/if}
 					</p>
 					{#if f.fsNumber}
@@ -591,7 +618,7 @@
 						{#if f.fiscalError}<p class="text-destructive">{f.fiscalError}</p>{/if}
 						{#if !f.device}
 							<p class="text-muted-foreground">
-								No fiscal device is set up for this branch (Admin panel → Fiscal devices).
+								{m.stock_fiscal_no_device()}
 							</p>
 						{/if}
 						{#if data.canPost}
@@ -600,7 +627,9 @@
 									<form method="POST" action="?/printFiscal" use:enhance>
 										<Button type="submit" size="sm"
 											><Printer />
-											{f.fiscalStatus === 'failed' ? 'Try again' : 'Print on'}
+											{f.fiscalStatus === 'failed'
+												? m.stock_fiscal_try_again()
+												: m.stock_fiscal_print_on()}
 											{f.device.name}</Button
 										>
 									</form>
@@ -618,7 +647,9 @@
 										value={f.device?.machineCode ?? ''}
 										class="h-9 w-36"
 									/>
-									<Button type="submit" size="sm" variant="outline">Record</Button>
+									<Button type="submit" size="sm" variant="outline"
+										>{m.stock_fiscal_record()}</Button
+									>
 								</form>
 							</div>
 						{/if}
@@ -627,19 +658,29 @@
 
 				<div class="flex flex-col gap-2 text-sm">
 					<p class="font-medium">
-						E-invoice
+						{m.stock_einvoice()}
 						{#if f.einvoiceStatus === 'accepted'}
-							<Badge>accepted</Badge>
+							<Badge>{m.stock_einvoice_accepted()}</Badge>
 						{:else if f.einvoiceStatus}
-							<Badge variant="destructive">{f.einvoiceStatus}</Badge>
+							<Badge variant="destructive"
+								>{f.einvoiceStatus === 'submitted'
+									? m.stock_einvoice_st_submitted()
+									: f.einvoiceStatus === 'rejected'
+										? m.stock_einvoice_st_rejected()
+										: f.einvoiceStatus === 'cancelled'
+											? m.stock_einvoice_st_cancelled()
+											: m.stock_einvoice_st_failed()}</Badge
+							>
 						{/if}
-						{#if f.einvoiceMode === 'sandbox'}<Badge variant="outline">sandbox</Badge>{/if}
+						{#if f.einvoiceMode === 'sandbox'}<Badge variant="outline"
+								>{m.stock_einvoice_sandbox()}</Badge
+							>{/if}
 					</p>
 					{#if f.irn}
 						<div class="flex items-start gap-3">
 							{#if f.qr}<img
 									src={f.qr}
-									alt="E-invoice QR code"
+									alt={m.stock_einvoice_qr_alt()}
 									class="size-28 rounded border"
 								/>{/if}
 							<p class="break-all">IRN <strong>{f.irn}</strong></p>
@@ -647,11 +688,13 @@
 					{:else}
 						{#if f.einvoiceError}<p class="text-destructive">{f.einvoiceError}</p>{/if}
 						{#if !f.einvoiceMode}
-							<p class="text-muted-foreground">E-invoicing is off (Business profile).</p>
+							<p class="text-muted-foreground">{m.stock_einvoice_off()}</p>
 						{:else if data.canPost}
 							<form method="POST" action="?/submitEinvoice" use:enhance>
 								<Button type="submit" size="sm" variant="outline"
-									>{f.einvoiceStatus ? 'Send again' : 'Send e-invoice'}</Button
+									>{f.einvoiceStatus
+										? m.stock_einvoice_send_again()
+										: m.stock_einvoice_send()}</Button
 								>
 							</form>
 						{/if}
@@ -662,18 +705,15 @@
 	{/if}
 
 	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">Lines</h2>
+		<h2 class="text-xl font-semibold">{m.stock_lines()}</h2>
 		{#if isDraft && type !== 'receipt'}
 			<p class="text-sm text-muted-foreground">
-				Leave "From lot" empty to take the lot that expires first. Expired, quarantined and recalled
-				lots are never issued{type === 'transfer' ? ', except into a quarantine location' : ''}.
+				{type === 'transfer' ? m.stock_lines_fefo_hint_transfer() : m.stock_lines_fefo_hint()}
 			</p>
 		{/if}
 		{#if isReturnDoc}
 			<p class="text-sm text-muted-foreground">
-				{type === 'sales_return'
-					? 'Everything still returnable on the sale, back into the lot it left from. Lower each line to what the customer brought back; 0 drops it.'
-					: 'Everything still returnable on the delivery, from the lot it came in as — expired and quarantined stock included. Lower each line to what is going back; 0 drops it.'}
+				{type === 'sales_return' ? m.stock_return_hint_sale() : m.stock_return_hint_purchase()}
 			</p>
 			<form
 				method="POST"
@@ -687,12 +727,14 @@
 					<table class="w-full text-sm">
 						<thead class="bg-muted/50 text-left">
 							<tr>
-								<th class="px-3 py-2">Item</th>
-								<th class="px-3 py-2">Lot</th>
-								<th class="px-3 py-2 text-right">Returning</th>
-								<th class="px-3 py-2 text-right">Still returnable</th>
-								<th class="px-3 py-2 text-right">{type === 'sales_return' ? 'Price' : 'Cost'}</th>
-								<th class="px-3 py-2 text-right">Value</th>
+								<th class="px-3 py-2">{m.common_item()}</th>
+								<th class="px-3 py-2">{m.stock_col_lot()}</th>
+								<th class="px-3 py-2 text-right">{m.stock_returning()}</th>
+								<th class="px-3 py-2 text-right">{m.stock_still_returnable()}</th>
+								<th class="px-3 py-2 text-right"
+									>{type === 'sales_return' ? m.common_price() : m.stock_cost()}</th
+								>
+								<th class="px-3 py-2 text-right">{m.stock_col_value()}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -706,7 +748,7 @@
 												<textarea
 													name="serials_{r.id}"
 													rows={Math.min(6, r.serials.split('\n').length)}
-													aria-label="Serials of {r.item} coming back"
+													aria-label={m.stock_serials_back_aria({ item: r.item })}
 													class="w-48 rounded-md border bg-background px-2 py-1 font-mono text-xs"
 													>{r.serials}</textarea
 												>
@@ -718,7 +760,7 @@
 													max={r.left}
 													step="any"
 													value={r.quantity}
-													aria-label="Quantity of {r.item} returning"
+													aria-label={m.stock_qty_back_aria({ item: r.item })}
 													class="h-9 w-24 rounded-md border bg-background px-2 text-right"
 												/>
 											{/if}
@@ -734,7 +776,7 @@
 							{:else}
 								<tr
 									><td colspan="6" class="px-3 py-6 text-center text-muted-foreground"
-										>No lines left.</td
+										>{m.stock_no_lines_left()}</td
 									></tr
 								>
 							{/each}
@@ -742,12 +784,14 @@
 					</table>
 				</div>
 				{#if isDraft && data.canDraft && data.returnSheet.length}
-					<Button type="submit" class="self-start" variant="outline">Save quantities</Button>
+					<Button type="submit" class="self-start" variant="outline"
+						>{m.stock_save_quantities()}</Button
+					>
 				{/if}
 			</form>
 		{:else}
 			<LookupSection
-				config={{ entity: 'Line', plural: 'Lines', fields: lineFields }}
+				config={{ entity: m.stock_line(), plural: m.stock_lines(), fields: lineFields }}
 				rows={data.lines.rows}
 				addForm={data.lines.addForm}
 				editForm={data.lines.editForm}
@@ -762,14 +806,16 @@
 
 	{#if data.landed && (isDraft || data.landed.rows.length)}
 		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">Landed costs</h2>
+			<h2 class="text-xl font-semibold">{m.stock_landed_costs()}</h2>
 			<p class="text-sm text-muted-foreground">
-				Freight, insurance, customs duty, the clearing agent… in birr. When the receipt is posted
-				they are shared over its lines and added to what the stock cost. They are not owed to the
-				supplier of the goods.
+				{m.stock_landed_hint()}
 			</p>
 			<LookupSection
-				config={{ entity: 'Landed cost', plural: 'Landed costs', fields: costFields }}
+				config={{
+					entity: m.stock_landed_cost(),
+					plural: m.stock_landed_costs(),
+					fields: costFields
+				}}
 				rows={data.landed.rows}
 				addForm={data.landed.addForm}
 				editForm={data.landed.editForm}
@@ -783,16 +829,18 @@
 
 	{#if data.returnsMade.length}
 		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">Returns</h2>
+			<h2 class="text-xl font-semibold">{m.stock_returns()}</h2>
 			<ul class="flex flex-col divide-y rounded-md border">
 				{#each data.returnsMade as r (r.id)}
 					<li class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
 						<a
 							class="font-medium underline-offset-4 hover:underline"
 							href={resolve('/dashboard/stock/documents/[id]', { id: String(r.id) })}
-							>{r.number ?? `Draft return #${r.id}`}</a
+							>{r.number ?? m.stock_draft_return({ id: r.id })}</a
 						>
-						<Badge variant={r.status === 'posted' ? 'default' : 'secondary'}>{r.status}</Badge>
+						<Badge variant={r.status === 'posted' ? 'default' : 'secondary'}
+							>{DOCUMENT_STATUS_LABELS[r.status]}</Badge
+						>
 					</li>
 				{/each}
 			</ul>
@@ -801,14 +849,14 @@
 
 	{#if data.movements.length}
 		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">What moved</h2>
+			<h2 class="text-xl font-semibold">{m.stock_what_moved()}</h2>
 			<p class="text-sm text-muted-foreground">
-				The ledger rows this document wrote, in base units.
+				{m.stock_what_moved_hint()}
 			</p>
 			<DataTable
 				data={data.movements}
 				columns={movementColumns}
-				fileName="{doc.number} movements"
+				fileName={m.stock_movements_file({ number: doc.number ?? '' })}
 				height="auto"
 			/>
 		</section>

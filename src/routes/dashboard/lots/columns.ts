@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import ExpiryCell from '@nahu/admin-kit/components/Table/expiry-cell.svelte';
@@ -10,7 +11,9 @@ import { qty } from '$lib/format';
 export const extraColumns: ColumnDef<LookupRow>[] = [
 	{
 		accessorKey: 'item',
-		header: 'Item',
+		get header() {
+			return m.common_item();
+		},
 		cell: ({ row }) =>
 			renderComponent(DataTableLinks, {
 				id: row.original.itemId as number,
@@ -20,7 +23,9 @@ export const extraColumns: ColumnDef<LookupRow>[] = [
 	},
 	{
 		accessorKey: 'expiryDate',
-		header: 'Expiry',
+		get header() {
+			return m.stock_col_expiry();
+		},
 		cell: ({ row }) =>
 			renderComponent(ExpiryCell, {
 				expiresOn: row.original.expiryDate as string | null,
@@ -29,8 +34,16 @@ export const extraColumns: ColumnDef<LookupRow>[] = [
 	},
 	{
 		accessorKey: 'onHand',
-		header: 'On hand',
+		get header() {
+			return m.stock_on_hand();
+		},
 		cell: ({ row }) => qty(row.original.onHand as number, row.original.unit as string)
 	},
-	{ accessorKey: 'value', header: 'Value', cell: (info) => formatETB(Number(info.getValue())) }
+	{
+		accessorKey: 'value',
+		get header() {
+			return m.stock_col_value();
+		},
+		cell: (info) => formatETB(Number(info.getValue()))
+	}
 ];

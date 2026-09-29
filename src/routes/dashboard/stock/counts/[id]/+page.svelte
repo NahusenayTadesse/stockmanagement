@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Check from '@lucide/svelte/icons/check';
@@ -57,15 +58,15 @@
 </script>
 
 <svelte:head>
-	<title>Count #{count.id}</title>
+	<title>{m.stock_count_number({ id: count.id })}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">Stock count</p>
+			<p class="text-sm text-muted-foreground">{m.stock_count_label()}</p>
 			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				Count #{count.id}
+				{m.stock_count_number({ id: count.id })}
 				<Badge
 					variant={count.status === 'posted'
 						? 'default'
@@ -73,45 +74,51 @@
 							? 'destructive'
 							: 'secondary'}
 				>
-					{count.status}
+					{count.status === 'open'
+						? m.stock_count_status_open()
+						: count.status === 'posted'
+							? m.stock_count_status_posted()
+							: m.stock_count_status_cancelled()}
 				</Badge>
-				{#if count.blind}<Badge variant="outline">blind</Badge>{/if}
+				{#if count.blind}<Badge variant="outline">{m.stock_blind()}</Badge>{/if}
 			</h1>
 			<p class="text-muted-foreground">
 				{data.names.location}{data.names.category ? ` · ${data.names.category}` : ''} · {day(
 					count.countDate
 				)}
-				· opened by {data.names.openedBy ?? '—'}
+				· {m.stock_opened_by_who({ who: data.names.openedBy ?? '—' })}
 			</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
 			<Button
 				href={resolve('/dashboard/stock/counts/[id]/print', { id: String(count.id) })}
 				target="_blank"
-				variant="outline"><Printer /> Count sheet</Button
+				variant="outline"><Printer /> {m.stock_count_sheet()}</Button
 			>
 			{#if isOpen && data.canPost}
 				<form method="POST" action="?/cancel" use:enhance>
-					<Button type="submit" variant="outline"><X /> Cancel count</Button>
+					<Button type="submit" variant="outline"><X /> {m.stock_cancel_count()}</Button>
 				</form>
 				<AlertDialog.Root>
 					<AlertDialog.Trigger class={buttonVariants({ variant: 'default' })}
-						><Check /> Post count</AlertDialog.Trigger
+						><Check /> {m.stock_post_count()}</AlertDialog.Trigger
 					>
 					<AlertDialog.Content>
 						<AlertDialog.Header>
-							<AlertDialog.Title>Post this count?</AlertDialog.Title>
+							<AlertDialog.Title>{m.stock_post_count_title()}</AlertDialog.Title>
 							<AlertDialog.Description>
 								{differences.length
-									? `${differences.length} difference${differences.length === 1 ? '' : 's'} (net ${formatETB(net)}) will be posted as one stock adjustment.`
-									: 'Every line matches; nothing will be adjusted.'}
-								Save any counts you typed first.
+									? differences.length === 1
+										? m.stock_post_count_one({ net: formatETB(net) })
+										: m.stock_post_count_many({ count: differences.length, net: formatETB(net) })
+									: m.stock_post_count_none()}
+								{m.stock_save_counts_first()}
 							</AlertDialog.Description>
 						</AlertDialog.Header>
 						<AlertDialog.Footer>
-							<AlertDialog.Cancel>Not yet</AlertDialog.Cancel>
+							<AlertDialog.Cancel>{m.stock_not_yet()}</AlertDialog.Cancel>
 							<form method="POST" action="?/post" use:enhance>
-								<AlertDialog.Action type="submit">Post</AlertDialog.Action>
+								<AlertDialog.Action type="submit">{m.stock_post()}</AlertDialog.Action>
 							</form>
 						</AlertDialog.Footer>
 					</AlertDialog.Content>
@@ -122,7 +129,7 @@
 					href={resolve('/dashboard/stock/documents/[id]', { id: String(count.adjustmentId) })}
 					variant="outline"
 				>
-					Adjustment {data.names.adjustment}
+					{m.stock_adjustment_number({ number: data.names.adjustment ?? '' })}
 				</Button>
 			{/if}
 		</div>
@@ -136,36 +143,36 @@
 		>
 			<TriangleAlert class="mt-0.5 size-4 shrink-0" />
 			<p>
-				{data.moved} movement{data.moved === 1 ? '' : 's'} of these items happened at this location after
-				the count was opened. Differences are measured against the snapshot, so make sure what moved was
-				counted the same way — or cancel and start a fresh count.
+				{data.moved === 1
+					? m.stock_moved_since_one()
+					: m.stock_moved_since_many({ count: data.moved })}
 			</p>
 		</div>
 	{/if}
 
 	<div class="grid gap-4 sm:grid-cols-3">
 		<div class="rounded-lg border p-4">
-			<p class="text-sm text-muted-foreground">Counted</p>
+			<p class="text-sm text-muted-foreground">{m.stock_counted()}</p>
 			<p class="text-2xl font-semibold">{countedLines} / {data.lines.length}</p>
 		</div>
 		{#if data.showExpected}
 			<div class="rounded-lg border p-4">
-				<p class="text-sm text-muted-foreground">Differences</p>
+				<p class="text-sm text-muted-foreground">{m.stock_differences()}</p>
 				<p class="text-2xl font-semibold">{differences.length}</p>
 			</div>
 			<div class="rounded-lg border p-4">
-				<p class="text-sm text-muted-foreground">Net value of differences</p>
+				<p class="text-sm text-muted-foreground">{m.stock_net_value_differences()}</p>
 				<p class="text-2xl font-semibold {net < 0 ? 'text-destructive' : ''}">{formatETB(net)}</p>
 			</div>
 		{/if}
 	</div>
 
 	<div class="flex flex-wrap items-center justify-between gap-2">
-		<Input bind:value={search} placeholder="Find an item, code or lot…" class="max-w-sm" />
+		<Input bind:value={search} placeholder={m.stock_find_placeholder()} class="max-w-sm" />
 		{#if editable}
 			<DialogComp
 				bind:open={foundOpen}
-				title="Found something not on the list"
+				title={m.stock_found_not_listed()}
 				variant="outline"
 				IconComp={PackagePlus}
 			>
@@ -182,7 +189,7 @@
 						errors={foundErrors}
 						name="itemId"
 						type="combo"
-						label="Item"
+						label={m.common_item()}
 						items={data.items}
 						required
 					/>
@@ -191,7 +198,7 @@
 						errors={foundErrors}
 						name="lotId"
 						type="combo"
-						label="Lot (for lot-tracked items)"
+						label={m.stock_lot_for_tracked()}
 						items={data.lots}
 					/>
 					<InputComp
@@ -199,11 +206,11 @@
 						errors={foundErrors}
 						name="counted"
 						type="number"
-						label="Quantity found (base units)"
+						label={m.stock_qty_found_base()}
 						step="any"
 						required
 					/>
-					<Button type="submit" form="add-found">Add to the count</Button>
+					<Button type="submit" form="add-found">{m.stock_add_to_count()}</Button>
 				</form>
 			</DialogComp>
 		{/if}
@@ -225,13 +232,13 @@
 			<table class="w-full text-sm">
 				<thead class="bg-muted/50 text-left">
 					<tr>
-						<th class="px-3 py-2">Item</th>
-						<th class="px-3 py-2">Lot</th>
-						{#if data.showExpected}<th class="px-3 py-2 text-right">Expected</th>{/if}
-						<th class="px-3 py-2 text-right">Counted</th>
+						<th class="px-3 py-2">{m.common_item()}</th>
+						<th class="px-3 py-2">{m.stock_col_lot()}</th>
+						{#if data.showExpected}<th class="px-3 py-2 text-right">{m.stock_expected()}</th>{/if}
+						<th class="px-3 py-2 text-right">{m.stock_counted()}</th>
 						{#if data.showExpected}
-							<th class="px-3 py-2 text-right">Difference</th>
-							<th class="px-3 py-2 text-right">Value</th>
+							<th class="px-3 py-2 text-right">{m.stock_difference()}</th>
+							<th class="px-3 py-2 text-right">{m.stock_col_value()}</th>
 						{/if}
 					</tr>
 				</thead>
@@ -241,11 +248,13 @@
 							<td class="px-3 py-2">
 								<p class="font-medium">{line.item}</p>
 								<p class="text-xs text-muted-foreground">
-									{line.sku}{line.added ? ' · found during count' : ''}
+									{line.sku}{line.added ? m.stock_found_during_count() : ''}
 								</p>
 							</td>
 							<td class="px-3 py-2 text-xs">
-								{line.lotNumber ?? '—'}{line.expiryDate ? ` · exp ${line.expiryDate}` : ''}
+								{line.lotNumber ?? '—'}{line.expiryDate
+									? m.stock_exp_suffix({ date: line.expiryDate })
+									: ''}
 							</td>
 							{#if data.showExpected}<td class="px-3 py-2 text-right"
 									>{qty(line.expected, line.unit)}</td
@@ -259,7 +268,10 @@
 										step="any"
 										inputmode="decimal"
 										value={line.counted ?? ''}
-										aria-label="Counted {line.item} {line.lotNumber ?? ''}"
+										aria-label={m.stock_counted_aria({
+											item: line.item,
+											lot: line.lotNumber ?? ''
+										})}
 										class="h-9 w-28 rounded-md border bg-background px-2 text-right"
 									/>
 									<span class="ml-1 text-xs text-muted-foreground">{line.unit}</span>
@@ -287,7 +299,7 @@
 					{:else}
 						<tr
 							><td colspan="6" class="px-3 py-6 text-center text-muted-foreground"
-								>Nothing to count here.</td
+								>{m.stock_nothing_to_count()}</td
 							></tr
 						>
 					{/each}
@@ -296,7 +308,7 @@
 		</div>
 		{#if editable}
 			<Button type="submit" class="self-start" disabled={saving}
-				><Save /> {saving ? 'Saving…' : 'Save counts'}</Button
+				><Save /> {saving ? `${m.common_saving()}…` : m.stock_save_counts()}</Button
 			>
 		{/if}
 	</form>

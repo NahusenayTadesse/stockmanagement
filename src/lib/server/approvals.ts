@@ -26,6 +26,19 @@ import type { ApprovalRequired } from '$lib/server/stock/errors';
 import { countLines, postCount } from '$lib/server/counts';
 import { markOrdered, orderLines } from '$lib/server/purchasing';
 import { smsApprovalWaiting } from '$lib/server/sms';
+import { m } from '$lib/paraglide/messages.js';
+import { ADJUSTMENT_REASONS } from '$lib/format';
+
+/** A request's status as a word in a sentence, in the viewer's language. */
+function stateWord(status: string): string {
+	const words: Record<string, () => string> = {
+		pending: m.purchasing_appr_state_pending,
+		approved: m.purchasing_appr_state_approved,
+		rejected: m.purchasing_appr_state_rejected,
+		withdrawn: m.purchasing_appr_state_withdrawn
+	};
+	return words[status]?.() ?? status;
+}
 
 export type Subject =
 	| { kind: 'adjustment'; documentId: number }
@@ -134,16 +147,18 @@ export async function decideApproval(
 		.from(approvalRequest)
 		.where(and(eq(approvalRequest.id, input.requestId), eq(approvalRequest.orgId, input.orgId)))
 		.for('update');
-	if (!req) throw new StockError('That request does not exist.');
-	if (req.status !== 'pending') throw new StockError(`This request was already ${req.status}.`);
+	if (!req) throw new StockError(m.purchasing_appr_no_request());
+	if (req.status !== 'pending') {
+		throw new StockError(m.purchasing_appr_already({ status: stateWord(req.status) }));
+	}
 	if (req.requestedBy === input.userId) {
-		throw new StockError('You asked for this, so someone else has to approve it.');
+		throw new StockError(m.purchasing_appr_own());
 	}
 	if (!input.approve && !input.note?.trim()) {
-		throw new StockError('Say why it is rejected, so the person who asked can put it right.');
+		throw new StockError(m.purchasing_appr_reject_reason());
 	}
 
-	let done = 'Rejected';
+	let done = m.purchasing_appr_done_rejected();
 	if (input.approve) {
 		const today = input.today ?? localToday();
 		if (req.kind === 'adjustment') {
@@ -154,7 +169,7 @@ export async function decideApproval(
 				today,
 				approved: true
 			});
-			done = `Approved and posted as ${number}`;
+			done = m.purchasing_appr_done_posted({ number });
 		} else if (req.kind === 'count') {
 			const r = await postCount(tx, {
 				orgId: input.orgId,
@@ -163,7 +178,9 @@ export async function decideApproval(
 				today,
 				approved: true
 			});
-			done = r.number ? `Approved; count posted as ${r.number}` : 'Approved; count posted';
+			done = r.number
+				? m.purchasing_appr_done_count_number({ number: r.number })
+				: m.purchasing_appr_done_count();
 		} else {
 			const number = await markOrdered(tx, {
 				orgId: input.orgId,
@@ -171,7 +188,7 @@ export async function decideApproval(
 				userId: input.userId,
 				approved: true
 			});
-			done = `Approved; order ${number} can go to the supplier`;
+			done = m.purchasing_appr_done_order({ number });
 		}
 	}
 
@@ -197,9 +214,9 @@ export async function withdrawApproval(
 		.from(approvalRequest)
 		.where(and(eq(approvalRequest.id, input.requestId), eq(approvalRequest.orgId, input.orgId)))
 		.for('update');
-	if (!req || req.status !== 'pending') throw new StockError('Nothing is waiting there.');
+	if (!req || req.status !== 'pending') throw new StockError(m.purchasing_appr_nothing_waiting());
 	if (req.requestedBy !== input.userId) {
-		throw new StockError('Only the person who asked can withdraw it.');
+		throw new StockError(m.purchasing_appr_only_requester());
 	}
 	await tx
 		.update(approvalRequest)
@@ -260,10 +277,15 @@ export async function approvalList(orgId: number, filter: { status?: 'pending' }
 					: `/dashboard/purchasing/${r.purchaseOrderId}`,
 		subject:
 			r.kind === 'adjustment'
-				? `Adjustment #${r.documentId}${r.documentReason ? ` (${r.documentReason})` : ''}`
+				? m.purchasing_appr_subject_adjustment({ id: r.documentId! }) +
+					(r.documentReason
+						? ` (${ADJUSTMENT_REASONS.find((x) => x.value === r.documentReason)?.name ?? r.documentReason})`
+						: '')
 				: r.kind === 'count'
-					? `Count #${r.countId}${r.countLocation ? ` at ${r.countLocation}` : ''}`
-					: `Purchase order #${r.purchaseOrderId}`
+					? r.countLocation
+						? m.purchasing_appr_subject_count_at({ id: r.countId!, location: r.countLocation })
+						: m.purchasing_appr_subject_count({ id: r.countId! })
+					: m.purchasing_appr_subject_order({ id: r.purchaseOrderId! })
 	}));
 }
 

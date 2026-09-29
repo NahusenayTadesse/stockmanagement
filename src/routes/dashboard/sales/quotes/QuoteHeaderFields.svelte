@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SuperForm } from 'sveltekit-superforms';
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/** A proforma's header: the new-proforma dialog and the edit dialog share it. */
 	let {
@@ -22,8 +23,8 @@
 		{errors}
 		name="customerId"
 		type="combo"
-		label="Customer (optional)"
-		items={[{ value: 0, name: '— A one-off buyer (type the name below) —' }, ...customers]}
+		label={m.sales_pos_customer_optional()}
+		items={[{ value: 0, name: m.sales_one_off_buyer() }, ...customers]}
 	/>
 {/if}
 {#if !$form.customerId}
@@ -31,27 +32,33 @@
 		{form}
 		{errors}
 		name="buyerName"
-		label="Buyer"
-		placeholder="e.g. Kirkos sub-city finance office"
+		label={m.sales_buyer()}
+		placeholder={m.sales_buyer_placeholder()}
 	/>
-	<InputComp {form} {errors} name="buyerTin" label="Buyer TIN (optional)" placeholder="10 digits" />
-	<InputComp {form} {errors} name="buyerPhone" type="tel" label="Buyer phone (optional)" />
+	<InputComp
+		{form}
+		{errors}
+		name="buyerTin"
+		label={m.sales_buyer_tin()}
+		placeholder={m.sales_ten_digits()}
+	/>
+	<InputComp {form} {errors} name="buyerPhone" type="tel" label={m.sales_buyer_phone()} />
 {/if}
 <InputComp
 	{form}
 	{errors}
 	name="locationId"
 	type="combo"
-	label="Goods from (optional)"
-	items={[{ value: 0, name: '— Decide when it becomes a sale —' }, ...locations]}
+	label={m.sales_goods_from()}
+	items={[{ value: 0, name: m.sales_decide_later() }, ...locations]}
 />
-<InputComp {form} {errors} name="quoteDate" type="date" label="Date" year required />
+<InputComp {form} {errors} name="quoteDate" type="date" label={m.common_date()} year required />
 <InputComp
 	{form}
 	{errors}
 	name="validUntil"
 	type="date"
-	label="Valid until (optional)"
+	label={m.sales_valid_until_optional()}
 	year
 	futureDays
 />
@@ -59,8 +66,8 @@
 	{form}
 	{errors}
 	name="reference"
-	label="Their reference (optional)"
-	placeholder="Tender or request no."
+	label={m.sales_their_reference()}
+	placeholder={m.sales_tender_placeholder()}
 />
 <InputComp
 	{form}
@@ -68,7 +75,7 @@
 	name="terms"
 	type="textarea"
 	rows={2}
-	label="Terms (optional)"
-	placeholder="Delivery within 5 days of order; prices valid 30 days"
+	label={m.sales_terms_optional()}
+	placeholder={m.sales_terms_placeholder()}
 />
-<InputComp {form} {errors} name="note" type="textarea" rows={2} label="Note (optional)" />
+<InputComp {form} {errors} name="note" type="textarea" rows={2} label={m.sales_note_optional()} />

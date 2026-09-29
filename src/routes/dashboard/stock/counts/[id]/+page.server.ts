@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { fail } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
@@ -69,7 +70,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		showExpected,
 		moved,
 		items,
-		lots: [{ value: 0, name: 'No lot' }, ...lots],
+		lots: [{ value: 0, name: m.stock_no_lot() }, ...lots],
 		foundForm,
 		canCount,
 		canPost,
@@ -106,14 +107,14 @@ export const actions: Actions = {
 			}
 			throw err;
 		}
-		setFlash({ type: 'success', message: 'Counts saved' }, event.cookies);
+		setFlash({ type: 'success', message: m.stock_counts_saved() }, event.cookies);
 		return { saved: true };
 	},
 
 	addFound: async (event) => {
 		const form = await superValidate(event.request, zod4(countFound));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		const { orgId, count } = await openCountOf(event);
 		try {
 			await db.transaction((tx) =>
@@ -132,7 +133,7 @@ export const actions: Actions = {
 			}
 			throw err;
 		}
-		return message(form, { type: 'success', text: 'Added to the count' });
+		return message(form, { type: 'success', text: m.stock_added_to_count() });
 	},
 
 	post: async (event) => {
@@ -148,8 +149,10 @@ export const actions: Actions = {
 				{
 					type: 'success',
 					message: result.number
-						? `Count posted: ${result.lines} difference${result.lines === 1 ? '' : 's'} adjusted in ${result.number}`
-						: 'Count posted: the shelf matched the system, nothing to adjust'
+						? result.lines === 1
+							? m.stock_count_posted_one({ number: result.number })
+							: m.stock_count_posted_many({ count: result.lines, number: result.number })
+						: m.stock_count_posted_none()
 				},
 				event.cookies
 			);
@@ -166,7 +169,7 @@ export const actions: Actions = {
 				setFlash(
 					{
 						type: 'success',
-						message: `Sent for approval: ${err.reason}. It is posted once someone else approves it.`
+						message: m.stock_count_sent_for_approval({ reason: err.reason })
 					},
 					event.cookies
 				);
@@ -189,7 +192,7 @@ export const actions: Actions = {
 			.update(stockCount)
 			.set({ status: 'cancelled', updatedBy: event.locals.user?.id })
 			.where(eq(stockCount.id, count.id));
-		setFlash({ type: 'success', message: 'Count cancelled; stock was not changed' }, event.cookies);
+		setFlash({ type: 'success', message: m.stock_count_cancelled() }, event.cookies);
 		return { cancelled: true };
 	}
 };

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import type { SuperForm, SuperValidated } from 'sveltekit-superforms';
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
 	import QuickSupplier from '$lib/components/QuickSupplier.svelte';
@@ -40,10 +41,10 @@
 	} = $props();
 
 	const TYPES = [
-		{ value: 'receipt', name: 'Goods receipt — stock comes in' },
-		{ value: 'issue', name: 'Issue — stock goes out' },
-		{ value: 'transfer', name: 'Transfer — between locations' },
-		{ value: 'adjustment', name: 'Adjustment — count, damage, expiry' }
+		{ value: 'receipt', name: m.stock_type_receipt_hint() },
+		{ value: 'issue', name: m.stock_type_issue_hint() },
+		{ value: 'transfer', name: m.stock_type_transfer_hint() },
+		{ value: 'adjustment', name: m.stock_type_adjustment_hint() }
 	];
 
 	const type = $derived($form.type as string);
@@ -74,7 +75,7 @@
 	// The same for customers added from the issue form.
 	let addedCustomers = $state<{ value: number; name: string }[]>([]);
 	const customerItems = $derived([
-		{ value: 0, name: '— None (walk-in or internal) —' },
+		{ value: 0, name: m.stock_none_walk_in() },
 		...(customers ?? []),
 		...addedCustomers.filter((a) => !(customers ?? []).some((c) => c.value === a.value))
 	]);
@@ -86,9 +87,9 @@
 </script>
 
 {#if !lockType}
-	<InputComp {form} {errors} name="type" type="select" label="Type" items={TYPES} />
+	<InputComp {form} {errors} name="type" type="select" label={m.stock_col_type()} items={TYPES} />
 {/if}
-<InputComp {form} {errors} name="docDate" type="date" label="Date" year required />
+<InputComp {form} {errors} name="docDate" type="date" label={m.common_date()} year required />
 
 {#if type === 'receipt'}
 	<div class="flex flex-col gap-2">
@@ -97,7 +98,7 @@
 			{errors}
 			name="supplierId"
 			type="combo"
-			label="Supplier"
+			label={m.stock_supplier()}
 			items={supplierItems}
 			required
 		/>
@@ -113,7 +114,7 @@
 		{errors}
 		name="fromLocationId"
 		type="combo"
-		label={type === 'adjustment' ? 'Location' : 'From'}
+		label={type === 'adjustment' ? m.common_location() : m.stock_col_from()}
 		items={locations}
 		required
 	/>
@@ -124,24 +125,27 @@
 		{errors}
 		name="toLocationId"
 		type="combo"
-		label={type === 'receipt' ? 'Received into' : type === 'sales_return' ? 'Returned into' : 'To'}
+		label={type === 'receipt'
+			? m.stock_received_into()
+			: type === 'sales_return'
+				? m.stock_returned_into()
+				: m.stock_col_to()}
 		items={type === 'transfer' ? targets : locations}
 		required
 	/>
 {/if}
 {#if crossBranch}
 	<p class="text-sm text-muted-foreground">
-		Another branch: the stock goes into transit when posted, and arrives when that branch receives
-		it.
+		{m.stock_cross_branch_hint()}
 	</p>
 	<div class="grid gap-4 sm:grid-cols-2">
-		<InputComp {form} {errors} name="driverName" label="Driver (optional)" />
+		<InputComp {form} {errors} name="driverName" label={m.stock_driver_optional()} />
 		<InputComp
 			{form}
 			{errors}
 			name="vehiclePlate"
-			label="Vehicle plate (optional)"
-			placeholder="e.g. AA-3-12345"
+			label={m.stock_plate_optional()}
+			placeholder={m.stock_plate_placeholder()}
 		/>
 	</div>
 {/if}
@@ -151,9 +155,9 @@
 			{form}
 			{errors}
 			name="currency"
-			label="Currency (optional)"
+			label={m.stock_currency_optional()}
 			placeholder="ETB"
-			description="Bought in dollars, euros…? Its code, e.g. USD. Empty: birr."
+			description={m.stock_currency_hint()}
 		/>
 		{#if $form.currency && String($form.currency).toUpperCase() !== 'ETB'}
 			<InputComp
@@ -162,7 +166,7 @@
 				name="exchangeRate"
 				type="number"
 				step="0.0001"
-				label="Rate (birr per 1 {String($form.currency).toUpperCase()})"
+				label={m.stock_rate_label({ currency: String($form.currency).toUpperCase() })}
 				required
 			/>
 		{/if}
@@ -174,7 +178,7 @@
 		{errors}
 		name="reason"
 		type="select"
-		label="Reason"
+		label={m.stock_reason()}
 		items={ADJUSTMENT_REASONS}
 	/>
 {/if}
@@ -186,9 +190,9 @@
 				{errors}
 				name="customerId"
 				type="combo"
-				label="Customer (optional)"
+				label={m.stock_customer_optional()}
 				items={customerItems}
-				description="Only for customers worth keeping track of. A walk-in sale needs none."
+				description={m.stock_customer_hint()}
 			/>
 			{#if customerForm}
 				<QuickCustomer form={customerForm} onCreated={selectNewCustomer} />
@@ -199,19 +203,19 @@
 		{form}
 		{errors}
 		name="party"
-		label={customers ? 'Issued to (optional)' : 'Issued to'}
+		label={customers ? m.stock_issued_to_optional() : m.stock_issued_to()}
 		placeholder={customers
-			? 'Department or person, if not a listed customer'
-			: 'Department, ward, project or person'}
+			? m.stock_issued_to_placeholder_customers()
+			: m.stock_issued_to_placeholder_internal()}
 	/>
 {/if}
 <InputComp
 	{form}
 	{errors}
 	name="reference"
-	label="Reference"
+	label={m.common_reference()}
 	placeholder={type === 'receipt'
-		? 'Supplier invoice or delivery note no.'
-		: 'Requisition or voucher no.'}
+		? m.stock_reference_placeholder_receipt()
+		: m.stock_reference_placeholder_other()}
 />
-<InputComp {form} {errors} name="note" type="textarea" rows={3} label="Note" />
+<InputComp {form} {errors} name="note" type="textarea" rows={3} label={m.common_note()} />

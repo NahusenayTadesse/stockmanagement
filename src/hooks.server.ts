@@ -11,10 +11,12 @@ import { auditLog } from '$lib/server/db/schema';
 import { getTextDirection } from '$lib/paraglide/runtime';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import { access } from '$lib/access';
+import { kitServerLabels } from '$lib/kitLabels';
 import { loadGrant } from '$lib/server/permissions';
 import { seedPaymentMethods, seedPermissions } from '$lib/server/seedPermissions';
 
-configureKit({ db, auditLog, loginPath: '/login' });
+// The kit's own server messages ("Unit saved", refusals) in the viewer's language.
+configureKit({ db, auditLog, loginPath: '/login', labels: kitServerLabels });
 
 const handleParaglide: Handle = ({ event, resolve }) =>
 	paraglideMiddleware(event.request, ({ request, locale }) => {

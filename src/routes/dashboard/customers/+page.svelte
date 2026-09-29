@@ -13,6 +13,7 @@
 	import CustomerFields from '$lib/components/CustomerFields.svelte';
 	import { customerSchema } from '$lib/schemas/customers';
 	import { columns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 	let open = $state(false);
@@ -30,51 +31,50 @@
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'count',
-			label: 'Customers on the list',
+			label: m.sales_customers_on_list(),
 			value: data.customers.filter((c) => c.status).length,
 			format: 'count',
 			group: 'customers'
 		},
 		{
 			key: 'owed',
-			label: 'Owed to you (ዱቤ)',
+			label: m.sales_owed_to_you_credit(),
 			value: owed,
 			format: 'money',
 			group: 'customers',
-			hint: `${data.customers.filter((c) => c.owed > 0).length} customers with a balance`,
+			hint: m.sales_with_balance({ count: data.customers.filter((c) => c.owed > 0).length }),
 			tone: owed > 0 ? 'warning' : 'neutral'
 		},
 		{
 			key: 'overdue',
-			label: 'Overdue',
+			label: m.sales_overdue(),
 			value: overdue,
 			format: 'money',
 			group: 'customers',
-			hint: 'Past their days to pay',
+			hint: m.sales_past_days_to_pay(),
 			tone: overdue > 0 ? 'negative' : 'neutral'
 		}
 	]);
 </script>
 
 <svelte:head>
-	<title>Customers</title>
+	<title>{m.sales_customers_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Customers ({data.customers.length})</h1>
-			<p class="text-muted-foreground">
-				Regular buyers worth keeping track of. Naming a customer is always optional: a walk-in sale
-				or an internal issue needs none.
-			</p>
+			<h1 class="text-2xl font-semibold">
+				{m.sales_customers_heading({ count: data.customers.length })}
+			</h1>
+			<p class="text-muted-foreground">{m.sales_customers_intro()}</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
 			<Button href={resolve('/dashboard/customers/credit')} variant="outline"
-				><Clock /> Credit & ageing</Button
+				><Clock /> {m.nav_credit()}</Button
 			>
 			{#if data.canManage}
-				<DialogComp bind:open title="Add customer" variant="default" IconComp={Plus}>
+				<DialogComp bind:open title={m.sales_add_customer()} variant="default" IconComp={Plus}>
 					<form
 						method="POST"
 						action="?/add"
@@ -85,7 +85,9 @@
 						<Errors allErrors={$allErrors} />
 						<CustomerFields {form} {errors} priceLists={data.priceLists} />
 						<Button type="submit" form="add-customer">
-							{#if $delayed}<LoadingBtn name="Saving" />{:else}Add customer{/if}
+							{#if $delayed}<LoadingBtn
+									name={m.common_saving()}
+								/>{:else}{m.sales_add_customer()}{/if}
 						</Button>
 					</form>
 				</DialogComp>
@@ -95,9 +97,11 @@
 
 	{#if !data.organization?.sellsToCustomers}
 		<p class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-			Customers are switched off for this business, so the customer pickers are hidden. Turn them on
-			in <a class="underline" href={resolve('/dashboard/admin-panel/business')}>Business profile</a> if
-			you sell.
+			{m.sales_customers_off_before()}
+			<a class="underline" href={resolve('/dashboard/admin-panel/business')}
+				>{m.nav_business_profile()}</a
+			>
+			{m.sales_customers_off_after()}
 		</p>
 	{/if}
 
@@ -105,5 +109,5 @@
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
 	</div>
 
-	<DataTable data={data.customers} {columns} fileName="Customers" />
+	<DataTable data={data.customers} {columns} fileName={m.sales_customers_title()} />
 </div>

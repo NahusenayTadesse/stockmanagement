@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
 	import { add, edit } from './schema';
 
@@ -9,32 +10,32 @@
 	{data}
 	schemas={{ add, edit }}
 	config={{
-		entity: 'Category',
-		plural: 'Categories',
+		entity: m.admin_cat_entity(),
+		plural: m.admin_cat_plural(),
 		fields: [
-			{ name: 'name', label: 'Name', type: 'text' },
-			{ name: 'nameAm', label: 'Name (Amharic)', type: 'text', required: false },
+			{ name: 'name', label: m.common_name(), type: 'text' },
+			{ name: 'nameAm', label: m.admin_cat_name_am(), type: 'text', required: false },
 			{
 				name: 'expiryWarningDays',
-				label: 'Expiry warning (days)',
+				label: m.admin_cat_warning_days(),
 				type: 'number',
-				placeholder: 'How early a lot counts as expiring soon'
+				placeholder: m.admin_cat_warning_placeholder()
 			},
 			{
 				name: 'minShelfLifeDays',
-				label: 'Least shelf life on delivery (days)',
+				label: m.admin_cat_min_shelf(),
 				type: 'number',
 				required: false,
-				placeholder: 'Empty: accept any. E.g. 180 for medicine'
+				placeholder: m.admin_cat_min_shelf_placeholder()
 			},
 			{
 				name: 'refuseShortShelfLife',
-				label: 'Shorter shelf life',
+				label: m.admin_cat_shorter(),
 				type: 'boolean',
-				trueLabel: 'Refuse the delivery',
-				falseLabel: 'Accept, flagged'
+				trueLabel: m.admin_cat_refuse(),
+				falseLabel: m.admin_cat_flag()
 			},
-			{ name: 'status', label: 'Status', type: 'boolean' }
+			{ name: 'status', label: m.common_status(), type: 'boolean' }
 		]
 	}}
 />

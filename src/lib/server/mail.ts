@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { m } from '$lib/paraglide/messages.js';
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
@@ -100,7 +101,7 @@ ${
 ${content.footnote ? `<p style="margin:18px 0 0;font-size:12px;line-height:1.5;color:#777777;">${escape(content.footnote)}</p>` : ''}
 </td></tr>
 <tr><td style="padding:16px 28px 24px;border-top:1px solid #eeeeee;">
-<p style="margin:0;font-size:11px;color:#999999;">${escape(siteName)} · Prepared by Digital Construct</p>
+<p style="margin:0;font-size:11px;color:#999999;">${escape(siteName)} · ${escape(m.sales_mail_prepared_by())}</p>
 </td></tr>
 </table>
 </body></html>`;

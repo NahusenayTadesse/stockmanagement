@@ -3,6 +3,7 @@
  * by), and the stock currently held for proformas and requisitions. Kept apart from the page's
  * own load so the sections stay separable.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { fail, type RequestEvent } from '@sveltejs/kit';
 import { and, asc, eq } from 'drizzle-orm';
 import { setFlash } from 'sveltekit-flash-message/server';
@@ -48,8 +49,10 @@ export async function planningSection(orgId: number, it: Item, locals: App.Local
 			...h,
 			location: names.get(h.locationId) ?? '—',
 			for: h.quoteId
-				? `Proforma ${h.quoteNumber ?? `#${h.quoteId}`}`
-				: `Requisition ${h.requisitionNumber ?? `#${h.requisitionId}`}${h.department ? ` (${h.department})` : ''}`
+				? m.stock_held_proforma({ number: h.quoteNumber ?? `#${h.quoteId}` })
+				: m.stock_held_requisition({
+						number: h.requisitionNumber ?? `#${h.requisitionId}`
+					}) + (h.department ? ` (${h.department})` : '')
 		}))
 	};
 }
@@ -86,17 +89,17 @@ export const planningActions = {
 			.from(location)
 			.where(and(eq(location.id, locationId), eq(location.orgId, orgId)));
 		if (!loc || loc.kind === 'transit' || !inScope(await branchScope(event.locals), loc.branchId)) {
-			return refuse(event, 'Choose a location from the list.');
+			return refuse(event, m.stock_err_location_list());
 		}
-		if (min === null || min === undefined) return refuse(event, 'Enter the minimum, 0 or more.');
-		if (max === undefined) return refuse(event, 'The maximum is a number, or empty.');
-		if (max !== null && max < min) return refuse(event, 'The maximum cannot be below the minimum.');
+		if (min === null || min === undefined) return refuse(event, m.stock_err_min());
+		if (max === undefined) return refuse(event, m.stock_err_max_number());
+		if (max !== null && max < min) return refuse(event, m.stock_err_max_below_min());
 
 		await db
 			.insert(reorderRule)
 			.values({ orgId, itemId: it.id, locationId: loc.id, minQuantity: min, maxQuantity: max })
 			.onDuplicateKeyUpdate({ set: { minQuantity: min, maxQuantity: max } });
-		setFlash({ type: 'success', message: 'Reorder levels saved' }, event.cookies);
+		setFlash({ type: 'success', message: m.stock_reorder_saved() }, event.cookies);
 		return { saved: true };
 	},
 
@@ -111,7 +114,7 @@ export const planningActions = {
 					eq(reorderRule.itemId, it.id)
 				)
 			);
-		setFlash({ type: 'success', message: 'Reorder levels removed' }, event.cookies);
+		setFlash({ type: 'success', message: m.stock_reorder_removed() }, event.cookies);
 		return { deleted: true };
 	}
 };

@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { and, eq } from 'drizzle-orm';
 import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
@@ -35,7 +36,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'lots.manage');
 		const form = await superValidate(event.request, zod4(lotEdit));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		const result = await db
@@ -44,8 +45,8 @@ export const actions: Actions = {
 			.where(and(eq(lot.id, form.data.id), eq(lot.orgId, orgIdOf(event.locals))));
 
 		if (!result[0].affectedRows) {
-			return message(form, { type: 'error', text: 'That lot no longer exists.' }, { status: 404 });
+			return message(form, { type: 'error', text: m.stock_lot_gone() }, { status: 404 });
 		}
-		return message(form, { type: 'success', text: 'Lot updated' });
+		return message(form, { type: 'success', text: m.stock_lot_updated() });
 	}
 };

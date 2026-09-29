@@ -8,6 +8,7 @@
 	import type { ReportChartData, Stat } from '@nahu/admin-kit/components/reports/types';
 	import { formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { columns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -18,29 +19,31 @@
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'owed',
-			label: 'Owed to you',
+			label: m.sales_owed_to_you(),
 			value: owed,
 			format: 'money',
 			group: 'credit',
-			hint: `${data.rows.filter((r) => r.balance > 0).length} customers`,
+			hint: m.sales_customers_count({ count: data.rows.filter((r) => r.balance > 0).length }),
 			tone: 'warning'
 		},
 		{
 			key: 'overdue',
-			label: 'Overdue',
+			label: m.sales_overdue(),
 			value: overdue,
 			format: 'money',
 			group: 'credit',
-			hint: owed ? `${Math.round((overdue / owed) * 100)}% of what is owed` : undefined,
+			hint: owed
+				? m.sales_percent_of_owed({ percent: Math.round((overdue / owed) * 100) })
+				: undefined,
 			tone: overdue > 0 ? 'negative' : 'neutral'
 		},
 		{
 			key: 'over',
-			label: 'Over their limit',
+			label: m.sales_over_their_limit(),
 			value: overLimit,
 			format: 'count',
 			group: 'credit',
-			hint: 'Customers owing more than allowed',
+			hint: m.sales_owing_more(),
 			tone: overLimit ? 'negative' : 'neutral'
 		}
 	]);
@@ -48,30 +51,30 @@
 	/** One series, the five ages in order: the colour of a bar says nothing the axis does not. */
 	const chart = $derived<ReportChartData>({
 		key: 'ageing',
-		title: 'Owed, by how late it is',
-		description: 'Payments are applied to the oldest sales first.',
+		title: m.sales_owed_by_lateness(),
+		description: m.sales_oldest_first(),
 		group: 'credit',
 		kind: 'bar',
 		money: true,
 		labels: data.buckets.map((b) => b.label),
-		series: [{ label: 'Owed', data: data.buckets.map((b) => data.totals[b.key]) }]
+		series: [{ label: m.sales_owed(), data: data.buckets.map((b) => data.totals[b.key]) }]
 	});
 	let reminding = $state(false);
 	const overdueCount = $derived(data.rows.filter((r) => r.overdue > 0 && r.isActive).length);
 </script>
 
 <svelte:head>
-	<title>Credit & ageing</title>
+	<title>{m.nav_credit()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div>
-			<h1 class="text-2xl font-semibold">Credit & ageing</h1>
+			<h1 class="text-2xl font-semibold">{m.nav_credit()}</h1>
 			<p class="text-muted-foreground">
-				What customers owe (ዱቤ) as of {formatEthiopianDate(
-					new Date(`${data.today}T12:00:00+03:00`)
-				)}, and how long it has been owed. A sale is due its customer's days to pay after the sale.
+				{m.sales_credit_intro({
+					date: formatEthiopianDate(new Date(`${data.today}T12:00:00+03:00`))
+				})}
 			</p>
 		</div>
 		{#if data.canText && overdueCount}
@@ -88,7 +91,7 @@
 			>
 				<Button type="submit" variant="outline" disabled={reminding}>
 					<MessageSquare />
-					{reminding ? 'Sending…' : `Text reminders to ${overdueCount} overdue`}
+					{reminding ? m.common_sending() : m.sales_text_reminders({ count: overdueCount })}
 				</Button>
 			</form>
 		{/if}
@@ -103,10 +106,10 @@
 	</div>
 
 	{#if data.rows.length}
-		<DataTable data={data.rows} {columns} fileName="Receivables ageing {data.today}" />
+		<DataTable data={data.rows} {columns} fileName={m.sales_ageing_file({ date: data.today })} />
 	{:else}
 		<p class="rounded-md border p-6 text-center text-muted-foreground">
-			Nobody owes anything. Sales to customers that are not paid when posted show up here.
+			{m.sales_nobody_owes()}
 		</p>
 	{/if}
 </div>

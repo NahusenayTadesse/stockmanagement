@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import FormCard from '@nahu/admin-kit/formComponents/FormCard.svelte';
@@ -21,10 +22,10 @@
 </script>
 
 <svelte:head>
-	<title>Change password</title>
+	<title>{m.admin_change_title()}</title>
 </svelte:head>
 
-<FormCard title="Change password">
+<FormCard title={m.admin_change_title()}>
 	<form use:enhance action="?/changePassword" id="main" class="flex flex-col gap-4" method="POST">
 		<Errors allErrors={$allErrors} />
 		<InputComp
@@ -32,20 +33,28 @@
 			{errors}
 			name="currentPassword"
 			type="password"
-			label="Current password"
+			label={m.admin_change_current()}
 			required
 		/>
-		<InputComp {form} {errors} name="newPassword" type="password" label="New password" required />
+		<InputComp
+			{form}
+			{errors}
+			name="newPassword"
+			type="password"
+			label={m.admin_reset_new_password()}
+			required
+		/>
 		<InputComp
 			{form}
 			{errors}
 			name="confirmPassword"
 			type="password"
-			label="Confirm new password"
+			label={m.admin_change_confirm()}
 			required
 		/>
 		<Button type="submit" form="main">
-			{#if $delayed}<LoadingBtn name="Changing password" />{:else}<KeyRound /> Change password{/if}
+			{#if $delayed}<LoadingBtn name={m.admin_change_changing()} />{:else}<KeyRound />
+				{m.admin_change_title()}{/if}
 		</Button>
 	</form>
 </FormCard>

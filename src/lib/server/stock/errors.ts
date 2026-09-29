@@ -1,7 +1,8 @@
 /**
- * The refusals stock code throws. Kept apart from the posting service, with no imports, so modules
- * the posting service itself imports can throw them too.
+ * The refusals stock code throws. Kept apart from the posting service, importing nothing but the
+ * messages, so modules the posting service itself imports can throw them too.
  */
+import { m } from '$lib/paraglide/messages.js';
 
 /** A refusal the storekeeper can act on. `lineId` points at the line that caused it. */
 export class StockError extends Error {
@@ -24,7 +25,7 @@ export class ApprovalRequired extends StockError {
 		readonly value: number,
 		readonly reason: string
 	) {
-		super(`This needs a second person's approval: ${reason}.`);
+		super(m.purchasing_approval_needed({ reason }));
 		this.name = 'ApprovalRequired';
 	}
 }

@@ -5,37 +5,45 @@
 	import type { ReportChartData, Stat } from '@nahu/admin-kit/components/reports/types';
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
 	import ReportFilterBar from '../ReportFilterBar.svelte';
+	import { labels } from '$lib/format';
 	import { CLASS_NAMES, columns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
 	const select = 'h-9 rounded-md border bg-background px-2 text-sm';
 	const used = $derived(data.basis === 'cost');
 	const cols = $derived(columns(data.basis));
-	const HINTS: Record<string, string> = {
-		A: 'The few items carrying 80% of the value: count often, never run out',
-		B: 'The next 15%',
-		C: 'The last 5%: many items, little value',
-		none: 'In stock but not used in the period'
-	};
+	const HINTS: Record<string, string> = labels({
+		A: m.reports_abc_hint_a,
+		B: m.reports_abc_hint_b,
+		C: m.reports_abc_hint_c,
+		none: m.reports_abc_hint_none
+	});
 
 	const tiles = $derived<Stat[]>(
 		data.report.classes.map((c) => ({
 			key: c.cls,
-			label: `${CLASS_NAMES[c.cls]} · ${c.items} item${c.items === 1 ? '' : 's'}`,
+			label: (c.items === 1 ? m.reports_abc_tile_one : m.reports_abc_tile_many)({
+				cls: CLASS_NAMES[c.cls],
+				count: c.items
+			}),
 			value: c.cls === 'none' ? c.stockValue : c.value,
 			format: 'money',
 			group: 'abc',
 			tone:
 				c.cls === 'A' ? 'positive' : c.cls === 'none' && c.stockValue > 0 ? 'warning' : 'neutral',
-			hint: c.cls === 'none' ? `${HINTS.none} · stock value` : `${c.share}% · ${HINTS[c.cls]}`
+			hint:
+				c.cls === 'none'
+					? `${HINTS.none} · ${m.reports_abc_stock_value_suffix()}`
+					: `${c.share}% · ${HINTS[c.cls]}`
 		}))
 	);
 
 	const chart = $derived<ReportChartData>({
 		key: 'pareto',
-		title: used ? 'Value used, by item' : 'Sales, by item',
-		description: 'The top 20 items, with the running share of the total',
+		title: used ? m.reports_abc_chart_used() : m.reports_abc_chart_sales(),
+		description: m.reports_abc_chart_desc(),
 		group: 'abc',
 		kind: 'bar',
 		money: true,
@@ -46,7 +54,7 @@
 			.map((r) => r.item),
 		series: [
 			{
-				label: used ? 'Value used' : 'Sales',
+				label: used ? m.reports_abc_series_used() : m.reports_abc_series_sales(),
 				data: data.report.rows
 					.filter((r) => r.rank !== null)
 					.slice(0, 20)
@@ -57,17 +65,14 @@
 </script>
 
 <svelte:head>
-	<title>ABC analysis</title>
+	<title>{m.nav_abc()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div>
-		<h1 class="text-2xl font-semibold">ABC analysis</h1>
+		<h1 class="text-2xl font-semibold">{m.nav_abc()}</h1>
 		<p class="text-muted-foreground">
-			Items ranked by {used
-				? 'what was used, at cost (issues less customer returns)'
-				: 'what they sold for, before VAT (less returns)'}, and cut where the running total reaches
-			80% (A) and 95% (B). Look after the A items most: count them often and never let them run out.
+			{used ? m.reports_abc_intro_used() : m.reports_abc_intro_sales()}
 		</p>
 	</div>
 
@@ -81,10 +86,10 @@
 	>
 		{#if data.sells}
 			<div class="flex flex-col gap-1">
-				<Label for="basis">Rank by</Label>
+				<Label for="basis">{m.reports_abc_rank_by()}</Label>
 				<select id="basis" name="basis" class={select} value={data.basis}>
-					<option value="cost">Value used (at cost)</option>
-					<option value="revenue">Sales revenue</option>
+					<option value="cost">{m.reports_abc_rank_cost()}</option>
+					<option value="revenue">{m.reports_abc_rank_revenue()}</option>
 				</select>
 			</div>
 		{/if}
@@ -101,8 +106,8 @@
 	<DataTable
 		data={data.report.rows}
 		columns={cols}
-		fileName="ABC analysis {data.from} to {data.to}"
+		fileName={m.reports_file_abc({ from: data.from, to: data.to })}
 		facetKeys={['class', 'category']}
-		facetLabels={{ class: 'Class', category: 'Category' }}
+		facetLabels={{ class: m.reports_col_class(), category: m.reports_category() }}
 	/>
 </div>

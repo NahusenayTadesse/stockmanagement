@@ -11,6 +11,7 @@ import { branchScope, inScope } from '$lib/server/scope';
 import { locationOptions, supplierOptions } from '$lib/server/options';
 import { orderList } from '$lib/server/purchasing';
 import { orderHeader } from '$lib/schemas/purchasing';
+import { m } from '$lib/paraglide/messages.js';
 import { supplierSchema } from '$lib/schemas/suppliers';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -58,7 +59,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(orderHeader));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 
 		const [[sup], [loc]] = await Promise.all([
 			db
@@ -85,18 +86,18 @@ export const actions: Actions = {
 		]);
 		const scope = await branchScope(event.locals);
 		if (!sup) {
-			setError(form, 'supplierId', 'Choose a supplier from the list.');
+			setError(form, 'supplierId', m.purchasing_v_supplier_from_list());
 			return message(
 				form,
-				{ type: 'error', text: 'Choose a supplier from the list.' },
+				{ type: 'error', text: m.purchasing_v_supplier_from_list() },
 				{ status: 400 }
 			);
 		}
 		if (!loc || loc.kind === 'transit' || !inScope(scope, loc.branchId)) {
-			setError(form, 'locationId', 'Choose a location from the list.');
+			setError(form, 'locationId', m.purchasing_v_location_from_list());
 			return message(
 				form,
-				{ type: 'error', text: 'Choose a location from the list.' },
+				{ type: 'error', text: m.purchasing_v_location_from_list() },
 				{ status: 400 }
 			);
 		}
@@ -118,7 +119,7 @@ export const actions: Actions = {
 
 		redirect(
 			`/dashboard/purchasing/${row.id}`,
-			{ type: 'success', message: 'Draft order created — add the lines' },
+			{ type: 'success', message: m.purchasing_po_created() },
 			event.cookies
 		);
 	}

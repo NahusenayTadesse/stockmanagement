@@ -3,6 +3,7 @@
  */
 import { error } from '@sveltejs/kit';
 import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
+import { m } from '$lib/paraglide/messages.js';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { saveUploadedFile } from '@nahu/admin-kit/server/files';
 import { addLocalDays } from '@nahu/admin-kit/time';
@@ -59,11 +60,11 @@ export function datePresets(today: string) {
 	const monthStart = gregorianDay(ethiopianRange(eth.month, eth.year).startDate);
 	const fyStart = gregorianDay(ethiopianRange(11, ethiopianFiscalYear(today) - 1).startDate);
 	return [
-		{ key: 'today', label: 'Today', from: today, to: today },
-		{ key: '7d', label: 'Last 7 days', from: addLocalDays(today, -6), to: today },
-		{ key: 'month', label: 'This Ethiopian month', from: monthStart, to: today },
-		{ key: '30d', label: 'Last 30 days', from: addLocalDays(today, -29), to: today },
-		{ key: 'fy', label: 'This fiscal year', from: fyStart, to: today }
+		{ key: 'today', label: m.sales_preset_today(), from: today, to: today },
+		{ key: '7d', label: m.sales_preset_7d(), from: addLocalDays(today, -6), to: today },
+		{ key: 'month', label: m.sales_preset_month(), from: monthStart, to: today },
+		{ key: '30d', label: m.sales_preset_30d(), from: addLocalDays(today, -29), to: today },
+		{ key: 'fy', label: m.sales_preset_fy(), from: fyStart, to: today }
 	];
 }
 
@@ -118,7 +119,7 @@ const attachmentCount = sql<number>`(
 )`;
 
 const linkedDocuments = sql<string | null>`(
-	SELECT GROUP_CONCAT(COALESCE(${stockDocument.number}, CONCAT('Draft #', ${stockDocument.id})) SEPARATOR ', ')
+	SELECT GROUP_CONCAT(COALESCE(${stockDocument.number}, CONCAT('#', ${stockDocument.id})) SEPARATOR ', ')
 	FROM ${stockDocument} WHERE ${stockDocument.transactionId} = ${qualified(transactions, transactions.id)}
 )`;
 
@@ -179,7 +180,7 @@ export async function transactionTotals(orgId: number, f: TransactionFilters, re
 export async function totalsByMethod(orgId: number, f: TransactionFilters) {
 	const rows = await db
 		.select({
-			method: sql<string>`COALESCE(${paymentMethod.name}, 'Not said')`,
+			method: sql<string>`COALESCE(${paymentMethod.name}, ${m.sales_not_said()})`,
 			moneyIn: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction} = 'in' THEN ${transactions.amount} END), 0)`,
 			moneyOut: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction} = 'out' THEN ${transactions.amount} END), 0)`
 		})
@@ -198,7 +199,7 @@ export async function orgTransaction(orgId: number, id: number) {
 		.where(
 			and(eq(transactions.id, id), eq(transactions.orgId, orgId), isNull(transactions.deletedAt))
 		);
-	if (!row) error(404, 'Transaction not found');
+	if (!row) error(404, m.sales_tx_not_found());
 	return row;
 }
 
@@ -336,18 +337,18 @@ export async function checkTransaction(
 	let supplierName: string | null = null;
 
 	if (methodId) {
-		const [m] = await reader
+		const [method] = await reader
 			.select({ id: paymentMethod.id })
 			.from(paymentMethod)
 			.where(and(eq(paymentMethod.id, methodId), eq(paymentMethod.orgId, orgId)));
-		if (!m) throw new WriteRefused('paymentMethodId', 'Choose a payment method from the list.');
+		if (!method) throw new WriteRefused('paymentMethodId', m.sales_err_choose_method());
 	}
 	if (branchId) {
 		const [b] = await reader
 			.select({ id: branch.id })
 			.from(branch)
 			.where(and(eq(branch.id, branchId), eq(branch.orgId, orgId)));
-		if (!b) throw new WriteRefused('branchId', 'Choose a branch from the list.');
+		if (!b) throw new WriteRefused('branchId', m.sales_err_choose_branch());
 	}
 
 	if (supplierId) {
@@ -355,7 +356,7 @@ export async function checkTransaction(
 			.select({ name: supplier.name })
 			.from(supplier)
 			.where(and(eq(supplier.id, supplierId), eq(supplier.orgId, orgId)));
-		if (!s) throw new WriteRefused('supplierId', 'Choose a supplier from the list.');
+		if (!s) throw new WriteRefused('supplierId', m.sales_err_choose_supplier());
 		supplierName = s.name;
 	}
 
@@ -369,7 +370,7 @@ export async function checkTransaction(
 			.where(
 				and(eq(customer.id, customerId), eq(customer.orgId, orgId), isNull(customer.deletedAt))
 			);
-		if (!c) throw new WriteRefused('customerId', 'Choose a customer from the list.');
+		if (!c) throw new WriteRefused('customerId', m.sales_err_choose_customer());
 		customerName = c.name;
 	}
 
@@ -390,7 +391,7 @@ export async function checkTransaction(
 		if (dup) {
 			throw new WriteRefused(
 				'reference',
-				`Reference ${reference} is already recorded on transaction #${dup.id} (${dup.occurredOn}). The same payment cannot be used twice.`
+				m.sales_err_reference_on_tx({ reference, id: dup.id, date: dup.occurredOn })
 			);
 		}
 	}

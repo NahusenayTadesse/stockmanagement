@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import { itemAdd, itemEdit } from '../schema';
 
@@ -6,34 +7,39 @@
 </script>
 
 <svelte:head>
-	<title>{data.list.name} prices</title>
+	<title>{m.admin_pl_title({ name: data.list.name })}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div>
-		<p class="text-sm text-muted-foreground">Price list</p>
+		<p class="text-sm text-muted-foreground">{m.admin_pl_entity()}</p>
 		<h1 class="text-2xl font-semibold">{data.list.name}</h1>
 		<p class="text-muted-foreground">
-			Prices before VAT. A price for the base unit also prices its packs (a box of 10 at ten times
-			it) unless the pack has its own price here.
+			{m.admin_pl_intro()}
 		</p>
 	</div>
 	<LookupSection
 		config={{
-			entity: 'Price',
-			plural: 'Prices',
+			entity: m.admin_pl_price_entity(),
+			plural: m.admin_pl_price_plural(),
 			fields: [
-				{ name: 'itemId', label: 'Item', type: 'reference', options: 'items', display: 'item' },
+				{
+					name: 'itemId',
+					label: m.common_item(),
+					type: 'reference',
+					options: 'items',
+					display: 'item'
+				},
 				{
 					name: 'uomId',
-					label: 'Unit',
+					label: m.common_unit(),
 					type: 'reference',
 					options: 'units',
 					display: 'unit',
 					picker: 'select',
 					required: false
 				},
-				{ name: 'price', label: 'Price', type: 'money' }
+				{ name: 'price', label: m.common_price(), type: 'money' }
 			]
 		}}
 		rows={data.prices.rows}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -27,38 +28,37 @@
 	let editing = $state(false);
 
 	const details = $derived([
-		{ name: 'Name', value: data.role.name },
-		{ name: 'Description', value: data.role.description },
-		{ name: 'Users', value: data.userList.length },
+		{ name: m.common_name(), value: data.role.name },
+		{ name: m.admin_roles_description(), value: data.role.description },
+		{ name: m.admin_users_title(), value: data.userList.length },
 		{
-			name: 'Permissions',
-			value: data.role.isOwner ? 'All, always' : data.permissionList.length
+			name: m.admin_users_permissions(),
+			value: data.role.isOwner ? m.admin_roles_all_always() : data.permissionList.length
 		}
 	]);
 </script>
 
 <svelte:head>
-	<title>{data.role.name} · Role</title>
+	<title>{m.admin_roles_title_one({ name: data.role.name })}</title>
 </svelte:head>
 
-<SingleView title="Role: {data.role.name}">
+<SingleView title={m.admin_roles_view_title({ name: data.role.name })}>
 	<div class="flex w-full flex-wrap gap-2 p-4">
 		{#if !data.role.isOwner}
 			<Button onclick={() => (editing = !editing)}>
-				{#if editing}<ArrowLeft /> Back{:else}<Pencil /> Edit{/if}
+				{#if editing}<ArrowLeft /> {m.common_back()}{:else}<Pencil /> {m.common_edit()}{/if}
 			</Button>
 			{#if data.userList.length === 0}
 				<DeleteEntity
-					entity="Role"
+					entity={m.admin_roles_entity()}
 					name={data.role.name}
-					consequence="Its permission grants go with it."
+					consequence={m.admin_roles_delete_consequence()}
 					canDelete={data.isSuperAdmin}
 				/>
 			{/if}
 		{:else}
 			<p class="text-sm text-muted-foreground">
-				The owner role holds every permission, including new ones as they are added, and cannot be
-				edited or deleted.
+				{m.admin_roles_owner_note()}
 			</p>
 		{/if}
 	</div>
@@ -72,10 +72,17 @@
 			method="POST"
 		>
 			<Errors allErrors={$allErrors} />
-			<InputComp label="Name" name="name" {form} {errors} required />
-			<InputComp label="Description" name="description" type="textarea" rows={3} {form} {errors} />
+			<InputComp label={m.common_name()} name="name" {form} {errors} required />
 			<InputComp
-				label="Permissions"
+				label={m.admin_roles_description()}
+				name="description"
+				type="textarea"
+				rows={3}
+				{form}
+				{errors}
+			/>
+			<InputComp
+				label={m.admin_users_permissions()}
 				name="permissions"
 				type="checkbox"
 				{form}
@@ -83,7 +90,8 @@
 				items={data.allPermissions}
 			/>
 			<Button type="submit" form="edit">
-				{#if $delayed}<LoadingBtn name="Saving" />{:else}<Save /> Save changes{/if}
+				{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}<Save />
+					{m.admin_save_changes()}{/if}
 			</Button>
 		</form>
 	{:else}
@@ -93,7 +101,7 @@
 
 <div class="mt-8 grid gap-8 lg:grid-cols-2">
 	<section>
-		<h2 class="mb-2 text-lg font-semibold">Permissions</h2>
+		<h2 class="mb-2 text-lg font-semibold">{m.admin_users_permissions()}</h2>
 		<ul class="divide-y rounded-md border">
 			{#each data.permissionList as permission (permission.id)}
 				<li class="px-4 py-2">
@@ -101,12 +109,12 @@
 					<p class="font-mono text-xs text-muted-foreground">{permission.name}</p>
 				</li>
 			{:else}
-				<li class="px-4 py-2 text-muted-foreground">None</li>
+				<li class="px-4 py-2 text-muted-foreground">{m.common_none()}</li>
 			{/each}
 		</ul>
 	</section>
 	<section>
-		<h2 class="mb-2 text-lg font-semibold">Users on this role</h2>
+		<h2 class="mb-2 text-lg font-semibold">{m.admin_roles_on_this()}</h2>
 		<ul class="divide-y rounded-md border">
 			{#each data.userList as person (person.id)}
 				<li class="flex justify-between px-4 py-2">
@@ -117,7 +125,7 @@
 					<span class="text-sm text-muted-foreground">{person.email}</span>
 				</li>
 			{:else}
-				<li class="px-4 py-2 text-muted-foreground">Nobody</li>
+				<li class="px-4 py-2 text-muted-foreground">{m.admin_roles_nobody()}</li>
 			{/each}
 		</ul>
 	</section>

@@ -11,6 +11,7 @@
  *
  * Imported by the posting service: plain database code only.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
@@ -156,10 +157,10 @@ export async function createReturn(
 		.select()
 		.from(stockDocument)
 		.where(and(eq(stockDocument.id, input.documentId), eq(stockDocument.orgId, input.orgId)));
-	if (!orig) throw new ReturnError('That document does not exist.');
-	if (orig.status !== 'posted') throw new ReturnError('Only a posted document can be returned.');
+	if (!orig) throw new ReturnError(m.sales_ret_no_doc());
+	if (orig.status !== 'posted') throw new ReturnError(m.sales_ret_posted_only());
 	if (orig.type !== 'issue' && orig.type !== 'receipt') {
-		throw new ReturnError('Only sales and receipts can be returned.');
+		throw new ReturnError(m.sales_ret_sales_receipts());
 	}
 
 	const [pending] = await tx
@@ -167,13 +168,11 @@ export async function createReturn(
 		.from(stockDocument)
 		.where(and(eq(stockDocument.returnOfId, orig.id), eq(stockDocument.status, 'draft')));
 	if (pending) {
-		throw new ReturnError(
-			`Draft return #${pending.id} is already open for this; post or cancel it first.`
-		);
+		throw new ReturnError(m.sales_ret_draft_open({ id: pending.id }));
 	}
 
 	const left = (await returnable(input.orgId, orig.id, tx)).filter((r) => r.left > 0);
-	if (!left.length) throw new ReturnError('Everything on this document has already been returned.');
+	if (!left.length) throw new ReturnError(m.sales_ret_all_returned());
 
 	const lines = await tx
 		.select()
@@ -271,7 +270,7 @@ export async function checkReturn(
 		serials: string | null;
 	}[]
 ): Promise<{ message: string; lineId?: number } | null> {
-	if (!doc.returnOfId) return { message: 'A return must be made from the document it returns.' };
+	if (!doc.returnOfId) return { message: m.sales_ret_from_original() };
 	const [orig] = await reader
 		.select({ type: stockDocument.type, status: stockDocument.status })
 		.from(stockDocument)
@@ -284,16 +283,16 @@ export async function checkReturn(
 		);
 	const expected = doc.type === 'sales_return' ? 'issue' : 'receipt';
 	if (!orig || orig.status !== 'posted' || orig.type !== expected) {
-		return { message: 'The document this returns is not a posted one of the right kind.' };
+		return { message: m.sales_ret_wrong_kind() };
 	}
 
 	const left = await returnable(doc.orgId, doc.returnOfId, reader);
 	for (const l of lines) {
 		const r = left.find((x) => x.lineId === l.returnOfLineId && (x.lotId ?? 0) === (l.lotId ?? 0));
-		if (!r) return { message: 'This line is not on the document being returned.', lineId: l.id };
+		if (!r) return { message: m.sales_ret_line_not_on(), lineId: l.id };
 		if (l.quantity > r.left + 0.00001) {
 			return {
-				message: `Only ${r.left} can still be returned on this line; it says ${l.quantity}.`,
+				message: m.sales_ret_only_left({ left: r.left, quantity: l.quantity }),
 				lineId: l.id
 			};
 		}
@@ -304,7 +303,7 @@ export async function checkReturn(
 		const stranger = serials.find((s) => !r.serialsLeft.includes(s));
 		if (stranger) {
 			return {
-				message: `Serial ${stranger} was not on the original, or has already been returned.`,
+				message: m.sales_ret_serial_stranger({ serial: stranger }),
 				lineId: l.id
 			};
 		}

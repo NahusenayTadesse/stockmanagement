@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
@@ -41,7 +42,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 					eq(stockDocument.status, 'posted')
 				)
 			);
-		if (!doc || doc.type !== 'receipt') error(404, 'Posted receipt not found');
+		if (!doc || doc.type !== 'receipt') error(404, m.stock_receipt_not_found());
 		source = doc.number;
 		const lines = await db
 			.select({
@@ -125,7 +126,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			unit: it.unit,
 			// Shelf prices are what the customer pays: VAT or TOT included.
 			price: it.salePrice === null ? null : lineAmounts(1, it.salePrice, vat, tot).gross,
-			taxNote: vat ? 'incl. VAT' : tot ? 'incl. TOT' : null,
+			taxNote: vat ? m.stock_incl_vat() : tot ? m.stock_incl_tot() : null,
 			code: code ?? it.sku,
 			svg: barcodeSvg(code ?? it.sku, { height: type === 'shelf' ? 10 : 8 }),
 			copies: n

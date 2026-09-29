@@ -13,6 +13,7 @@
  * usual shape of national e-invoicing APIs (seller/buyer/lines/totals/IRN); align it with the
  * Ministry's published specification before going live — nothing else needs to change.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { createHash } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
@@ -43,12 +44,12 @@ export async function invoiceFor(orgId: number, documentId: number, conn: Conn =
 		.innerJoin(organization, eq(organization.id, stockDocument.orgId))
 		.leftJoin(customer, eq(customer.id, stockDocument.customerId))
 		.where(and(eq(stockDocument.id, documentId), eq(stockDocument.orgId, orgId)));
-	if (!row) throw new EinvoiceError('That document does not exist.');
+	if (!row) throw new EinvoiceError(m.sales_ret_no_doc());
 	const { doc, org, buyer } = row;
 	if (doc.status !== 'posted' || (doc.type !== 'issue' && doc.type !== 'sales_return')) {
-		throw new EinvoiceError('Only a posted sale or customer return is invoiced.');
+		throw new EinvoiceError(m.sales_einv_posted_only());
 	}
-	if (!org.tin) throw new EinvoiceError('Set the business TIN (Business profile) first.');
+	if (!org.tin) throw new EinvoiceError(m.sales_einv_set_tin());
 
 	const lines = await conn
 		.select({
@@ -62,7 +63,7 @@ export async function invoiceFor(orgId: number, documentId: number, conn: Conn =
 		.innerJoin(uom, eq(uom.id, stockDocumentLine.uomId))
 		.where(and(eq(stockDocumentLine.documentId, doc.id), isNull(stockDocumentLine.deletedAt)));
 	if (!lines.length || lines.some((l) => l.line.unitPrice === null)) {
-		throw new EinvoiceError('Every line needs a sale price before the sale can be invoiced.');
+		throw new EinvoiceError(m.sales_einv_every_line_priced());
 	}
 
 	let original: { number: string | null; irn: string | null } | null = null;
@@ -178,7 +179,7 @@ async function token(settings: typeof organization.$inferSelect, secret: string)
 	});
 	const json = (await res.json().catch(() => ({}))) as { access_token?: string };
 	if (!res.ok || !json.access_token) {
-		throw new EinvoiceError(`Could not sign in to the e-invoicing service (${res.status}).`);
+		throw new EinvoiceError(m.sales_einv_sign_in_failed({ status: res.status }));
 	}
 	return json.access_token;
 }
@@ -193,7 +194,7 @@ export async function submitEinvoice(
 	conn: Conn = db
 ): Promise<{ ok: true; irn: string } | { ok: false; error: string }> {
 	const [org] = await conn.select().from(organization).where(eq(organization.id, orgId));
-	if (!org?.einvoiceMode) return { ok: false, error: 'E-invoicing is off for this business.' };
+	if (!org?.einvoiceMode) return { ok: false, error: m.sales_einv_off() };
 
 	let inv: Invoice;
 	try {
@@ -201,7 +202,7 @@ export async function submitEinvoice(
 	} catch (err) {
 		return {
 			ok: false,
-			error: err instanceof Error ? err.message : 'Could not build the invoice.'
+			error: err instanceof Error ? err.message : m.sales_einv_build_failed()
 		};
 	}
 
@@ -226,9 +227,9 @@ export async function submitEinvoice(
 			qr = qrData(inv, irn);
 			response = { mode: 'sandbox', irn, receivedAt: new Date().toISOString() };
 		} else {
-			if (!org.einvoiceEndpoint) throw new EinvoiceError('Set the e-invoicing endpoint.');
+			if (!org.einvoiceEndpoint) throw new EinvoiceError(m.sales_einv_set_endpoint());
 			const secret = unseal(org.einvoiceSecret);
-			if (!secret) throw new EinvoiceError('Enter the e-invoicing client secret again.');
+			if (!secret) throw new EinvoiceError(m.sales_einv_secret_again());
 			const bearer = await token(org, secret);
 			const res = await fetch(org.einvoiceEndpoint, {
 				method: 'POST',
@@ -256,10 +257,10 @@ export async function submitEinvoice(
 					einvoiceError: `${res.status}: ${String(json.message ?? json.error ?? text).slice(0, 200)}`,
 					einvoiceResponse: typeof response === 'string' ? response : JSON.stringify(response)
 				});
-				return { ok: false, error: `The e-invoicing service answered ${res.status}.` };
+				return { ok: false, error: m.sales_einv_answered({ status: res.status }) };
 			}
 			irn = String(json.irn ?? json.IRN ?? json.invoiceReferenceNumber ?? '');
-			if (!irn) throw new EinvoiceError('The e-invoicing service accepted it but sent no IRN.');
+			if (!irn) throw new EinvoiceError(m.sales_einv_no_irn());
 			qr = String(json.qr ?? json.qrCode ?? json.signedQRCode ?? qrData(inv, irn));
 		}
 
@@ -273,7 +274,7 @@ export async function submitEinvoice(
 		});
 		return { ok: true, irn };
 	} catch (err) {
-		const error = err instanceof Error ? err.message : 'The invoice could not be sent.';
+		const error = err instanceof Error ? err.message : m.sales_einv_send_failed();
 		await record({ einvoiceStatus: 'failed', einvoiceError: error.slice(0, 255) });
 		return { ok: false, error };
 	}

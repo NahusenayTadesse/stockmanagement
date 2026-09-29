@@ -33,6 +33,7 @@ import {
 } from '$lib/server/db/schema';
 import { postDocument, StockError, type Tx } from '$lib/server/stock/post';
 import { parseSerials, round4 } from '$lib/server/stock/math';
+import { m } from '$lib/paraglide/messages.js';
 
 type Reader = Pick<typeof db, 'select'>;
 
@@ -166,6 +167,44 @@ export const COLUMNS: Record<ImportKind, Column[]> = {
 	]
 };
 
+type Messages = Record<
+	string,
+	((inputs?: object, options?: { locale?: 'en' | 'am' }) => string) | undefined
+>;
+
+/**
+ * A column's name as a person reads it, in their language (or the one given). The English
+ * `label` stays the template's header, so a file works whatever language it was made in.
+ */
+export function columnLabel(key: string, fallback: string, locale?: 'en' | 'am'): string {
+	const message = (m as unknown as Messages)[`admin_imp_col_${key}`];
+	return message ? message({}, locale ? { locale } : {}) : fallback;
+}
+
+/** A column's note, in the viewer's language. */
+export function columnNote(note: string): string {
+	const notes: Record<string, () => string> = {
+		'Unit name or symbol; made if new': m.admin_imp_note_unit_new,
+		'Optional second unit': m.admin_imp_note_pack_unit,
+		'Base units in one pack': m.admin_imp_note_pack_factor,
+		'Name, or "Branch · Location"': m.admin_imp_note_location,
+		'Blank: the base unit': m.admin_imp_note_unit_blank,
+		'Per the unit above': m.admin_imp_note_unit_cost,
+		'YYYY-MM-DD': m.admin_imp_note_expiry,
+		'Separated by ; or ,': m.admin_imp_note_serials
+	};
+	return notes[note]?.() ?? note;
+}
+
+/** A column's name for a message about one of its cells. */
+const L = (key: string) =>
+	columnLabel(
+		key,
+		Object.values(COLUMNS)
+			.flat()
+			.find((c) => c.key === key)?.label ?? key
+	);
+
 // ── Reading the file ────────────────────────────────────────────────────────────────────────
 
 /** RFC 4180 CSV: quoted fields, doubled quotes, commas and newlines inside quotes. */
@@ -229,7 +268,7 @@ export async function readTable(
 	file: { name: string; bytes: Uint8Array }
 ): Promise<{ rows: SheetRow[]; ignored: string[] }> {
 	if (file.bytes.byteLength > MAX_FILE_BYTES) {
-		throw new ImportError('The file is over 5 MB. Split it into smaller files.');
+		throw new ImportError(m.admin_imp_too_big());
 	}
 	let table: string[][];
 	const name = file.name.toLowerCase();
@@ -238,31 +277,35 @@ export async function readTable(
 			const data = await readSheet(Buffer.from(file.bytes));
 			table = data.map((r) => r.map(cellText));
 		} catch {
-			throw new ImportError('That Excel file could not be read. Save it again as .xlsx or .csv.');
+			throw new ImportError(m.admin_imp_bad_excel());
 		}
 	} else if (name.endsWith('.csv') || name.endsWith('.txt')) {
 		table = parseCsv(new TextDecoder('utf-8').decode(file.bytes));
 	} else {
-		throw new ImportError('Upload a .csv or .xlsx file.');
+		throw new ImportError(m.admin_imp_bad_type());
 	}
 
 	const nonEmpty = (r: string[]) => r.some((c) => c.trim() !== '');
 	const headerIndex = table.findIndex(nonEmpty);
-	if (headerIndex === -1) throw new ImportError('The file is empty.');
+	if (headerIndex === -1) throw new ImportError(m.admin_imp_empty());
 	const header = table[headerIndex].map((h) => headerKey(h));
 
 	const columns = COLUMNS[kind];
 	const byHeader = new Map<string, string>();
 	for (const col of columns) {
-		for (const alias of [col.key, col.label, ...(col.aliases ?? [])]) {
+		// The Amharic name counts too: a file whose headers were typed in Amharic still reads.
+		for (const alias of [
+			col.key,
+			col.label,
+			columnLabel(col.key, col.label, 'am'),
+			...(col.aliases ?? [])
+		]) {
 			byHeader.set(headerKey(alias), col.key);
 		}
 	}
 	const keys = header.map((h) => byHeader.get(h) ?? null);
 	if (!keys.some(Boolean)) {
-		throw new ImportError(
-			`None of the columns are recognised. Start from the ${kind} template: its first row names the columns.`
-		);
+		throw new ImportError(m.admin_imp_no_columns({ kind }));
 	}
 	const ignored = table[headerIndex].filter((h, i) => h.trim() && !keys[i]);
 
@@ -275,11 +318,9 @@ export async function readTable(
 		});
 		rows.push({ row: i + 1, values });
 	}
-	if (!rows.length) throw new ImportError('The file has a header row but no data under it.');
+	if (!rows.length) throw new ImportError(m.admin_imp_no_data());
 	if (rows.length > MAX_ROWS) {
-		throw new ImportError(
-			`The file has ${rows.length} rows; import at most ${MAX_ROWS} at a time.`
-		);
+		throw new ImportError(m.admin_imp_too_many_rows({ rows: rows.length, max: MAX_ROWS }));
 	}
 	return { rows, ignored };
 }
@@ -321,7 +362,7 @@ function bool(v: string | undefined, errors: string[], label: string): boolean |
 	const t = lower(v);
 	if (TRUE.has(t)) return true;
 	if (FALSE.has(t)) return false;
-	errors.push(`${label}: write yes or no, not “${v}”.`);
+	errors.push(m.admin_imp_yes_no({ label, value: v }));
 	return undefined;
 }
 
@@ -340,13 +381,13 @@ function num(
 			.trim()
 	);
 	if (!Number.isFinite(n)) {
-		errors.push(`${label}: “${v}” is not a number.`);
+		errors.push(m.admin_imp_not_number({ label, value: v }));
 		return undefined;
 	}
-	if (opts.integer && !Number.isInteger(n)) errors.push(`${label}: use a whole number.`);
-	if (opts.positive && n <= 0) errors.push(`${label}: must be more than 0.`);
+	if (opts.integer && !Number.isInteger(n)) errors.push(m.admin_imp_whole({ label }));
+	if (opts.positive && n <= 0) errors.push(m.admin_imp_positive({ label }));
 	else if (opts.min !== undefined && n < opts.min)
-		errors.push(`${label}: must be at least ${opts.min}.`);
+		errors.push(m.admin_imp_at_least({ label, min: opts.min }));
 	return n;
 }
 
@@ -356,10 +397,10 @@ function isoDate(v: string | undefined, errors: string[], label: string): string
 	const t = v.trim();
 	let d: string | null = null;
 	if (/^\d{4}-\d{2}-\d{2}$/.test(t)) d = t;
-	const m = t.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/);
-	if (m) d = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+	const dmy = t.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/);
+	if (dmy) d = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
 	if (!d || Number.isNaN(Date.parse(`${d}T00:00:00Z`))) {
-		errors.push(`${label}: write the date as YYYY-MM-DD, not “${v}”.`);
+		errors.push(m.admin_imp_date({ label, value: v }));
 		return undefined;
 	}
 	return d;
@@ -469,25 +510,22 @@ export async function planImport(
 	const l = await lookups(reader, orgId);
 	const plans: RowPlan[] = [];
 	if (kind === 'customers' && !l.sellsToCustomers) {
-		throw new ImportError(
-			'This business does not sell to customers (Business profile). Turn that on to import customers.'
-		);
+		throw new ImportError(m.admin_imp_no_customers());
 	}
 
 	const seen = new Map<string, number>();
 	const seenCodes = new Map<string, number>();
 	const once = (key: string, row: number, errors: string[], what: string) => {
 		const first = seen.get(key);
-		if (first !== undefined) errors.push(`${what} is also on row ${first}.`);
+		if (first !== undefined) errors.push(m.admin_imp_also_on_row({ what, row: first }));
 		else seen.set(key, row);
 	};
 	const codeFree = (code: string, itemId: number | undefined, row: number, errors: string[]) => {
 		const earlier = seenCodes.get(code);
-		if (earlier !== undefined) errors.push(`Barcode ${code} is also on row ${earlier}.`);
+		if (earlier !== undefined) errors.push(m.admin_imp_barcode_row({ code, row: earlier }));
 		seenCodes.set(code, row);
 		const owner = l.barcodes.find((b) => b.code === code);
-		if (owner && owner.itemId !== itemId)
-			errors.push(`Barcode ${code} is already on another item.`);
+		if (owner && owner.itemId !== itemId) errors.push(m.admin_imp_barcode_taken({ code }));
 	};
 
 	for (const { row, values: v } of rows) {
@@ -498,35 +536,35 @@ export async function planImport(
 
 		if (kind === 'items') {
 			label = v.sku ? `${v.sku} · ${v.name ?? ''}` : (v.name ?? '');
-			if (!v.sku) errors.push('SKU is empty.');
-			else if (v.sku.length > 40) errors.push('SKU is longer than 40 characters.');
-			else once(`sku:${lower(v.sku)}`, row, errors, `SKU ${v.sku}`);
+			if (!v.sku) errors.push(m.admin_imp_sku_empty());
+			else if (v.sku.length > 40) errors.push(m.admin_imp_sku_long());
+			else once(`sku:${lower(v.sku)}`, row, errors, m.admin_imp_what_sku({ sku: v.sku }));
 			const existing = v.sku ? l.itemBySku(v.sku) : undefined;
 			action = existing ? 'update' : 'create';
-			if (!existing && !v.name) errors.push('Name is empty.');
+			if (!existing && !v.name) errors.push(m.admin_imp_name_empty());
 			if (v.name && (v.name.length < 2 || v.name.length > 160)) {
-				errors.push('Name must be 2 to 160 characters.');
+				errors.push(m.admin_imp_name_length());
 			}
-			if (!existing && !v.unit) errors.push('Unit is empty: say what it is counted in.');
-			if (v.unit && !l.unitByName(v.unit))
-				warnings.push(`Unit “${v.unit}” is new and will be added.`);
+			if (!existing && !v.unit) errors.push(m.admin_imp_unit_empty());
+			if (v.unit && !l.unitByName(v.unit)) warnings.push(m.admin_imp_unit_new({ unit: v.unit }));
 			if (v.category && !l.categoryByName(v.category)) {
-				warnings.push(`Category “${v.category}” is new and will be added.`);
+				warnings.push(m.admin_imp_category_new({ category: v.category }));
 			}
-			num(v.salePrice, errors, 'Sale price', { min: 0 });
-			num(v.reorderLevel, errors, 'Reorder level', { min: 0 });
+			num(v.salePrice, errors, L('salePrice'), { min: 0 });
+			num(v.reorderLevel, errors, L('reorderLevel'), { min: 0 });
 			if (v.taxCode && !TAX_WORDS[lower(v.taxCode)]) {
-				errors.push(`VAT: write standard, zero or exempt, not “${v.taxCode}”.`);
+				errors.push(m.admin_imp_vat_word({ value: v.taxCode }));
 			}
-			const stocked = bool(v.stockTracked, errors, 'Stocked') ?? existing?.stockTracked ?? true;
-			const lots = bool(v.trackLots, errors, 'Track lots');
-			const expiry = bool(v.trackExpiry, errors, 'Track expiry');
-			const serials = bool(v.trackSerials, errors, 'Track serials');
+			const stocked =
+				bool(v.stockTracked, errors, L('stockTracked')) ?? existing?.stockTracked ?? true;
+			const lots = bool(v.trackLots, errors, L('trackLots'));
+			const expiry = bool(v.trackExpiry, errors, L('trackExpiry'));
+			const serials = bool(v.trackSerials, errors, L('trackSerials'));
 			if (v.supplier && !l.supplierByName(v.supplier)) {
-				errors.push(`Supplier “${v.supplier}” is not on the list. Import suppliers first.`);
+				errors.push(m.admin_imp_supplier_unknown({ name: v.supplier }));
 			}
 			if (stocked && !v.supplier && !existing?.supplierId) {
-				errors.push('Main supplier is empty; every stocked item needs one.');
+				errors.push(m.admin_imp_supplier_needed());
 			}
 			// The ledger was written in an item's terms: they stay once stock has moved.
 			if (existing) {
@@ -538,16 +576,14 @@ export async function planImport(
 					(expiry !== undefined && expiry !== existing.trackExpiry) ||
 					(serials !== undefined && serials !== existing.trackSerials);
 				if (changes && (await hasMoved(reader, existing.id))) {
-					errors.push(
-						'Stock of this item has moved, so its unit and lot/expiry/serial tracking cannot change.'
-					);
+					errors.push(m.admin_imp_moved());
 				}
 			}
 			if (v.barcode) codeFree(v.barcode, existing?.id, row, errors);
 			if (v.packUnit || v.packFactor || v.packBarcode) {
-				if (!v.packUnit) errors.push('Pack unit is empty but a pack factor or barcode is given.');
-				const factor = num(v.packFactor, errors, 'Pack factor', { positive: true });
-				if (v.packUnit && factor === undefined) errors.push('Pack factor is empty.');
+				if (!v.packUnit) errors.push(m.admin_imp_pack_unit_empty());
+				const factor = num(v.packFactor, errors, L('packFactor'), { positive: true });
+				if (v.packUnit && factor === undefined) errors.push(m.admin_imp_pack_factor_empty());
 				const packUom = v.packUnit ? l.unitByName(v.packUnit) : undefined;
 				const baseUom = v.unit ? l.unitByName(v.unit) : undefined;
 				const baseId = baseUom?.id ?? existing?.baseUomId;
@@ -555,95 +591,95 @@ export async function planImport(
 					v.packUnit &&
 					(lower(v.packUnit) === lower(v.unit ?? '') || (packUom && packUom.id === baseId))
 				) {
-					errors.push('Pack unit is the same as the base unit.');
+					errors.push(m.admin_imp_pack_same());
 				}
-				if (v.packUnit && !packUom) warnings.push(`Unit “${v.packUnit}” is new and will be added.`);
+				if (v.packUnit && !packUom) warnings.push(m.admin_imp_unit_new({ unit: v.packUnit }));
 				const had =
 					existing &&
 					packUom &&
 					l.packs.find((p) => p.itemId === existing.id && p.uomId === packUom.id);
 				if (had && factor !== undefined && had.factor !== factor) {
-					warnings.push(`The item already has ${v.packUnit} at ${had.factor}; that is kept.`);
+					warnings.push(m.admin_imp_pack_kept({ unit: v.packUnit, factor: had.factor }));
 				}
 				if (v.packBarcode) codeFree(v.packBarcode, existing?.id, row, errors);
 			}
 		} else if (kind === 'suppliers') {
-			if (!v.name) errors.push('Name is empty.');
-			else once(`name:${lower(v.name)}`, row, errors, `Supplier ${v.name}`);
+			if (!v.name) errors.push(m.admin_imp_name_empty());
+			else once(`name:${lower(v.name)}`, row, errors, m.admin_imp_what_supplier({ name: v.name }));
 			const existing = v.name ? l.supplierByName(v.name) : undefined;
 			action = existing ? 'update' : 'create';
-			if (!existing && !v.phone) errors.push('Phone is empty; a supplier is reached by phone.');
+			if (!existing && !v.phone) errors.push(m.admin_imp_phone_empty());
 			if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email))
-				errors.push('Email does not look right.');
-			bool(v.vatRegistered, errors, 'VAT registered');
-			num(v.leadTimeDays, errors, 'Lead time days', { min: 0, integer: true });
+				errors.push(m.admin_imp_email_bad());
+			bool(v.vatRegistered, errors, L('vatRegistered'));
+			num(v.leadTimeDays, errors, L('leadTimeDays'), { min: 0, integer: true });
 		} else if (kind === 'customers') {
-			if (!v.name) errors.push('Name is empty.');
+			if (!v.name) errors.push(m.admin_imp_name_empty());
 			else
 				once(
 					`c:${lower(v.name)}|${(v.phone ?? '').replace(/\D/g, '')}`,
 					row,
 					errors,
-					`Customer ${v.name}`
+					m.admin_imp_what_customer({ name: v.name })
 				);
 			if (v.name) {
 				const existing = await findCustomer(reader, orgId, v.name, v.phone || null);
 				action = existing ? 'update' : 'create';
 			}
 			if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email))
-				errors.push('Email does not look right.');
-			num(v.creditLimit, errors, 'Credit limit', { min: 0 });
-			num(v.creditDays, errors, 'Credit days', { min: 0, integer: true });
+				errors.push(m.admin_imp_email_bad());
+			num(v.creditLimit, errors, L('creditLimit'), { min: 0 });
+			num(v.creditDays, errors, L('creditDays'), { min: 0, integer: true });
 		} else {
 			label = `${v.sku ?? ''} @ ${v.location ?? ''}`;
 			const it = v.sku ? l.itemBySku(v.sku) : undefined;
-			if (!v.sku) errors.push('SKU is empty.');
-			else if (!it) errors.push(`No item has SKU ${v.sku}. Import items first.`);
-			else if (!it.stockTracked) errors.push(`${it.name} is not stocked.`);
-			if (!v.location) errors.push('Location is empty.');
+			if (!v.sku) errors.push(m.admin_imp_sku_empty());
+			else if (!it) errors.push(m.admin_imp_no_item({ sku: v.sku }));
+			else if (!it.stockTracked) errors.push(m.admin_imp_not_stocked({ item: it.name }));
+			if (!v.location) errors.push(m.admin_imp_location_empty());
 			else {
 				const { found, ambiguous } = findLocation(l, v.location);
-				if (ambiguous)
-					errors.push(`More than one branch has “${v.location}”: write "Branch · ${v.location}".`);
-				else if (!found) errors.push(`No location is called “${v.location}”.`);
+				if (ambiguous) errors.push(m.admin_imp_location_ambiguous({ location: v.location }));
+				else if (!found) errors.push(m.admin_imp_location_unknown({ location: v.location }));
 				else if (it) {
 					const [bal] = await reader
 						.select({ q: sql<number>`COALESCE(SUM(${stockBalance.quantity}), 0)` })
 						.from(stockBalance)
 						.where(and(eq(stockBalance.itemId, it.id), eq(stockBalance.locationId, found.id)));
 					if (Number(bal.q) > 0) {
-						warnings.push(`${round4(Number(bal.q))} is already there; this adds to it.`);
+						warnings.push(m.admin_imp_already_there({ quantity: round4(Number(bal.q)) }));
 					}
 				}
 			}
-			const quantity = num(v.quantity, errors, 'Quantity', { positive: true });
-			if (v.quantity === undefined || v.quantity === '') errors.push('Quantity is empty.');
-			num(v.unitCost, errors, 'Unit cost', { min: 0 });
+			const quantity = num(v.quantity, errors, L('quantity'), { positive: true });
+			if (v.quantity === undefined || v.quantity === '') errors.push(m.admin_imp_quantity_empty());
+			num(v.unitCost, errors, L('unitCost'), { min: 0 });
 			if (it && v.unit) {
 				const u = l.unitByName(v.unit);
-				if (!u) errors.push(`No unit is called “${v.unit}”.`);
+				if (!u) errors.push(m.admin_imp_unit_unknown({ unit: v.unit }));
 				else if (
 					u.id !== it.baseUomId &&
 					!l.packs.some((p) => p.itemId === it.id && p.uomId === u.id)
 				) {
-					errors.push(`${it.name} is not counted in ${v.unit}.`);
+					errors.push(m.admin_imp_not_counted_in({ item: it.name, unit: v.unit }));
 				}
 			}
-			const expiry = isoDate(v.expiry, errors, 'Expiry');
+			const expiry = isoDate(v.expiry, errors, L('expiry'));
 			if (it) {
 				if ((it.trackLots || it.trackExpiry) && !v.lot)
-					errors.push(`${it.name} tracks lots: give the lot.`);
+					errors.push(m.admin_imp_needs_lot({ item: it.name }));
 				if (it.trackExpiry && !expiry && !v.expiry)
-					errors.push(`${it.name} tracks expiry: give the expiry date.`);
+					errors.push(m.admin_imp_needs_expiry({ item: it.name }));
 				const { serials, duplicates } = parseSerials((v.serials ?? '').replace(/;/g, ','));
-				if (duplicates.length) errors.push(`Serial ${duplicates.join(', ')} is entered twice.`);
+				if (duplicates.length)
+					errors.push(m.admin_imp_serial_twice({ serials: duplicates.join(', ') }));
 				if (it.trackSerials) {
 					if (!v.unit || l.unitByName(v.unit)?.id === it.baseUomId) {
 						if (quantity !== undefined && serials.length !== quantity) {
-							errors.push(`${it.name} tracks serials: list exactly ${quantity} serial number(s).`);
+							errors.push(m.admin_imp_serial_count({ item: it.name, quantity }));
 						}
-					} else errors.push('Serial-tracked stock is imported in its base unit.');
-				} else if (serials.length) errors.push(`${it.name} does not track serial numbers.`);
+					} else errors.push(m.admin_imp_serial_base());
+				} else if (serials.length) errors.push(m.admin_imp_no_serials({ item: it.name }));
 			}
 		}
 
@@ -703,7 +739,11 @@ export async function runImport(
 	const bad = plan.rows.find((r) => r.errors.length);
 	if (bad) {
 		throw new ImportError(
-			`Nothing was imported: ${plan.counts.errors} row(s) have problems. Row ${bad.row}: ${bad.errors[0]}`
+			m.admin_imp_nothing_imported_rows({
+				count: plan.counts.errors,
+				row: bad.row,
+				error: bad.errors[0]
+			})
 		);
 	}
 	const result: ImportResult = { created: 0, updated: 0, documents: [] };
@@ -976,7 +1016,11 @@ export async function runImport(
 		} catch (err) {
 			if (err instanceof StockError) {
 				const row = err.lineId ? rowOfLine.get(err.lineId) : undefined;
-				throw new ImportError(`Nothing was imported. ${row ? `Row ${row}: ` : ''}${err.message}`);
+				throw new ImportError(
+					m.admin_imp_nothing_imported({
+						detail: `${row ? m.admin_imp_row_prefix({ row }) : ''}${err.message}`
+					})
+				);
 			}
 			throw err;
 		}

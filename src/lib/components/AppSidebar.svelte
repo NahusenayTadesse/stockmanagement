@@ -6,6 +6,7 @@
 	import { visibleNavigation } from '@nahu/admin-kit/navigation';
 	import { appSurface } from '@nahu/admin-kit/global';
 	import { fileUrl } from '@nahu/admin-kit/files';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/**
 	 * The kit's sidebar, with two things it cannot express: the business's own logo at the top,
@@ -50,7 +51,7 @@
 			class="flex items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-sidebar-accent"
 			title="Digital Construct — digitalconstruct.io"
 		>
-			<span class="text-xs text-muted-foreground">Prepared by</span>
+			<span class="text-xs text-muted-foreground">{m.common_prepared_by()}</span>
 			<!-- White tile: the logo is navy on white and would vanish on the dark sidebar. -->
 			<span class="rounded bg-white px-1">
 				<img src="/digital-construct-logo.png" alt="Digital Construct" class="h-12 w-auto" />

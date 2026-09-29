@@ -2,6 +2,7 @@
  * The item page's product structure: a kit's or recipe's components, an item's variants, and the
  * item a variant belongs to. Kept apart from the page's own load so the sections stay separable.
  */
+import { m } from '$lib/paraglide/messages.js';
 import type { RequestEvent } from '@sveltejs/kit';
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
@@ -23,7 +24,7 @@ import { componentAdd, componentEdit, variantAdd } from '$lib/schemas/items';
 const components = childCrud({
 	table: kitComponent,
 	ownerColumn: 'kitItemId',
-	label: 'Component',
+	label: () => m.common_rec_component(),
 	addSchema: componentAdd,
 	editSchema: componentEdit,
 	permission: 'items.manage',
@@ -108,7 +109,7 @@ export const productActions = {
 		requirePermission(event.locals, 'items.manage');
 		const form = await superValidate(event.request, zod4(variantAdd));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 		try {
 			await createVariant(
@@ -126,6 +127,9 @@ export const productActions = {
 			}
 			throw err;
 		}
-		return message(form, { type: 'success', text: `Variant ${form.data.variantLabel} added` });
+		return message(form, {
+			type: 'success',
+			text: m.stock_variant_added({ label: form.data.variantLabel })
+		});
 	}
 };

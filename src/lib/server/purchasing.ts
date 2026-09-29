@@ -26,6 +26,8 @@ import { reservedByLocation } from '$lib/server/reservations';
 import { qualified } from '$lib/server/db/sql';
 import { round4 } from '$lib/server/stock/math';
 import { ApprovalRequired, issueNumber, StockError, type Tx } from '$lib/server/stock/post';
+import { m } from '$lib/paraglide/messages.js';
+import { PO_STATUS_LABELS } from '$lib/schemas/purchasing';
 
 type Writer = typeof db | Tx;
 
@@ -36,7 +38,7 @@ export async function orgOrder(orgId: number, id: number, reader: Writer = db) {
 		.where(
 			and(eq(purchaseOrder.id, id), eq(purchaseOrder.orgId, orgId), isNull(purchaseOrder.deletedAt))
 		);
-	if (!row) error(404, 'Purchase order not found');
+	if (!row) error(404, m.purchasing_po_not_found());
 	return row;
 }
 
@@ -244,9 +246,11 @@ export async function markOrdered(
 ) {
 	const order = await orgOrder(input.orgId, input.orderId, tx);
 	if (order.status !== 'draft')
-		throw new StockError(`This order is already ${order.status.replace('_', ' ')}.`);
+		throw new StockError(
+			m.purchasing_po_already({ status: PO_STATUS_LABELS[order.status].toLowerCase() })
+		);
 	const lines = await orderLines(input.orgId, order.id, tx);
-	if (!lines.length) throw new StockError('Add at least one line before ordering.');
+	if (!lines.length) throw new StockError(m.purchasing_po_add_line_first());
 
 	// Maker-checker: a large order waits for a second person before it goes out.
 	if (!input.approved) {
@@ -259,7 +263,10 @@ export async function markOrdered(
 			throw new ApprovalRequired(
 				'purchase_order',
 				value,
-				`it is worth ${value.toFixed(2)}, over the ${org.limit.toFixed(2)} limit`
+				m.purchasing_po_approval_reason({
+					value: value.toFixed(2),
+					limit: org.limit.toFixed(2)
+				})
 			);
 		}
 	}
@@ -290,8 +297,8 @@ export async function receiptFromOrder(
 	if (order.status !== 'ordered' && order.status !== 'partially_received') {
 		throw new StockError(
 			order.status === 'draft'
-				? 'Mark the order as ordered before receiving against it.'
-				: `This order is ${order.status.replace('_', ' ')}.`
+				? m.purchasing_po_mark_ordered_first()
+				: m.purchasing_po_is({ status: PO_STATUS_LABELS[order.status].toLowerCase() })
 		);
 	}
 
@@ -300,13 +307,11 @@ export async function receiptFromOrder(
 		.from(stockDocument)
 		.where(and(eq(stockDocument.purchaseOrderId, order.id), eq(stockDocument.status, 'draft')));
 	if (pending) {
-		throw new StockError(
-			`Draft receipt #${pending.id} is already receiving this order; post or cancel it first.`
-		);
+		throw new StockError(m.purchasing_po_receipt_pending({ id: pending.id }));
 	}
 
 	const due = (await orderLines(input.orgId, order.id, tx)).filter((l) => l.due > 0);
-	if (!due.length) throw new StockError('Everything on this order has arrived.');
+	if (!due.length) throw new StockError(m.purchasing_po_all_arrived());
 
 	const [loc] = await tx
 		.select({ branchId: location.branchId })
@@ -533,7 +538,7 @@ export async function ordersFromReorder(
 	}
 ): Promise<number[]> {
 	const picks = input.picks.filter((p) => Number.isFinite(p.quantity) && p.quantity > 0);
-	if (!picks.length) throw new StockError('Tick at least one item and give it a quantity.');
+	if (!picks.length) throw new StockError(m.purchasing_reorder_tick_one());
 
 	const [loc] = await tx
 		.select({ id: location.id, branchId: location.branchId })
@@ -545,7 +550,7 @@ export async function ordersFromReorder(
 				isNull(location.deletedAt)
 			)
 		);
-	if (!loc) throw new StockError('Choose where the orders should be delivered.');
+	if (!loc) throw new StockError(m.purchasing_reorder_choose_delivery());
 
 	const items = await tx
 		.select({
@@ -571,9 +576,8 @@ export async function ordersFromReorder(
 	const bySupplier = new Map<number, { itemId: number; quantity: number }[]>();
 	for (const p of picks) {
 		const it = byId.get(p.itemId);
-		if (!it) throw new StockError('One of the items is no longer available; reload the page.');
-		if (!it.supplierId)
-			throw new StockError(`${it.name} has no main supplier. Set one on the item first.`);
+		if (!it) throw new StockError(m.purchasing_reorder_item_gone());
+		if (!it.supplierId) throw new StockError(m.purchasing_item_no_supplier({ item: it.name }));
 		bySupplier.set(it.supplierId, [...(bySupplier.get(it.supplierId) ?? []), p]);
 	}
 

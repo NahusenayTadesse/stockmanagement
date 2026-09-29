@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { fail } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { redirect, setFlash } from 'sveltekit-flash-message/server';
@@ -54,8 +55,15 @@ export const actions: Actions = {
 			throw err;
 		}
 
-		const what = action === 'quarantine' ? 'transfer' : 'write-off';
-		const text = `${ids.length} draft ${what}${ids.length === 1 ? '' : 's'} created — check and post ${ids.length === 1 ? 'it' : 'them'}`;
+		const one = ids.length === 1;
+		const text =
+			action === 'quarantine'
+				? one
+					? m.stock_drafts_transfer_one()
+					: m.stock_drafts_transfer_many({ count: ids.length })
+				: one
+					? m.stock_drafts_writeoff_one()
+					: m.stock_drafts_writeoff_many({ count: ids.length });
 		redirect(
 			ids.length === 1 ? `/dashboard/stock/documents/${ids[0]}` : '/dashboard/stock/documents',
 			{ type: 'success', message: text },
@@ -80,8 +88,8 @@ export const actions: Actions = {
 		const sent = await sendMail(email, content, org.name);
 		setFlash(
 			sent
-				? { type: 'success', message: `Sent to ${email}` }
-				: { type: 'error', message: 'The email could not be sent. Check the mail settings.' },
+				? { type: 'success', message: m.stock_sent_to({ email }) }
+				: { type: 'error', message: m.stock_email_failed() },
 			event.cookies
 		);
 		return sent ? { sent: true } : fail(502);

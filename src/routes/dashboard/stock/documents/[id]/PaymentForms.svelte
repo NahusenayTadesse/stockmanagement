@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import Link from '@lucide/svelte/icons/link';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { SuperValidated } from 'sveltekit-superforms';
@@ -40,13 +41,18 @@
 	/** What the suggested amount is made of: the total, and any tax to withhold from it. */
 	const paymentHint = $derived.by(() => {
 		if (!totals) return '';
-		let text = `The document comes to ${formatETB(totals.gross)}`;
-		if (totals.vat) text += `, VAT ${formatETB(totals.vat)} included`;
+		let text: string = m.stock_pay_hint_total({ total: formatETB(totals.gross) });
+		if (totals.vat) text += m.stock_pay_hint_vat({ vat: formatETB(totals.vat) });
 		text += '.';
 		if (withholding.amount) {
-			text += ` ${withholding.rate}% withholding on ${formatETB(totals.net)} is ${formatETB(withholding.amount)}, which leaves ${formatETB(suggestedAmount)} in cash.`;
+			text += ` ${m.stock_pay_hint_withholding({
+				rate: withholding.rate,
+				net: formatETB(totals.net),
+				amount: formatETB(withholding.amount),
+				cash: formatETB(suggestedAmount)
+			})}`;
 		}
-		return `${text} Change it if the payment differs.`;
+		return `${text} ${m.stock_pay_hint_change()}`;
 	});
 
 	let recordOpen = $state(false);
@@ -74,7 +80,12 @@
 </script>
 
 <div class="flex flex-wrap gap-2">
-	<DialogComp bind:open={recordOpen} title="Record payment" variant="default" IconComp={Plus}>
+	<DialogComp
+		bind:open={recordOpen}
+		title={m.stock_record_payment()}
+		variant="default"
+		IconComp={Plus}
+	>
 		<form
 			method="POST"
 			action="?/recordPayment"
@@ -97,7 +108,9 @@
 				withFile
 			/>
 			<Button type="submit" form="record-payment">
-				{#if $recordDelayed}<LoadingBtn name="Saving" />{:else}Record payment{/if}
+				{#if $recordDelayed}<LoadingBtn
+						name={m.common_saving()}
+					/>{:else}{m.stock_record_payment()}{/if}
 			</Button>
 		</form>
 	</DialogComp>
@@ -105,7 +118,7 @@
 	{#if linkable.length}
 		<DialogComp
 			bind:open={linkOpen}
-			title="Link an existing transaction"
+			title={m.stock_link_existing()}
 			variant="outline"
 			IconComp={Link}
 		>
@@ -117,18 +130,18 @@
 				class="flex flex-col gap-4"
 			>
 				<p class="text-sm text-muted-foreground">
-					For a payment already recorded — one transfer that paid for several deliveries, say.
+					{m.stock_link_hint()}
 				</p>
 				<InputComp
 					form={linkData}
 					errors={linkErrors}
 					name="transactionId"
 					type="combo"
-					label="Transaction"
+					label={m.stock_transaction()}
 					items={linkable}
 					required
 				/>
-				<Button type="submit" form="link-payment">Link</Button>
+				<Button type="submit" form="link-payment">{m.stock_link()}</Button>
 			</form>
 		</DialogComp>
 	{/if}

@@ -7,8 +7,8 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"prepare": "(npm run i18n --silent || true) && (svelte-kit sync || echo '')",
+		"check": "npm run i18n --silent && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
@@ -19,7 +19,8 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio",
-		"db:seed": "tsx --tsconfig scripts/tsconfig.json --env-file=.env scripts/seed.ts"
+		"db:seed": "tsx --tsconfig scripts/tsconfig.json --env-file=.env scripts/seed.ts",
+		"i18n": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --emit-ts-declarations --strategy cookie preferredLanguage baseLocale"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

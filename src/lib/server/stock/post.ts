@@ -21,6 +21,7 @@
  *   - services are sold without touching stock; a kit or recipe takes its components
  *   - a delivery with less shelf life left than its category allows is flagged, or refused
  */
+import { m } from '$lib/paraglide/messages.js';
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { localToday } from '@nahu/admin-kit/time';
 import {
@@ -58,6 +59,7 @@ import {
 	toBase
 } from './math';
 import { ApprovalRequired, StockError } from './errors';
+import { DOCUMENT_STATUS_LABELS } from '$lib/format';
 import {
 	move,
 	valueIn,
@@ -80,6 +82,32 @@ type Context = LedgerContext & {
 };
 
 const DAY = 86_400_000;
+/** A landed cost's kind, in the viewer's language, for refusals that name it. */
+function landedKind(kind: string) {
+	const names: Record<string, () => string> = {
+		freight: m.stock_lc_freight,
+		insurance: m.stock_lc_insurance,
+		duty: m.stock_lc_duty,
+		excise: m.stock_lc_excise,
+		surtax: m.stock_lc_surtax,
+		clearing: m.stock_lc_clearing,
+		transport: m.stock_lc_transport,
+		other: m.stock_lc_other
+	};
+	return names[kind]?.() ?? kind;
+}
+
+/** Why a lot cannot be issued, in the viewer's language. */
+function lotState(state: string) {
+	const names: Record<string, () => string> = {
+		expired: m.stock_lot_state_expired,
+		quarantine: m.stock_lot_state_quarantine,
+		recalled: m.stock_lot_state_recalled,
+		available: m.stock_lot_state_available
+	};
+	return names[state]?.() ?? state;
+}
+
 const money = (n: number) =>
 	n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -109,8 +137,12 @@ export async function postDocument(
 		.where(and(eq(stockDocument.id, documentId), eq(stockDocument.orgId, orgId)))
 		.for('update');
 
-	if (!doc) throw new StockError('That document does not exist.');
-	if (doc.status !== 'draft') throw new StockError(`This document is already ${doc.status}.`);
+	if (!doc) throw new StockError(m.stock_err_no_document());
+	if (doc.status !== 'draft') {
+		throw new StockError(
+			m.stock_err_already_status({ status: DOCUMENT_STATUS_LABELS[doc.status] })
+		);
+	}
 
 	const lines = await tx
 		.select()
@@ -118,7 +150,7 @@ export async function postDocument(
 		.where(and(eq(stockDocumentLine.documentId, doc.id), isNull(stockDocumentLine.deletedAt)))
 		.orderBy(stockDocumentLine.id);
 
-	if (!lines.length) throw new StockError('Add at least one line before posting.');
+	if (!lines.length) throw new StockError(m.stock_err_add_line());
 
 	const locationIds = [doc.fromLocationId, doc.toLocationId].filter((id): id is number => !!id);
 	const locations = locationIds.length
@@ -143,9 +175,9 @@ export async function postDocument(
 
 	switch (doc.type) {
 		case 'receipt': {
-			if (!to) throw new StockError('Choose where the goods are received.');
+			if (!to) throw new StockError(m.stock_err_choose_received());
 			// No supply without a supplier: every movement must be able to say where goods came from.
-			if (!doc.supplierId) throw new StockError('Choose the supplier this delivery came from.');
+			if (!doc.supplierId) throw new StockError(m.stock_err_choose_supplier_delivery());
 			const [found] = await tx
 				.select({ id: supplier.id })
 				.from(supplier)
@@ -156,25 +188,25 @@ export async function postDocument(
 						isNull(supplier.deletedAt)
 					)
 				);
-			if (!found) throw new StockError('The supplier on this receipt no longer exists.');
+			if (!found) throw new StockError(m.stock_err_supplier_gone());
 			break;
 		}
 		case 'issue':
 		case 'adjustment':
-			if (!from) throw new StockError('Choose the location the stock is at.');
+			if (!from) throw new StockError(m.stock_err_choose_location_at());
 			break;
 		case 'sales_return':
-			if (!to) throw new StockError('Choose where the returned goods go.');
+			if (!to) throw new StockError(m.stock_err_choose_returned_go());
 			break;
 		case 'purchase_return':
-			if (!from) throw new StockError('Choose where the goods leave from.');
-			if (!doc.supplierId) throw new StockError('A return to supplier names the supplier.');
+			if (!from) throw new StockError(m.stock_err_choose_goods_leave());
+			if (!doc.supplierId) throw new StockError(m.stock_err_return_names_supplier());
 			break;
 		case 'transfer':
-			if (!from || !to) throw new StockError('Choose both locations for a transfer.');
-			if (from.id === to.id) throw new StockError('A transfer needs two different locations.');
+			if (!from || !to) throw new StockError(m.stock_err_both_locations());
+			if (from.id === to.id) throw new StockError(m.stock_err_two_locations());
 			if (from.kind === 'transit' || to.kind === 'transit') {
-				throw new StockError('Stock in transit moves only by being received.');
+				throw new StockError(m.stock_err_transit_only());
 			}
 			if (from.branchId !== to.branchId) {
 				transitId = await ensureTransitLocation(tx, orgId, to.branchId);
@@ -182,7 +214,7 @@ export async function postDocument(
 			break;
 	}
 	if (from?.kind === 'transit' && doc.type !== 'transfer') {
-		throw new StockError('Stock in transit moves only by being received.');
+		throw new StockError(m.stock_err_transit_only());
 	}
 
 	// Kits and recipes leave as their components.
@@ -253,9 +285,9 @@ export async function postDocument(
 		const limit = org?.approveAdjustmentsOver ?? null;
 		const reason =
 			org?.approveWriteOffs && writesOff
-				? 'it writes stock off'
+				? m.stock_reason_write_off()
 				: limit !== null && value >= limit
-					? `it is worth ${money(value)} at cost, over the ${money(limit)} limit`
+					? m.stock_reason_worth({ value: money(value), limit: money(limit) })
 					: null;
 		if (reason) throw new ApprovalRequired('adjustment', value, reason);
 	}
@@ -334,27 +366,24 @@ export async function postDocument(
 
 	for (const line of lines) {
 		const it = itemById.get(line.itemId);
-		if (!it) throw new StockError('This line names an item that no longer exists.', line.id);
+		if (!it) throw new StockError(m.stock_err_item_gone(), line.id);
 
 		const factor = factorOf(it, line.uomId);
 		if (!factor) {
-			throw new StockError(
-				`${it.name} has no conversion for the unit on this line. Add it on the item first.`,
-				line.id
-			);
+			throw new StockError(m.stock_err_no_conversion_line({ item: it.name }), line.id);
 		}
 
 		const quantity = toBase(line.quantity, factor);
-		if (quantity === 0) throw new StockError(`The quantity for ${it.name} is zero.`, line.id);
+		if (quantity === 0) throw new StockError(m.stock_err_qty_zero({ item: it.name }), line.id);
 		if (quantity < 0 && doc.type !== 'adjustment') {
-			throw new StockError(`The quantity for ${it.name} must be positive.`, line.id);
+			throw new StockError(m.stock_err_qty_positive({ item: it.name }), line.id);
 		}
 
 		// Services and kits have no stock of their own: sold (or returned) without a movement,
 		// except that a kit's components leave the shelf (or come back to it).
 		if (!it.stockTracked) {
 			if (doc.type !== 'issue' && doc.type !== 'sales_return') {
-				throw new StockError(`${it.name} is not stocked, so it cannot be moved.`, line.id);
+				throw new StockError(m.stock_err_not_stocked_move({ item: it.name }), line.id);
 			}
 			if (it.isKit && doc.type === 'issue') {
 				await kitOut(ctx, it, line, from!.id, quantity, components, itemById, factorOf);
@@ -366,17 +395,17 @@ export async function postDocument(
 
 		const { serials, duplicates } = parseSerials(line.serials);
 		if (duplicates.length) {
-			throw new StockError(`Serial ${duplicates.join(', ')} is entered twice.`, line.id);
+			throw new StockError(m.stock_err_serial_twice({ serials: duplicates.join(', ') }), line.id);
 		}
 		if (it.trackSerials) {
 			if (!Number.isInteger(quantity) || serials.length !== Math.abs(quantity)) {
 				throw new StockError(
-					`${it.name} is tracked by serial number: enter exactly ${Math.abs(quantity)} serial number(s).`,
+					m.stock_err_serial_count({ item: it.name, count: Math.abs(quantity) }),
 					line.id
 				);
 			}
 		} else if (serials.length) {
-			throw new StockError(`${it.name} is not tracked by serial number.`, line.id);
+			throw new StockError(m.stock_err_not_serial({ item: it.name }), line.id);
 		}
 
 		let cost = line.unitCost == null ? it.avgCost : round4(line.unitCost / factor);
@@ -487,7 +516,7 @@ async function shareLandedCosts(
 			if (c.method === 'weight') {
 				if (it.weightKg == null) {
 					throw new StockError(
-						`Give ${it.name} a weight on its page, or share the ${c.kind} by value.`,
+						m.stock_err_weight({ item: it.name, cost: landedKind(c.kind) }),
 						l.id
 					);
 				}
@@ -497,7 +526,7 @@ async function shareLandedCosts(
 		});
 		const total = weights.reduce((s, w) => s + w, 0);
 		if (total <= 0) {
-			throw new StockError(`There is nothing to share the ${c.kind} over. Give the lines costs.`);
+			throw new StockError(m.stock_err_nothing_to_share({ cost: landedKind(c.kind) }));
 		}
 		// The last line takes the rounding, so the lines add up to the cost exactly.
 		let given = 0;
@@ -534,21 +563,24 @@ async function kitOut(
 ) {
 	const parts = components.filter((c) => c.kitItemId === kit.id);
 	if (!parts.length) {
-		throw new StockError(`${kit.name} has no components. Add them on its page.`, line.id);
+		throw new StockError(m.stock_err_kit_no_components({ kit: kit.name }), line.id);
 	}
 	for (const c of parts) {
 		const comp = itemById.get(c.componentItemId);
-		if (!comp) throw new StockError(`A component of ${kit.name} no longer exists.`, line.id);
+		if (!comp) throw new StockError(m.stock_err_component_gone({ kit: kit.name }), line.id);
 		if (!comp.stockTracked) continue;
 		if (comp.trackSerials) {
 			throw new StockError(
-				`${comp.name} is tracked by serial number and cannot be part of ${kit.name}.`,
+				m.stock_err_component_serial({ component: comp.name, kit: kit.name }),
 				line.id
 			);
 		}
 		const factor = factorOf(comp, c.uomId);
 		if (!factor) {
-			throw new StockError(`${comp.name} has no conversion for its unit in ${kit.name}.`, line.id);
+			throw new StockError(
+				m.stock_err_component_unit({ component: comp.name, kit: kit.name }),
+				line.id
+			);
 		}
 		const quantity = round4(kitQuantity * c.quantity * factor);
 		if (quantity <= 0) continue;
@@ -572,14 +604,14 @@ async function kitBack(
 ) {
 	const { tx } = ctx;
 	if (!line.returnOfLineId) {
-		throw new StockError(`A returned ${kit.name} must come from the sale it was on.`, line.id);
+		throw new StockError(m.stock_err_kit_return_sale({ kit: kit.name }), line.id);
 	}
 	const [original] = await tx
 		.select({ quantity: stockDocumentLine.quantity, uomId: stockDocumentLine.uomId })
 		.from(stockDocumentLine)
 		.where(eq(stockDocumentLine.id, line.returnOfLineId));
 	const sold = original ? toBase(original.quantity, factorOf(kit, original.uomId) ?? 1) : 0;
-	if (!sold) throw new StockError(`The sale of ${kit.name} being returned was not found.`, line.id);
+	if (!sold) throw new StockError(m.stock_err_kit_sale_missing({ kit: kit.name }), line.id);
 
 	const moved = await tx
 		.select({
@@ -649,13 +681,17 @@ async function bringIn(
 
 	if (it.trackLots || it.trackExpiry) {
 		const lotNumber = line.lotNumber?.trim();
-		if (!lotNumber) throw new StockError(`Enter the lot/batch number for ${it.name}.`, line.id);
+		if (!lotNumber) throw new StockError(m.stock_err_enter_lot({ item: it.name }), line.id);
 		if (it.trackExpiry && !line.expiryDate) {
-			throw new StockError(`Enter the expiry date for ${it.name}.`, line.id);
+			throw new StockError(m.stock_err_enter_expiry({ item: it.name }), line.id);
 		}
 		if (!options.acceptExpired && isExpired(line.expiryDate, today)) {
 			throw new StockError(
-				`Lot ${lotNumber} of ${it.name} expired on ${line.expiryDate} and cannot be received.`,
+				m.stock_err_lot_expired_receive({
+					lot: lotNumber,
+					item: it.name,
+					date: line.expiryDate ?? ''
+				}),
 				line.id
 			);
 		}
@@ -664,8 +700,13 @@ async function bringIn(
 		if (doc.type === 'receipt' && rule && line.expiryDate) {
 			const daysLeft = Math.round((Date.parse(line.expiryDate) - Date.parse(today)) / DAY);
 			if (daysLeft < rule.days) {
-				const text = `Lot ${lotNumber} of ${it.name} has ${daysLeft} day(s) of shelf life left; its category wants at least ${rule.days}.`;
-				if (rule.refuse) throw new StockError(`${text} Refuse the delivery.`, line.id);
+				const text = m.stock_warn_shelf_life({
+					lot: lotNumber,
+					item: it.name,
+					days: daysLeft,
+					min: rule.days
+				});
+				if (rule.refuse) throw new StockError(m.stock_err_refuse_delivery({ text }), line.id);
 				ctx.warnings.push(text);
 			}
 		}
@@ -683,7 +724,7 @@ async function bringIn(
 	}
 	supplierId ??= it.supplierId;
 	if (!supplierId) {
-		throw new StockError(`${it.name} has no main supplier. Set one on the item first.`, line.id);
+		throw new StockError(m.stock_err_no_main_supplier({ item: it.name }), line.id);
 	}
 
 	// The item's value takes this in: the moving average, or a new FIFO layer.
@@ -757,7 +798,13 @@ async function takeOut(
 	const unit = ctx.units.get(it.baseUomId) ?? '';
 	const heldError = (free: number) =>
 		new StockError(
-			`Only ${Math.max(0, round4(free))} ${unit} of ${it.name} is free at ${ctx.locationNames.get(locationId)}: ${held} ${unit} is held for accepted proformas or approved requisitions.`,
+			m.stock_err_held({
+				free: Math.max(0, round4(free)),
+				unit,
+				item: it.name,
+				location: ctx.locationNames.get(locationId) ?? '',
+				held
+			}),
 			line.id
 		);
 
@@ -791,7 +838,11 @@ async function takeOut(
 
 			if (!unit || unit.status !== 'in_stock' || unit.locationId !== locationId) {
 				throw new StockError(
-					`Serial ${serialNumber} of ${it.name} is not in stock at ${ctx.locationNames.get(locationId)}.`,
+					m.stock_err_serial_not_here({
+						serial: serialNumber,
+						item: it.name,
+						location: ctx.locationNames.get(locationId) ?? ''
+					}),
 					line.id
 				);
 			}
@@ -800,7 +851,11 @@ async function takeOut(
 				const [l] = await tx.select().from(lot).where(eq(lot.id, unit.lotId));
 				if (l && (l.status !== 'available' || isExpired(l.expiryDate, today))) {
 					throw new StockError(
-						`Serial ${serialNumber} belongs to lot ${l.lotNumber}, which is ${l.status === 'available' ? 'expired' : l.status}.`,
+						m.stock_err_serial_lot({
+							serial: serialNumber,
+							lot: l.lotNumber,
+							status: lotState(l.status === 'available' ? 'expired' : l.status)
+						}),
 						line.id
 					);
 				}
@@ -891,8 +946,13 @@ async function takeOut(
 	if (short > 0) {
 		const available = round4(quantity - short);
 		throw new StockError(
-			`Only ${available} ${unit} of ${it.name} ${line.lotId ? 'in that lot ' : ''}can be taken from ${ctx.locationNames.get(locationId)}; the line needs ${quantity} ${unit}.` +
-				(options.allowUnusable ? '' : ' Expired, quarantined and recalled lots are not counted.'),
+			(line.lotId ? m.stock_err_short_lot : m.stock_err_short)({
+				available,
+				unit,
+				item: it.name,
+				location: ctx.locationNames.get(locationId) ?? '',
+				needed: quantity
+			}) + (options.allowUnusable ? '' : m.stock_err_short_unusable()),
 			line.id
 		);
 	}
@@ -941,7 +1001,7 @@ async function takeOut(
 
 function requireSupplier(supplierId: number | null, it: Item, line: Line): number {
 	if (!supplierId) {
-		throw new StockError(`${it.name} has no main supplier. Set one on the item first.`, line.id);
+		throw new StockError(m.stock_err_no_main_supplier({ item: it.name }), line.id);
 	}
 	return supplierId;
 }
@@ -969,7 +1029,12 @@ async function resolveLot(
 	if (existing) {
 		if (existing.expiryDate && expiryDate && existing.expiryDate !== expiryDate) {
 			throw new StockError(
-				`Lot ${lotNumber} of ${it.name} is already recorded as expiring ${existing.expiryDate}, not ${expiryDate}. Check the pack.`,
+				m.stock_err_lot_expiry_mismatch({
+					lot: lotNumber,
+					item: it.name,
+					existing: existing.expiryDate,
+					given: expiryDate
+				}),
 				lineId
 			);
 		}
@@ -1011,7 +1076,10 @@ async function receiveSerial(
 
 	if (existing) {
 		if (existing.status === 'in_stock') {
-			throw new StockError(`Serial ${serialNumber} of ${it.name} is already in stock.`, lineId);
+			throw new StockError(
+				m.stock_err_serial_in_stock({ serial: serialNumber, item: it.name }),
+				lineId
+			);
 		}
 		// Back from a customer or from repair: the same physical unit, so the same row.
 		await tx

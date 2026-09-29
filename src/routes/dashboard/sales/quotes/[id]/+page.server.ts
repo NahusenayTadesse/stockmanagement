@@ -29,6 +29,7 @@ import { quoteHeader, quoteLineAdd, quoteLineEdit } from '$lib/schemas/quotes';
 import { releaseQuote, reservationsOfQuote, reserveQuote } from '$lib/server/reservations';
 import { smsQuote } from '$lib/server/sms';
 import { canText, textAction, typedNumber } from '$lib/server/smsActions';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 /**
@@ -44,7 +45,7 @@ async function lineValues(values: Record<string, unknown>, event: RequestEvent) 
 		.where(and(eq(item.id, Number(values.itemId)), eq(item.orgId, orgId), isNull(item.deletedAt)));
 	// Services and kits are quoted like anything else that is sold.
 	if (!it || !it.sellable) {
-		throw new WriteRefused('itemId', 'Choose an item this business sells.');
+		throw new WriteRefused('itemId', m.sales_choose_sold_item());
 	}
 	const uomId = Number(values.uomId) || it.baseUomId;
 	if (uomId !== it.baseUomId) {
@@ -54,7 +55,7 @@ async function lineValues(values: Record<string, unknown>, event: RequestEvent) 
 			.where(
 				and(eq(itemUnit.itemId, it.id), eq(itemUnit.uomId, uomId), isNull(itemUnit.deletedAt))
 			);
-		if (!u) throw new WriteRefused('uomId', `${it.name} has no conversion for this unit.`);
+		if (!u) throw new WriteRefused('uomId', m.sales_no_conversion({ name: it.name }));
 	}
 	const list = await priceFor(orgId, { itemId: it.id, uomId, customerId: q.customerId });
 	const unitPrice =
@@ -62,7 +63,7 @@ async function lineValues(values: Record<string, unknown>, event: RequestEvent) 
 			? list
 			: Number(values.unitPrice);
 	if (unitPrice === null) {
-		throw new WriteRefused('unitPrice', `${it.name} has no list price: type the price.`);
+		throw new WriteRefused('unitPrice', m.sales_type_price({ name: it.name }));
 	}
 	const off = discountPercent(list, unitPrice);
 	const [org] = await db
@@ -75,7 +76,7 @@ async function lineValues(values: Record<string, unknown>, event: RequestEvent) 
 		off > org.max &&
 		!hasPermission(event.locals, 'sales.discount')
 	) {
-		throw new WriteRefused('unitPrice', `${off}% off is more than the ${org.max}% you may give.`);
+		throw new WriteRefused('unitPrice', m.sales_discount_over({ off, limit: org.max }));
 	}
 	return {
 		...values,
@@ -90,7 +91,7 @@ async function lineValues(values: Record<string, unknown>, event: RequestEvent) 
 const lines = childCrud({
 	table: quoteLine,
 	ownerColumn: 'quoteId',
-	label: 'Line',
+	label: () => m.common_rec_line(),
 	addSchema: quoteLineAdd,
 	editSchema: quoteLineEdit,
 	permission: 'sales.manage',
@@ -99,7 +100,7 @@ const lines = childCrud({
 
 async function editableOwner(event: RequestEvent) {
 	const q = await orgQuote(orgIdOf(event.locals), Number(event.params.id));
-	if (!quoteEditable(q.status)) error(409, 'This proforma can no longer change.');
+	if (!quoteEditable(q.status)) error(409, m.sales_quote_locked());
 	return q.id;
 }
 
@@ -158,7 +159,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		lines: { ...section, rows },
 		totals: priced.totals,
 		items,
-		units: [{ value: 0, name: 'Base unit' }, ...units],
+		units: [{ value: 0, name: m.sales_base_unit() }, ...units],
 		customers: customers ?? [],
 		locations,
 		headerForm: await superValidate(
@@ -253,7 +254,7 @@ const lineActions = Object.fromEntries(
 export const actions: Actions = {
 	/** The proforma's summary — what, how much, until when — by SMS. */
 	sms: (event) =>
-		textAction(event, 'Proforma', (orgId, form) =>
+		textAction(event, m.sales_sms_what_proforma(), (orgId, form) =>
 			smsQuote(orgId, Number(event.params.id), {
 				to: typedNumber(form),
 				userId: event.locals.user?.id
@@ -267,22 +268,14 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(quoteHeader));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		const q = await orgQuote(orgId, Number(event.params.id));
 		if (!quoteEditable(q.status)) {
-			return message(
-				form,
-				{ type: 'error', text: 'This proforma can no longer change.' },
-				{ status: 409 }
-			);
+			return message(form, { type: 'error', text: m.sales_quote_locked() }, { status: 409 });
 		}
 		if (form.data.customerId && !(await checkCustomer(orgId, form.data.customerId))) {
-			setError(form, 'customerId', 'Choose a customer from the list.');
-			return message(
-				form,
-				{ type: 'error', text: 'Choose a customer from the list.' },
-				{ status: 400 }
-			);
+			setError(form, 'customerId', m.sales_err_choose_customer());
+			return message(form, { type: 'error', text: m.sales_err_choose_customer() }, { status: 400 });
 		}
 		let branchId = q.branchId;
 		if (form.data.locationId) {
@@ -291,10 +284,10 @@ export const actions: Actions = {
 				.from(location)
 				.where(and(eq(location.id, form.data.locationId), eq(location.orgId, orgId)));
 			if (!loc) {
-				setError(form, 'locationId', 'Choose a location from the list.');
+				setError(form, 'locationId', m.sales_err_choose_location());
 				return message(
 					form,
-					{ type: 'error', text: 'Choose a location from the list.' },
+					{ type: 'error', text: m.sales_err_choose_location() },
 					{ status: 400 }
 				);
 			}
@@ -318,12 +311,12 @@ export const actions: Actions = {
 			})
 			.where(eq(quote.id, q.id));
 		await reheld(event);
-		return message(form, { type: 'success', text: 'Saved' });
+		return message(form, { type: 'success', text: m.common_saved() });
 	},
 
-	markSent: (event) => setStatus(event, 'sent', 'Marked as sent'),
-	accept: (event) => setStatus(event, 'accepted', 'Accepted by the buyer'),
-	cancel: (event) => setStatus(event, 'cancelled', 'Proforma cancelled'),
+	markSent: (event) => setStatus(event, 'sent', m.sales_marked_sent()),
+	accept: (event) => setStatus(event, 'accepted', m.sales_accepted_by_buyer()),
+	cancel: (event) => setStatus(event, 'cancelled', m.sales_quote_cancelled()),
 
 	/** Emails it to the customer, and marks it sent. */
 	email: async (event) => {
@@ -337,10 +330,7 @@ export const actions: Actions = {
 					.where(eq(customer.id, q.customerId))
 			: [];
 		if (!c?.email) {
-			setFlash(
-				{ type: 'error', message: 'The customer has no email address. Print it instead.' },
-				event.cookies
-			);
+			setFlash({ type: 'error', message: m.sales_no_email_print() }, event.cookies);
 			return fail(400);
 		}
 		const number = await db.transaction((tx) => numberQuote(tx, orgId, q.id));
@@ -352,14 +342,17 @@ export const actions: Actions = {
 		const sent = await sendMail(
 			c.email,
 			{
-				subject: `Proforma ${number} from ${org.name}`,
-				heading: `Proforma invoice ${number}`,
+				subject: m.sales_quote_mail_subject({ number, org: org.name }),
+				heading: m.sales_quote_mail_heading({ number }),
 				body: [
-					`Dear ${c.name},`,
-					`Our prices for your request${q.reference ? ` (${q.reference})` : ''}${q.validUntil ? `, valid until ${q.validUntil}` : ''}:`
+					m.sales_dear({ name: c.name }),
+					m.sales_quote_mail_intro({
+						reference: q.reference ? ` (${q.reference})` : '',
+						valid: q.validUntil ? m.sales_valid_until_part({ date: q.validUntil }) : ''
+					})
 				],
 				table: {
-					head: ['Item', 'Quantity', 'Unit price', 'Amount'],
+					head: [m.common_item(), m.common_quantity(), m.sales_unit_price(), m.sales_amount()],
 					rows: [
 						...priced.lines.map((l) => [
 							l.item,
@@ -367,15 +360,15 @@ export const actions: Actions = {
 							formatETB(l.unitPrice),
 							formatETB(l.net)
 						]),
-						['Before tax', '', '', formatETB(priced.totals.net)],
-						...(priced.totals.vat ? [['VAT', '', '', formatETB(priced.totals.vat)]] : []),
-						...(priced.totals.tot ? [['TOT', '', '', formatETB(priced.totals.tot)]] : []),
-						['Total', '', '', formatETB(priced.totals.gross)]
+						[m.sales_pos_before_tax(), '', '', formatETB(priced.totals.net)],
+						...(priced.totals.vat ? [[m.sales_vat(), '', '', formatETB(priced.totals.vat)]] : []),
+						...(priced.totals.tot ? [[m.sales_tot(), '', '', formatETB(priced.totals.tot)]] : []),
+						[m.common_total(), '', '', formatETB(priced.totals.gross)]
 					]
 				},
 				footnote: [
 					q.terms,
-					`${org.name}${org.tin ? `, TIN ${org.tin}` : ''}${org.phone ? `, ${org.phone}` : ''}`
+					`${org.name}${org.tin ? `, ${m.sales_tin({ tin: org.tin })}` : ''}${org.phone ? `, ${org.phone}` : ''}`
 				]
 					.filter(Boolean)
 					.join(' · ')
@@ -383,16 +376,13 @@ export const actions: Actions = {
 			org.name
 		);
 		if (!sent) {
-			setFlash(
-				{ type: 'error', message: 'The email could not be sent. Print it instead.' },
-				event.cookies
-			);
+			setFlash({ type: 'error', message: m.sales_mail_failed_print() }, event.cookies);
 			return fail(502);
 		}
 		if (q.status === 'draft') {
 			await db.update(quote).set({ status: 'sent', sentAt: new Date() }).where(eq(quote.id, q.id));
 		}
-		setFlash({ type: 'success', message: `Sent to ${c.email}` }, event.cookies);
+		setFlash({ type: 'success', message: m.sales_sent_to({ email: c.email }) }, event.cookies);
 		return { sent: true };
 	},
 
@@ -422,7 +412,7 @@ export const actions: Actions = {
 		}
 		redirect(
 			`/dashboard/stock/documents/${docId}`,
-			{ type: 'success', message: 'Sale drafted from the proforma — check it and post it' },
+			{ type: 'success', message: m.sales_sale_drafted_from_quote() },
 			event.cookies
 		);
 	}

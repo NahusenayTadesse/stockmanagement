@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import type { SuperValidated } from 'sveltekit-superforms';
 	import { resolve } from '$app/paths';
 	import { formatETB } from '@nahu/admin-kit/global';
@@ -34,10 +35,10 @@
 		<table class="w-full text-sm">
 			<thead class="text-left text-muted-foreground">
 				<tr>
-					<th class="py-1 font-medium">Variant</th>
-					<th class="py-1 font-medium">Code</th>
-					<th class="py-1 text-right font-medium">Price</th>
-					<th class="py-1 text-right font-medium">On hand</th>
+					<th class="py-1 font-medium">{m.stock_f_variant()}</th>
+					<th class="py-1 font-medium">{m.stock_col_code()}</th>
+					<th class="py-1 text-right font-medium">{m.common_price()}</th>
+					<th class="py-1 text-right font-medium">{m.stock_on_hand()}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -60,7 +61,7 @@
 		</table>
 	{:else}
 		<p class="text-sm text-muted-foreground">
-			No variants. Add one for each size, colour or strength that is stocked and priced separately.
+			{m.stock_no_variants()}
 		</p>
 	{/if}
 

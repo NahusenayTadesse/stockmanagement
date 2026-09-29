@@ -16,6 +16,8 @@
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
 	import { lineAmounts, saleTotRate, saleVatRate, type TaxCode } from '$lib/taxRules';
+	import { m } from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime';
 
 	let { data, form } = $props();
 
@@ -33,6 +35,10 @@
 	type Payment = { methodId: number; amount: number; reference: string };
 
 	const items = $derived(data.items ?? []);
+	/** The Amharic name in the Amharic interface, where the item has one. */
+	const amharic = getLocale() === 'am';
+	const nameOf = (it: { name: string; nameAm?: string | null }) =>
+		amharic && it.nameAm ? it.nameAm : it.name;
 	const byId = $derived(new Map(items.map((i) => [i.id, i])));
 
 	// ── Cart ────────────────────────────────────────────────────────────────────────────────
@@ -122,11 +128,21 @@
 	});
 	const problems = $derived(
 		rows.flatMap((r) => [
-			...(r.it.trackSerials && r.qty === 0 ? [`Enter the serial numbers of ${r.it.name}.`] : []),
-			...(r.tooMuch
-				? [`${r.off}% off ${r.it.name} is over the ${data.maxDiscountPercent}% limit.`]
+			...(r.it.trackSerials && r.qty === 0
+				? [m.sales_pos_problem_serials({ name: nameOf(r.it) })]
 				: []),
-			...(r.line.unitPrice === 0 && !data.canDiscount ? [`${r.it.name} has no price.`] : [])
+			...(r.tooMuch
+				? [
+						m.sales_pos_problem_discount({
+							off: r.off,
+							name: nameOf(r.it),
+							limit: data.maxDiscountPercent ?? 0
+						})
+					]
+				: []),
+			...(r.line.unitPrice === 0 && !data.canDiscount
+				? [m.sales_pos_problem_no_price({ name: nameOf(r.it) })]
+				: [])
 		])
 	);
 
@@ -250,20 +266,17 @@
 <svelte:window onkeydown={onKey} />
 
 <svelte:head>
-	<title>Till</title>
+	<title>{m.sales_pos_title()}</title>
 </svelte:head>
 
 {#if !data.shift}
 	<div class="mx-auto flex max-w-md flex-col gap-4 py-10">
-		<h1 class="text-2xl font-semibold">Open the till</h1>
-		<p class="text-muted-foreground">
-			Choose where this till sells from, and count the cash already in the drawer. At the end of the
-			day the drawer is counted against what the shift took.
-		</p>
+		<h1 class="text-2xl font-semibold">{m.sales_pos_open_heading()}</h1>
+		<p class="text-muted-foreground">{m.sales_pos_open_intro()}</p>
 		{#if form?.error}<p class="text-sm text-destructive">{form.error}</p>{/if}
 		<form method="POST" action="?/openShift" use:enhance class="flex flex-col gap-3">
 			<label class="flex flex-col gap-1 text-sm">
-				Sells from
+				{m.sales_pos_sells_from()}
 				<select name="locationId" class="h-10 rounded-md border bg-background px-2" required>
 					{#each data.locations ?? [] as l (l.value)}
 						<option value={l.value}>{l.name}</option>
@@ -271,29 +284,30 @@
 				</select>
 			</label>
 			<label class="flex flex-col gap-1 text-sm">
-				Opening float (ETB)
+				{m.sales_pos_opening_float()}
 				<Input name="openingFloat" type="number" min="0" step="0.01" value="0" />
 			</label>
-			<Button type="submit"><Play /> Open shift</Button>
+			<Button type="submit"><Play /> {m.sales_pos_open_shift()}</Button>
 		</form>
 	</div>
 {:else}
 	<div class="flex flex-col gap-3">
 		<div class="flex flex-wrap items-center justify-between gap-2 text-sm">
 			<p class="text-muted-foreground">
-				Till at <strong class="text-foreground">{data.shift.location}</strong> · shift opened {ethiopianDateTime(
-					data.shift.openedAt
+				{m.sales_pos_till_at()} <strong class="text-foreground">{data.shift.location}</strong> · {m.sales_pos_shift_opened(
+					{ when: ethiopianDateTime(data.shift.openedAt) }
 				)}
 			</p>
 			<div class="flex gap-2">
 				<Button variant="outline" size="sm" onclick={() => (heldOpen = true)}>
-					<Play /> Held carts ({data.held?.length ?? 0})
+					<Play />
+					{m.sales_pos_held_carts_count({ count: data.held?.length ?? 0 })}
 				</Button>
 				<Button
 					variant="outline"
 					size="sm"
 					href={resolve('/dashboard/pos/shifts/[id]', { id: String(data.shift.id) })}
-					>Close shift</Button
+					>{m.sales_pos_close_shift()}</Button
 				>
 			</div>
 		</div>
@@ -307,7 +321,7 @@
 						bind:ref={searchBox}
 						bind:value={search}
 						onkeydown={onSearchKey}
-						placeholder="Scan a barcode, or type a name or code (F2)"
+						placeholder={m.sales_pos_search_placeholder()}
 						class="h-10 pl-10 text-base"
 						autofocus
 					/>
@@ -317,7 +331,7 @@
 						<Button
 							size="sm"
 							variant={category ? 'outline' : 'default'}
-							onclick={() => (category = '')}>All</Button
+							onclick={() => (category = '')}>{m.common_all()}</Button
 						>
 						{#each categories as c (c)}
 							<Button
@@ -337,24 +351,26 @@
 							disabled={it.onHand !== null && it.onHand <= 0}
 							class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition hover:border-primary hover:shadow-sm disabled:opacity-40"
 						>
-							<span class="line-clamp-2 font-medium">{it.name}</span>
+							<span class="line-clamp-2 font-medium">{nameOf(it)}</span>
 							<span class="text-xs text-muted-foreground">{it.sku}</span>
 							<span class="mt-auto flex w-full items-end justify-between gap-1">
 								<span class="font-semibold">{price === null ? '—' : formatETB(price)}</span>
 								{#if it.onHand === null}
 									<span class="text-xs text-muted-foreground"
-										>{it.kind === 'kit' ? 'Kit' : 'Service'}</span
+										>{it.kind === 'kit' ? m.sales_pos_kit() : m.sales_pos_service()}</span
 									>
 								{:else}
 									<span
 										class="text-xs {it.onHand <= 0 ? 'text-destructive' : 'text-muted-foreground'}"
-										>{it.onHand} {it.kind === 'kit' ? 'can be made' : it.unit}</span
+										>{it.onHand} {it.kind === 'kit' ? m.sales_pos_can_be_made() : it.unit}</span
 									>
 								{/if}
 							</span>
 						</button>
 					{:else}
-						<p class="col-span-full py-8 text-center text-muted-foreground">Nothing matches.</p>
+						<p class="col-span-full py-8 text-center text-muted-foreground">
+							{m.sales_pos_nothing_matches()}
+						</p>
 					{/each}
 				</div>
 			</section>
@@ -363,9 +379,9 @@
 			<section class="flex flex-col gap-3 rounded-lg border p-3 lg:sticky lg:top-20 lg:self-start">
 				{#if data.customers}
 					<label class="flex flex-col gap-1 text-sm">
-						Customer (optional)
+						{m.sales_pos_customer_optional()}
 						<select bind:value={customerId} class="h-9 rounded-md border bg-background px-2">
-							<option value={0}>Walk-in</option>
+							<option value={0}>{m.sales_pos_walk_in()}</option>
 							{#each data.customers as c (c.value)}
 								<option value={c.value}>{c.name}</option>
 							{/each}
@@ -377,10 +393,10 @@
 					{#each rows as r (r.line.key)}
 						<li class="flex flex-col gap-1 py-2">
 							<div class="flex items-start justify-between gap-2">
-								<span class="text-sm font-medium">{r.it.name}</span>
+								<span class="text-sm font-medium">{nameOf(r.it)}</span>
 								<button
 									type="button"
-									aria-label="Remove {r.it.name}"
+									aria-label={m.sales_pos_remove_item({ name: nameOf(r.it) })}
 									class="text-muted-foreground hover:text-destructive"
 									onclick={() => (cart = cart.filter((l) => l.key !== r.line.key))}
 									><Trash2 class="size-4" /></button
@@ -391,8 +407,8 @@
 									<textarea
 										bind:value={r.line.serials}
 										rows="2"
-										placeholder="Serial numbers, one per line"
-										aria-label="Serial numbers of {r.it.name}"
+										placeholder={m.sales_pos_serials_placeholder()}
+										aria-label={m.sales_pos_serials_of({ name: nameOf(r.it) })}
 										class="w-44 rounded-md border bg-background px-2 py-1 font-mono text-xs"
 									></textarea>
 								{:else}
@@ -401,7 +417,7 @@
 											size="icon"
 											variant="outline"
 											class="size-8"
-											aria-label="One less"
+											aria-label={m.sales_pos_one_less()}
 											onclick={() => (r.line.quantity = Math.max(0.001, r.line.quantity - 1))}
 											><Minus /></Button
 										>
@@ -410,14 +426,14 @@
 											min="0"
 											step="any"
 											bind:value={r.line.quantity}
-											aria-label="Quantity of {r.it.name}"
+											aria-label={m.sales_pos_quantity_of({ name: nameOf(r.it) })}
 											class="h-8 w-16 border-y bg-background text-center"
 										/>
 										<Button
 											size="icon"
 											variant="outline"
 											class="size-8"
-											aria-label="One more"
+											aria-label={m.sales_pos_one_more()}
 											onclick={() => (r.line.quantity += 1)}><Plus /></Button
 										>
 									</div>
@@ -426,7 +442,7 @@
 									<select
 										value={r.line.uomId}
 										onchange={(e) => setUnit(r.line, Number(e.currentTarget.value))}
-										aria-label="Unit"
+										aria-label={m.common_unit()}
 										class="h-8 rounded-md border bg-background px-1 text-sm"
 									>
 										{#each r.it.units as u (u.uomId)}
@@ -446,7 +462,7 @@
 										r.line.unitPrice = Number(e.currentTarget.value) || 0;
 										r.line.manual = true;
 									}}
-									aria-label="Price of {r.it.name}"
+									aria-label={m.sales_pos_price_of({ name: nameOf(r.it) })}
 									class="h-8 w-24 rounded-md border bg-background px-2 text-right {r.tooMuch
 										? 'border-destructive'
 										: ''}"
@@ -455,29 +471,29 @@
 							</div>
 							{#if r.off > 0}
 								<span class="text-xs {r.tooMuch ? 'text-destructive' : 'text-muted-foreground'}"
-									>{r.off}% off {formatETB(r.list)}</span
+									>{m.sales_pos_percent_off({ off: r.off, list: formatETB(r.list) })}</span
 								>
 							{/if}
 						</li>
 					{:else}
 						<li class="py-8 text-center text-sm text-muted-foreground">
-							Scan or tap an item to start a sale.
+							{m.sales_pos_cart_empty()}
 						</li>
 					{/each}
 				</ul>
 
 				<dl class="grid grid-cols-2 gap-1 border-t pt-2 text-sm">
-					<dt class="text-muted-foreground">Before tax</dt>
+					<dt class="text-muted-foreground">{m.sales_pos_before_tax()}</dt>
 					<dd class="text-right">{formatETB(totals.net)}</dd>
 					{#if totals.vat}
-						<dt class="text-muted-foreground">VAT</dt>
+						<dt class="text-muted-foreground">{m.sales_vat()}</dt>
 						<dd class="text-right">{formatETB(totals.vat)}</dd>
 					{/if}
 					{#if totals.tot}
-						<dt class="text-muted-foreground">TOT</dt>
+						<dt class="text-muted-foreground">{m.sales_tot()}</dt>
 						<dd class="text-right">{formatETB(totals.tot)}</dd>
 					{/if}
-					<dt class="text-lg font-semibold">Total</dt>
+					<dt class="text-lg font-semibold">{m.common_total()}</dt>
 					<dd class="text-right text-lg font-semibold">{formatETB(totals.gross)}</dd>
 				</dl>
 
@@ -488,7 +504,7 @@
 						variant="outline"
 						onclick={newSale}
 						disabled={!cart.length}
-						aria-label="Clear the cart"><X /></Button
+						aria-label={m.sales_pos_clear_cart()}><X /></Button
 					>
 					<form
 						method="POST"
@@ -505,9 +521,14 @@
 							type="hidden"
 							name="label"
 							value={holdLabel ||
-								`${customer?.name ?? 'Walk-in'} · ${cart.length} item${cart.length === 1 ? '' : 's'}`}
+								m.sales_pos_hold_label({
+									customer: customer?.name ?? m.sales_pos_walk_in(),
+									count: cart.length
+								})}
 						/>
-						<Button type="submit" variant="outline" disabled={!cart.length}><Pause /> Hold</Button>
+						<Button type="submit" variant="outline" disabled={!cart.length}
+							><Pause /> {m.sales_pos_hold()}</Button
+						>
 					</form>
 					<Button
 						size="lg"
@@ -515,10 +536,11 @@
 						disabled={!cart.length || problems.length > 0}
 						class="text-base"
 					>
-						<Banknote /> Pay {formatETB(totals.gross)} (F9)
+						<Banknote />
+						{m.sales_pos_pay({ amount: formatETB(totals.gross) })}
 					</Button>
 				</div>
-				<Input bind:value={note} placeholder="Note on the sale (optional)" class="h-8 text-sm" />
+				<Input bind:value={note} placeholder={m.sales_pos_note_placeholder()} class="h-8 text-sm" />
 			</section>
 		</div>
 	</div>
@@ -528,7 +550,9 @@
 		<Dialog.Content class="sm:max-w-lg">
 			<Dialog.Header>
 				<Dialog.Title
-					>{result ? `Sold — ${result.number}` : `Take ${formatETB(totals.gross)}`}</Dialog.Title
+					>{result
+						? m.sales_pos_sold({ number: result.number })
+						: m.sales_pos_take({ amount: formatETB(totals.gross) })}</Dialog.Title
 				>
 			</Dialog.Header>
 
@@ -536,11 +560,16 @@
 				<div class="flex flex-col gap-3">
 					{#if result.change > 0}
 						<p class="rounded-md bg-emerald-500/10 p-4 text-center text-2xl font-semibold">
-							Change: {formatETB(result.change)}
+							{m.sales_pos_change({ amount: formatETB(result.change) })}
 						</p>
 					{/if}
 					{#if result.onCredit > 0}
-						<p class="text-sm">{formatETB(result.onCredit)} went on {customer?.name}'s account.</p>
+						<p class="text-sm">
+							{m.sales_pos_went_on_account({
+								amount: formatETB(result.onCredit),
+								customer: customer?.name ?? ''
+							})}
+						</p>
 					{/if}
 					{#each result.notes as n (n)}
 						<p class="text-sm {result.notesFailed ? 'text-destructive' : 'text-muted-foreground'}">
@@ -553,9 +582,9 @@
 								id: String(result.documentId)
 							})}?tendered={tendered}&change={result.change}"
 							target="_blank"
-							variant="outline"><Printer /> Receipt</Button
+							variant="outline"><Printer /> {m.sales_pos_receipt()}</Button
 						>
-						<Button class="flex-1" onclick={newSale}>New sale</Button>
+						<Button class="flex-1" onclick={newSale}>{m.sales_pos_new_sale()}</Button>
 					</div>
 				</div>
 			{:else}
@@ -579,8 +608,8 @@
 					{#each payments as p, i (i)}
 						<div class="grid grid-cols-[1fr_120px_auto] items-center gap-2">
 							<select bind:value={p.methodId} class="h-10 rounded-md border bg-background px-2">
-								{#each data.methods ?? [] as m (m.id)}
-									<option value={m.id}>{m.name}</option>
+								{#each data.methods ?? [] as method (method.id)}
+									<option value={method.id}>{method.name}</option>
 								{/each}
 							</select>
 							<Input
@@ -593,14 +622,14 @@
 							<Button
 								variant="ghost"
 								size="icon"
-								aria-label="Remove this payment"
+								aria-label={m.sales_pos_remove_payment()}
 								disabled={payments.length === 1}
 								onclick={() => (payments = payments.filter((_, j) => j !== i))}><X /></Button
 							>
 							{#if methodKind(p.methodId) !== 'cash'}
 								<Input
 									bind:value={p.reference}
-									placeholder="Transaction reference (Telebirr ID, FT no.)"
+									placeholder={m.sales_reference_placeholder()}
 									class="col-span-3 h-9"
 								/>
 							{/if}
@@ -623,10 +652,13 @@
 							variant="ghost"
 							onclick={() =>
 								payments.push({
-									methodId: data.methods?.find((m) => m.kind !== 'cash')?.id ?? cashMethod?.id ?? 0,
+									methodId:
+										data.methods?.find((method) => method.kind !== 'cash')?.id ??
+										cashMethod?.id ??
+										0,
 									amount: remaining,
 									reference: ''
-								})}><Plus /> Split</Button
+								})}><Plus /> {m.sales_pos_split()}</Button
 						>
 					</div>
 
@@ -634,28 +666,28 @@
 						<Input
 							bind:value={smsTo}
 							type="tel"
-							placeholder="Text the receipt to (optional mobile number)"
+							placeholder={m.sales_pos_sms_placeholder()}
 							class="h-9"
 						/>
 					{/if}
 
 					<dl class="grid grid-cols-2 gap-1 text-sm">
-						<dt>Paid</dt>
+						<dt>{m.sales_paid()}</dt>
 						<dd class="text-right">{formatETB(paid)}</dd>
 						{#if change > 0}
-							<dt class="font-semibold">Change</dt>
+							<dt class="font-semibold">{m.sales_change()}</dt>
 							<dd class="text-right text-lg font-semibold">{formatETB(change)}</dd>
 						{/if}
 						{#if remaining > 0}
 							<dt class="font-semibold {customerId ? '' : 'text-destructive'}">
-								{customerId ? 'On account (ዱቤ)' : 'Still to collect'}
+								{customerId ? m.sales_pos_on_account() : m.sales_pos_still_to_collect()}
 							</dt>
 							<dd class="text-right font-semibold">{formatETB(remaining)}</dd>
 						{/if}
 					</dl>
 					{#if remaining > 0 && !customerId}
 						<p class="text-xs text-muted-foreground">
-							Collect the rest, or choose a customer to put it on their account.
+							{m.sales_pos_collect_rest()}
 						</p>
 					{/if}
 					{#if form?.error}<p class="text-sm text-destructive">{form.error}</p>{/if}
@@ -663,7 +695,7 @@
 						type="submit"
 						size="lg"
 						disabled={paying || (remaining > 0 && !customerId)}
-						class="text-base">{paying ? 'Completing…' : 'Complete sale'}</Button
+						class="text-base">{paying ? m.sales_pos_completing() : m.sales_pos_complete()}</Button
 					>
 				</form>
 			{/if}
@@ -673,13 +705,13 @@
 	<!-- Held carts -->
 	<Dialog.Root bind:open={heldOpen}>
 		<Dialog.Content class="sm:max-w-md">
-			<Dialog.Header><Dialog.Title>Held carts</Dialog.Title></Dialog.Header>
-			<Input bind:value={holdLabel} placeholder="Name for the next cart you hold (optional)" />
+			<Dialog.Header><Dialog.Title>{m.sales_pos_held_carts()}</Dialog.Title></Dialog.Header>
+			<Input bind:value={holdLabel} placeholder={m.sales_pos_hold_name_placeholder()} />
 			<ul class="flex flex-col divide-y">
 				{#each data.held ?? [] as h (h.id)}
 					<li class="flex items-center justify-between gap-2 py-2 text-sm">
 						<span>
-							{h.label ?? `Cart #${h.id}`}
+							{h.label ?? m.sales_pos_cart_number({ id: h.id })}
 							<span class="block text-xs text-muted-foreground"
 								>{h.by ?? '—'} · {ethiopianDateTime(h.createdAt)}</span
 							>
@@ -704,15 +736,17 @@
 								}}
 						>
 							<input type="hidden" name="id" value={h.id} />
-							<Button type="submit" size="sm" disabled={cart.length > 0}>Take</Button>
+							<Button type="submit" size="sm" disabled={cart.length > 0}
+								>{m.sales_pos_take_cart()}</Button
+							>
 						</form>
 					</li>
 				{:else}
-					<li class="py-4 text-center text-sm text-muted-foreground">No carts on hold.</li>
+					<li class="py-4 text-center text-sm text-muted-foreground">{m.sales_pos_no_held()}</li>
 				{/each}
 			</ul>
 			{#if cart.length}
-				<p class="text-xs text-muted-foreground">Finish or hold the current cart first.</p>
+				<p class="text-xs text-muted-foreground">{m.sales_pos_finish_first()}</p>
 			{/if}
 		</Dialog.Content>
 	</Dialog.Root>

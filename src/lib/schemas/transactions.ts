@@ -1,5 +1,7 @@
 import { z } from 'zod/v4';
 import { TRANSACTION_DIRECTIONS, TRANSACTION_PURPOSES } from '$lib/constants';
+import { choices, labels } from '$lib/format';
+import { m } from '$lib/paraglide/messages.js';
 
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const ATTACHMENT_TYPES = [
@@ -13,18 +15,18 @@ export const ATTACHMENT_TYPES = [
 
 /** A screenshot of a transfer or a PDF receipt. */
 const attachment = z
-	.instanceof(File, { message: 'Choose a screenshot or a PDF.' })
-	.refine((f) => f.size > 0, 'The file is empty.')
-	.refine((f) => f.size <= MAX_ATTACHMENT_BYTES, 'Files can be at most 10 MB.')
-	.refine(
-		(f) => ATTACHMENT_TYPES.includes(f.type),
-		'Only screenshots (PNG, JPG, WebP, HEIC) and PDFs.'
-	);
+	.instanceof(File, { error: () => m.sales_file_choose() })
+	.refine((f) => f.size > 0, { error: () => m.sales_file_empty() })
+	.refine((f) => f.size <= MAX_ATTACHMENT_BYTES, { error: () => m.sales_file_too_big() })
+	.refine((f) => ATTACHMENT_TYPES.includes(f.type), { error: () => m.sales_file_types() });
 
 const fields = {
 	direction: z.enum(TRANSACTION_DIRECTIONS).default('in'),
-	amount: z.number({ error: 'Enter the amount' }).positive('Enter the amount').max(999_999_999_999),
-	occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick the date the money moved'),
+	amount: z
+		.number({ error: () => m.sales_enter_amount() })
+		.positive({ error: () => m.sales_enter_amount() })
+		.max(999_999_999_999),
+	occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.sales_pick_money_date() }),
 	/** 0 = not said. */
 	paymentMethodId: z.coerce.number().int().min(0).default(0),
 	purpose: z.enum(TRANSACTION_PURPOSES).default('other'),
@@ -39,7 +41,10 @@ const fields = {
 	/** 0 = no customer named — a walk-in, or not a sale at all. */
 	customerId: z.coerce.number().int().min(0).default(0),
 	/** Tax withheld on top of `amount`. */
-	withheld: z.number().min(0, 'Cannot be negative').default(0),
+	withheld: z
+		.number()
+		.min(0, { error: () => m.sales_cannot_be_negative() })
+		.default(0),
 	withholdingReceipt: z.string().trim().max(60).default('')
 };
 
@@ -47,38 +52,45 @@ export const transactionAdd = z.object({ ...fields, file: attachment.optional() 
 export const transactionEdit = z.object(fields);
 export const attachmentAdd = z.object({ file: attachment });
 export const voidSchema = z.object({
-	reason: z.string().trim().min(3, 'Say why it is being voided').max(255)
+	reason: z
+		.string()
+		.trim()
+		.min(3, { error: () => m.sales_void_why() })
+		.max(255)
 });
 /** Linking a stock document to a transaction that already exists. */
 export const linkSchema = z.object({
-	transactionId: z.coerce.number().int().positive('Choose a transaction')
+	transactionId: z.coerce
+		.number()
+		.int()
+		.positive({ error: () => m.sales_choose_transaction() })
 });
 
-export const DIRECTION_CHOICES = [
-	{ value: 'in', name: 'Money in — received' },
-	{ value: 'out', name: 'Money out — paid' }
-];
+export const DIRECTION_CHOICES = choices([
+	['in', m.sales_dir_in],
+	['out', m.sales_dir_out]
+]);
 
-export const PURPOSE_CHOICES = [
-	{ value: 'purchase', name: 'Purchase (stock bought)' },
-	{ value: 'sale', name: 'Sale' },
-	{ value: 'expense', name: 'Expense (rent, utilities, transport…)' },
-	{ value: 'other_income', name: 'Other income' },
-	{ value: 'other', name: 'Other' }
-];
+export const PURPOSE_CHOICES = choices([
+	['purchase', m.sales_purpose_purchase_long],
+	['sale', m.sales_purpose_sale],
+	['expense', m.sales_purpose_expense_long],
+	['other_income', m.sales_purpose_other_income],
+	['other', m.sales_purpose_other]
+]);
 
-export const PURPOSE_LABELS: Record<string, string> = {
-	purchase: 'Purchase',
-	sale: 'Sale',
-	expense: 'Expense',
-	other_income: 'Other income',
-	other: 'Other'
-};
+export const PURPOSE_LABELS: Record<string, string> = labels({
+	purchase: m.sales_purpose_purchase,
+	sale: m.sales_purpose_sale,
+	expense: m.sales_purpose_expense,
+	other_income: m.sales_purpose_other_income,
+	other: m.sales_purpose_other
+});
 
-export const PAYMENT_KIND_CHOICES = [
-	{ value: 'cash', name: 'Cash' },
-	{ value: 'mobile_money', name: 'Mobile money (Telebirr, CBE Birr, M-Pesa)' },
-	{ value: 'bank', name: 'Bank account' },
-	{ value: 'cheque', name: 'Cheque' },
-	{ value: 'other', name: 'Other' }
-];
+export const PAYMENT_KIND_CHOICES = choices([
+	['cash', m.sales_kind_cash],
+	['mobile_money', m.sales_kind_mobile],
+	['bank', m.sales_kind_bank],
+	['cheque', m.sales_kind_cheque],
+	['other', m.sales_purpose_other]
+]);

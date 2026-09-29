@@ -11,6 +11,7 @@ import { formatEthPhone } from '$lib/phone';
 import { sendSms, smsLog, smsSettings } from '$lib/server/sms';
 import { smsSettingsSchema, smsWriteSchema } from '$lib/schemas/sms';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
@@ -53,7 +54,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(smsSettingsSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 		// Kept in one spelling, so the alert list reads the same everywhere.
 		const phones = form.data.smsAlertPhones
@@ -84,7 +85,7 @@ export const actions: Actions = {
 				after: values
 			});
 		});
-		return message(form, { type: 'success', text: 'SMS settings saved' });
+		return message(form, { type: 'success', text: m.admin_sms_saved() });
 	},
 
 	/** A message to a number of the person's choosing, to see texts arrive. */
@@ -93,7 +94,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(smsWriteSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 		const r = await sendSms(orgId, {
 			to: form.data.to,
@@ -104,13 +105,13 @@ export const actions: Actions = {
 		if (!r.ok) {
 			return message(
 				form,
-				{ type: 'error', text: r.error ?? 'Not sent' },
+				{ type: 'error', text: r.error ?? m.admin_sms_not_sent() },
 				{ status: r.status === 'off' ? 409 : 502 }
 			);
 		}
 		return message(form, {
 			type: 'success',
-			text: r.status === 'dry_run' ? 'Logged in test mode — not sent' : 'Sent'
+			text: r.status === 'dry_run' ? m.admin_sms_test_logged() : m.admin_sms_test_sent()
 		});
 	}
 };

@@ -11,6 +11,7 @@ import { locationOptions, branchOptions } from '$lib/server/options';
 import { checkCustomer, customerChoices } from '$lib/server/customers';
 import { quoteList } from '$lib/server/quotes';
 import { quoteHeader } from '$lib/schemas/quotes';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -46,15 +47,11 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(quoteHeader));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 
 		if (form.data.customerId && !(await checkCustomer(orgId, form.data.customerId))) {
-			setError(form, 'customerId', 'Choose a customer from the list.');
-			return message(
-				form,
-				{ type: 'error', text: 'Choose a customer from the list.' },
-				{ status: 400 }
-			);
+			setError(form, 'customerId', m.sales_err_choose_customer());
+			return message(form, { type: 'error', text: m.sales_err_choose_customer() }, { status: 400 });
 		}
 		// The branch numbers it: the location's, or the first branch when none is chosen yet.
 		let branchId: number | null = null;
@@ -70,10 +67,10 @@ export const actions: Actions = {
 					)
 				);
 			if (!loc) {
-				setError(form, 'locationId', 'Choose a location from the list.');
+				setError(form, 'locationId', m.sales_err_choose_location());
 				return message(
 					form,
-					{ type: 'error', text: 'Choose a location from the list.' },
+					{ type: 'error', text: m.sales_err_choose_location() },
 					{ status: 400 }
 				);
 			}
@@ -81,7 +78,7 @@ export const actions: Actions = {
 		}
 		branchId ??= (await branchOptions(orgId))[0]?.value ?? null;
 		if (!branchId)
-			return message(form, { type: 'error', text: 'Add a branch first.' }, { status: 400 });
+			return message(form, { type: 'error', text: m.sales_add_branch_first() }, { status: 400 });
 
 		const [row] = await db
 			.insert(quote)
@@ -103,7 +100,7 @@ export const actions: Actions = {
 			.$returningId();
 		redirect(
 			`/dashboard/sales/quotes/${row.id}`,
-			{ type: 'success', message: 'Proforma started — add the lines' },
+			{ type: 'success', message: m.sales_quote_started() },
 			event.cookies
 		);
 	}

@@ -8,6 +8,7 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { customerSchema } from '$lib/schemas/customers';
 	import CustomerFields from './CustomerFields.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/**
 	 * "+ New customer" beside a customer picker. Posts to the customers page's `add` action and
@@ -42,7 +43,7 @@
 
 <DialogComp
 	bind:open
-	title="New customer"
+	title={m.sales_new_customer()}
 	variant="outline"
 	IconComp={Plus}
 	triggerClass="self-start"
@@ -54,11 +55,11 @@
 		id="quick-customer"
 		class="flex flex-col gap-4"
 	>
-		<p class="text-sm text-muted-foreground">It is selected as soon as it is saved.</p>
+		<p class="text-sm text-muted-foreground">{m.sales_selected_when_saved()}</p>
 		<Errors allErrors={$allErrors} />
 		<CustomerFields {form} {errors} idPrefix="quick-customer-" full={false} />
 		<Button type="submit" form="quick-customer">
-			{#if $delayed}<LoadingBtn name="Saving" />{:else}Add customer{/if}
+			{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.sales_add_customer()}{/if}
 		</Button>
 	</form>
 </DialogComp>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import FormCard from '@nahu/admin-kit/formComponents/FormCard.svelte';
@@ -17,16 +18,30 @@
 </script>
 
 <svelte:head>
-	<title>Add role</title>
+	<title>{m.admin_roles_add()}</title>
 </svelte:head>
 
-<FormCard title="Add role">
+<FormCard title={m.admin_roles_add()}>
 	<form use:enhance action="?/add" id="main" class="flex flex-col gap-4" method="POST">
 		<Errors allErrors={$allErrors} />
-		<InputComp label="Name" name="name" {form} {errors} placeholder="e.g. Pharmacist" required />
-		<InputComp label="Description" name="description" type="textarea" rows={3} {form} {errors} />
 		<InputComp
-			label="Permissions"
+			label={m.common_name()}
+			name="name"
+			{form}
+			{errors}
+			placeholder={m.admin_roles_name_placeholder()}
+			required
+		/>
+		<InputComp
+			label={m.admin_roles_description()}
+			name="description"
+			type="textarea"
+			rows={3}
+			{form}
+			{errors}
+		/>
+		<InputComp
+			label={m.admin_users_permissions()}
 			name="permissions"
 			type="checkbox"
 			{form}
@@ -34,7 +49,8 @@
 			items={data.allPermissions}
 		/>
 		<Button type="submit" form="main">
-			{#if $delayed}<LoadingBtn name="Adding role" />{:else}<Plus /> Add role{/if}
+			{#if $delayed}<LoadingBtn name={m.admin_roles_adding()} />{:else}<Plus />
+				{m.admin_roles_add()}{/if}
 		</Button>
 	</form>
 </FormCard>

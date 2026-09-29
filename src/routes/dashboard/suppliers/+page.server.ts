@@ -7,6 +7,7 @@ import { supplier } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { supplierList, supplierValues } from '$lib/server/suppliers';
 import { supplierSchema } from '$lib/schemas/suppliers';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => ({
@@ -25,7 +26,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(supplierSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		try {
@@ -34,14 +35,14 @@ export const actions: Actions = {
 				.insert(supplier)
 				.values({ ...values, orgId, createdBy: event.locals.user?.id })
 				.$returningId();
-			form.message = { type: 'success', text: `${values.name} added` };
+			form.message = { type: 'success', text: m.purchasing_x_added({ name: values.name }) };
 			return { form, supplier: { value: row.id, name: `${values.name} · ${values.phone}` } };
 		} catch (err) {
 			if (isDuplicateKey(err)) {
-				setError(form, 'name', 'A supplier with this name already exists.');
+				setError(form, 'name', m.purchasing_supplier_name_exists());
 				return message(
 					form,
-					{ type: 'error', text: 'That supplier already exists.' },
+					{ type: 'error', text: m.purchasing_supplier_exists() },
 					{ status: 409 }
 				);
 			}

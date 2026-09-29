@@ -4,6 +4,7 @@ import { zod4 } from 'sveltekit-superforms/adapters';
 import { auth } from '$lib/server/auth';
 import { changePasswordSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async () => ({
 	form: await superValidate(zod4(changePasswordSchema))
@@ -29,21 +30,17 @@ export const actions: Actions = {
 			if (code === 'INVALID_PASSWORD') {
 				return message(
 					form,
-					{ type: 'error', text: 'That is not your current password.' },
+					{ type: 'error', text: m.admin_change_wrong_current() },
 					{ status: 400 }
 				);
 			}
 			console.error('password change failed', err);
-			return message(
-				form,
-				{ type: 'error', text: 'The password could not be changed. Please try again.' },
-				{ status: 500 }
-			);
+			return message(form, { type: 'error', text: m.admin_change_failed() }, { status: 500 });
 		}
 
 		return message(form, {
 			type: 'success',
-			text: 'Password changed. Other devices signed in as you have been signed out.'
+			text: m.admin_change_done()
 		});
 	}
 };

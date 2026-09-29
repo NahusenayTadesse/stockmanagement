@@ -9,12 +9,13 @@ import { seal } from '$lib/server/secrets';
 import { checkDevice, DEFAULT_TAX_GROUPS, FiscalError, zReport } from '$lib/server/fiscal';
 import { add, edit } from './schema';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 const blank = (v: unknown) => (v === '' || v === undefined ? null : v);
 
 const crud = orgCrud({
 	table: fiscalDevice,
-	label: 'Fiscal device',
+	label: () => m.common_rec_fiscal_device(),
 	addSchema: add,
 	editSchema: edit,
 	permission: 'settings.manage',
@@ -29,7 +30,7 @@ const crud = orgCrud({
 			await belongsToOrg(branch, values.branchId, orgId, 'branchId', 'branch');
 		}
 		if (values.kind === 'datecs_tcp' && values.host && !values.port) {
-			throw new WriteRefused('port', 'Give the port the device listens on.');
+			throw new WriteRefused('port', m.admin_fd_need_port());
 		}
 		const out: Record<string, unknown> = {};
 		for (const [k, v] of Object.entries(values)) out[k] = blank(v);
@@ -53,13 +54,13 @@ export const load: PageServerLoad = async (event) => {
 		rows: (section.rows as (typeof fiscalDevice.$inferSelect)[]).map((d) => ({
 			...d,
 			branchId: d.branchId ?? 0,
-			branch: branches.find((b) => b.value === d.branchId)?.name ?? 'Any branch',
+			branch: branches.find((b) => b.value === d.branchId)?.name ?? m.admin_fd_any_branch(),
 			bridgeToken: '',
 			operatorPassword: '',
 			hasToken: Boolean(d.bridgeToken),
 			hasPassword: Boolean(d.operatorPassword)
 		})),
-		branches: [{ value: 0, name: 'Any branch' }, ...branches],
+		branches: [{ value: 0, name: m.admin_fd_any_branch() }, ...branches],
 		defaultTaxGroups: DEFAULT_TAX_GROUPS
 	};
 };
@@ -71,8 +72,8 @@ export const actions: Actions = {
 	check: async (event) => {
 		requirePermission(event.locals, 'settings.manage');
 		const id = Number((await event.request.formData()).get('id'));
-		const message = await checkDevice(orgIdOf(event.locals), id);
-		setFlash({ type: message.startsWith('Failed') ? 'error' : 'success', message }, event.cookies);
+		const { ok, message } = await checkDevice(orgIdOf(event.locals), id);
+		setFlash({ type: ok ? 'success' : 'error', message }, event.cookies);
 		return { message };
 	},
 
@@ -83,11 +84,11 @@ export const actions: Actions = {
 		try {
 			await zReport(orgIdOf(event.locals), id);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : 'The Z report failed.';
+			const message = err instanceof Error ? err.message : m.admin_fd_z_failed();
 			setFlash({ type: 'error', message }, event.cookies);
 			return fail(err instanceof FiscalError ? 400 : 502, { message });
 		}
-		setFlash({ type: 'success', message: 'Z report printed' }, event.cookies);
+		setFlash({ type: 'success', message: m.admin_fd_z_printed() }, event.cookies);
 		return { done: true };
 	}
 };

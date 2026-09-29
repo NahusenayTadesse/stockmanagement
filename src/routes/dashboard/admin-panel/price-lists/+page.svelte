@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
 	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
 	import { add, edit } from './schema';
@@ -12,21 +13,25 @@
 		{data}
 		schemas={{ add, edit }}
 		config={{
-			entity: 'Price list',
-			plural: 'Price lists',
+			entity: m.admin_pl_entity(),
+			plural: m.admin_pl_plural(),
 			fields: [
-				{ name: 'name', label: 'Name', type: 'text', placeholder: 'Wholesale, Contractors…' },
-				{ name: 'note', label: 'Note', type: 'text', required: false },
-				{ name: 'status', label: 'Status', type: 'boolean' }
+				{
+					name: 'name',
+					label: m.common_name(),
+					type: 'text',
+					placeholder: m.admin_pl_name_placeholder()
+				},
+				{ name: 'note', label: m.common_note(), type: 'text', required: false },
+				{ name: 'status', label: m.common_status(), type: 'boolean' }
 			]
 		}}
 	/>
 	{#if lists.length}
 		<section class="flex flex-col gap-2">
-			<h2 class="text-lg font-semibold">Prices</h2>
+			<h2 class="text-lg font-semibold">{m.admin_pl_prices()}</h2>
 			<p class="text-sm text-muted-foreground">
-				A customer on a list buys its items at the list's prices; anything not on it sells at the
-				item's own price. Assign a list on the customer's page.
+				{m.admin_pl_prices_intro()}
 			</p>
 			<ul class="flex flex-wrap gap-2">
 				{#each lists as l (l.id)}

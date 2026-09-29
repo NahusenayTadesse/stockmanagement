@@ -10,7 +10,16 @@ import { db } from '$lib/server/db';
 import { organization, stockDocument, stockDocumentLine } from '$lib/server/db/schema';
 import { deviceFor, printFiscal } from '$lib/server/fiscal';
 import { submitEinvoice } from '$lib/server/einvoice';
-import { resultNote, smsSaleReceipt } from '$lib/server/sms';
+import { smsSaleReceipt, type SmsResult } from '$lib/server/sms';
+import { m } from '$lib/paraglide/messages.js';
+
+/** A line for the person who did it: "SMS sent to 2519…", or why not. Null when SMS is off. */
+export function smsNote(r: SmsResult, to: string) {
+	if (r.status === 'off') return null;
+	if (r.status === 'sent') return m.sales_sms_sent_to({ to });
+	if (r.status === 'dry_run') return m.sales_sms_logged_for({ to });
+	return m.sales_sms_not_sent_to({ to, error: r.error ?? m.sales_unknown_error() });
+}
 
 export async function afterSale(
 	orgId: number,
@@ -43,9 +52,9 @@ export async function afterSale(
 		notes.push(
 			r.ok
 				? r.fsNumber
-					? `fiscal receipt FS No. ${r.fsNumber}`
-					: 'ring it up on the fiscal device and enter its FS No.'
-				: `fiscal receipt not printed: ${r.error}`
+					? m.sales_fiscal_printed({ number: r.fsNumber })
+					: m.sales_fiscal_ring_up()
+				: m.sales_fiscal_not_printed({ error: r.error })
 		);
 	}
 	const [org] = await db
@@ -55,14 +64,16 @@ export async function afterSale(
 	if (org?.mode) {
 		const r = await submitEinvoice(orgId, documentId);
 		failed ||= !r.ok;
-		notes.push(r.ok ? `e-invoice IRN ${r.irn}` : `e-invoice not sent: ${r.error}`);
+		notes.push(
+			r.ok ? m.sales_einvoice_irn({ irn: r.irn }) : m.sales_einvoice_not_sent({ error: r.error })
+		);
 	}
 	// Last, so the text can carry the FS No.
 	const sms = await smsSaleReceipt(orgId, documentId, {
 		to: options.smsTo,
 		userId: options.userId
 	});
-	const note = sms && resultNote(sms, options.smsTo || 'the customer');
+	const note = sms && smsNote(sms, options.smsTo || m.sales_the_customer());
 	if (note) notes.push(note);
 	return { notes, failed };
 }

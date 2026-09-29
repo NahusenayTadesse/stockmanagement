@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SuperForm } from 'sveltekit-superforms';
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/** A requisition's header, shared by "new requisition" and the draft's edit dialog. */
 	let {
@@ -22,8 +23,8 @@
 		{form}
 		{errors}
 		name="department"
-		label="Department"
-		placeholder="Ward, kitchen, site or project asking"
+		label={m.purchasing_col_department()}
+		placeholder={m.purchasing_f_department_ph()}
 		required
 	/>
 	{#if departments.length}
@@ -43,18 +44,18 @@
 	{errors}
 	name="locationId"
 	type="combo"
-	label="From store"
+	label={m.purchasing_col_from_store()}
 	items={locations}
 	required
 />
-<InputComp {form} {errors} name="requestDate" type="date" label="Date" year required />
+<InputComp {form} {errors} name="requestDate" type="date" label={m.common_date()} year required />
 <InputComp
 	{form}
 	{errors}
 	name="neededBy"
 	type="date"
-	label="Needed by (optional)"
+	label={m.purchasing_f_needed_by_opt()}
 	year
 	futureDays
 />
-<InputComp {form} {errors} name="note" type="textarea" rows={3} label="Note (optional)" />
+<InputComp {form} {errors} name="note" type="textarea" rows={3} label={m.purchasing_f_note_opt()} />

@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
@@ -5,15 +6,16 @@ import DataTableSort from '@nahu/admin-kit/components/Table/data-table-sort.svel
 import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
 import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 import { signed } from '../../transactions/columns';
-import { DOCUMENT_LABELS } from '$lib/format';
+import { DOCUMENT_LABELS, DOCUMENT_STATUS_LABELS } from '$lib/format';
 import type { PageData } from './$types';
 
 type Row = PageData['documents'][number];
 
-const sortable = (name: string) =>
+/** A sortable header, named in the viewer's language when the table is drawn. */
+const sortable = (name: () => string) =>
 	(({ column }) =>
 		renderComponent(DataTableSort, {
-			name,
+			name: name(),
 			onclick: column.getToggleSortingHandler()
 		})) satisfies ColumnDef<Row>['header'];
 
@@ -28,47 +30,88 @@ const STATUS_WORD = {
 export const columns: ColumnDef<Row>[] = [
 	{
 		accessorKey: 'number',
-		header: sortable('Number'),
+		header: sortable(m.stock_col_number),
 		cell: ({ row }) =>
 			renderComponent(DataTableLinks, {
 				id: row.original.id,
-				name: row.original.number ?? `Draft #${row.original.id}`,
+				name: row.original.number ?? m.stock_draft_number({ id: row.original.id }),
 				entity: 'document'
 			})
 	},
 	{
 		accessorKey: 'type',
-		header: sortable('Type'),
+		header: sortable(m.stock_col_type),
 		cell: (info) => DOCUMENT_LABELS[info.getValue() as keyof typeof DOCUMENT_LABELS]
 	},
 	{
 		accessorKey: 'docDate',
-		header: sortable('Date'),
+		header: sortable(m.common_date),
 		cell: (info) => ethiopianDate(info.getValue())
 	},
-	{ accessorKey: 'from', header: 'From', cell: (info) => info.getValue() ?? '' },
-	{ accessorKey: 'to', header: 'To', cell: (info) => info.getValue() ?? '' },
-	{ accessorKey: 'party', header: 'Supplier / issued to', cell: (info) => info.getValue() ?? '' },
-	{ accessorKey: 'reference', header: 'Reference', cell: (info) => info.getValue() ?? '' },
-	{ accessorKey: 'lines', header: 'Lines' },
+	{
+		accessorKey: 'from',
+		get header() {
+			return m.stock_col_from();
+		},
+		cell: (info) => info.getValue() ?? ''
+	},
+	{
+		accessorKey: 'to',
+		get header() {
+			return m.stock_col_to();
+		},
+		cell: (info) => info.getValue() ?? ''
+	},
+	{
+		accessorKey: 'party',
+		get header() {
+			return m.stock_col_party();
+		},
+		cell: (info) => info.getValue() ?? ''
+	},
+	{
+		accessorKey: 'reference',
+		get header() {
+			return m.common_reference();
+		},
+		cell: (info) => info.getValue() ?? ''
+	},
+	{
+		accessorKey: 'lines',
+		get header() {
+			return m.stock_col_lines();
+		}
+	},
 	{
 		accessorKey: 'paymentAmount',
-		header: 'Payment',
+		get header() {
+			return m.stock_col_payment();
+		},
 		cell: ({ row }) =>
 			row.original.paymentId && row.original.paymentDirection
 				? renderComponent(DataTableLinks, {
 						id: row.original.paymentId,
 						name:
 							signed(row.original.paymentDirection, row.original.paymentAmount ?? 0) +
-							(row.original.paymentStatus === 'void' ? ' (void)' : ''),
+							(row.original.paymentStatus === 'void' ? m.stock_void_suffix() : ''),
 						entity: 'transaction'
 					})
 				: ''
 	},
 	{
 		accessorKey: 'status',
-		header: sortable('Status'),
-		cell: ({ row }) => renderComponent(Statuses, { status: STATUS_WORD[row.original.status] })
+		header: sortable(m.common_status),
+		cell: ({ row }) =>
+			renderComponent(Statuses, {
+				status: STATUS_WORD[row.original.status],
+				label: DOCUMENT_STATUS_LABELS[row.original.status]
+			})
 	},
-	{ accessorKey: 'createdBy', header: 'By', cell: (info) => info.getValue() ?? '' }
+	{
+		accessorKey: 'createdBy',
+		get header() {
+			return m.stock_col_by();
+		},
+		cell: (info) => info.getValue() ?? ''
+	}
 ];

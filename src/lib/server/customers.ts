@@ -3,6 +3,7 @@
  * system — an issue or a payment without a customer is complete — and every query is filtered by
  * the business first.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { error } from '@sveltejs/kit';
 import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
@@ -76,7 +77,7 @@ export async function orgCustomer(orgId: number, id: number) {
 		.select()
 		.from(customer)
 		.where(and(eq(customer.id, id), eq(customer.orgId, orgId), isNull(customer.deletedAt)));
-	if (!row) error(404, 'Customer not found');
+	if (!row) error(404, m.sales_customer_not_found());
 	return row;
 }
 

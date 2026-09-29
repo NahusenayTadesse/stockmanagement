@@ -7,20 +7,21 @@ import { orgIdOf } from '$lib/server/tenant';
 import { itemOptions, unitOptions } from '$lib/server/options';
 import { itemAdd, itemEdit } from '../schema';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 async function orgList(orgId: number, id: number) {
 	const [row] = await db
 		.select()
 		.from(priceList)
 		.where(and(eq(priceList.id, id), eq(priceList.orgId, orgId), isNull(priceList.deletedAt)));
-	if (!row) error(404, 'Price list not found');
+	if (!row) error(404, m.admin_pl_list_not_found());
 	return row;
 }
 
 const prices = childCrud({
 	table: priceListItem,
 	ownerColumn: 'priceListId',
-	label: 'Price',
+	label: () => m.common_rec_price(),
 	addSchema: itemAdd,
 	editSchema: itemEdit,
 	permission: 'settings.manage',
@@ -32,7 +33,7 @@ const prices = childCrud({
 			.where(
 				and(eq(item.id, Number(values.itemId)), eq(item.orgId, orgId), isNull(item.deletedAt))
 			);
-		if (!it) throw new WriteRefused('itemId', 'Choose an item from the list.');
+		if (!it) throw new WriteRefused('itemId', m.admin_pl_choose_item());
 		const uomId = Number(values.uomId) || null;
 		if (uomId && uomId !== it.baseUomId) {
 			const [u] = await db
@@ -41,7 +42,7 @@ const prices = childCrud({
 				.where(
 					and(eq(itemUnit.itemId, it.id), eq(itemUnit.uomId, uomId), isNull(itemUnit.deletedAt))
 				);
-			if (!u) throw new WriteRefused('uomId', `${it.name} has no conversion for this unit.`);
+			if (!u) throw new WriteRefused('uomId', m.admin_pl_no_conversion({ item: it.name }));
 		}
 		return { ...values, orgId, uomId: uomId === it.baseUomId ? null : uomId };
 	}
@@ -65,11 +66,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				...r,
 				uomId: r.uomId ?? 0,
 				item: itemName.get(r.itemId) ?? '—',
-				unit: r.uomId ? (unitName.get(r.uomId) ?? '—') : 'Base unit'
+				unit: r.uomId ? (unitName.get(r.uomId) ?? '—') : m.admin_base_unit()
 			}))
 		},
 		items,
-		units: [{ value: 0, name: 'Base unit' }, ...units]
+		units: [{ value: 0, name: m.admin_base_unit() }, ...units]
 	};
 };
 

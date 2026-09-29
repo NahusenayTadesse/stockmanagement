@@ -20,6 +20,7 @@ import {
 	transactionTotals
 } from '$lib/server/transactions';
 import { transactionAdd } from '$lib/schemas/transactions';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -42,8 +43,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		byMethod,
 		filters,
 		presets: datePresets(today),
-		methods: [{ value: 0, name: '— Not said —' }, ...methods],
-		branches: [{ value: 0, name: 'Whole business' }, ...branches],
+		methods: [{ value: 0, name: m.sales_not_said_option() }, ...methods],
+		branches: [{ value: 0, name: m.sales_whole_business() }, ...branches],
 		form,
 		suppliers: await supplierOptions(orgId),
 		customers: await customerChoices(orgId),
@@ -57,7 +58,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(transactionAdd));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		let id: number;
@@ -87,14 +88,14 @@ export const actions: Actions = {
 			const text =
 				err instanceof Error && /file/i.test(err.message)
 					? err.message
-					: 'Could not record the transaction.';
+					: m.sales_tx_record_failed();
 			return message(form, { type: 'error', text }, { status: 500 });
 		}
 		await smsPaymentReceived(orgId, id, event.locals.user?.id);
 
 		redirect(
 			`/dashboard/transactions/${id}`,
-			{ type: 'success', message: `Transaction #${id} recorded` },
+			{ type: 'success', message: m.sales_tx_recorded({ id }) },
 			event.cookies
 		);
 	}

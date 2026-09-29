@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { columns } from './columns';
@@ -9,16 +10,15 @@
 </script>
 
 <svelte:head>
-	<title>Stock on hand</title>
+	<title>{m.stock_onhand_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div class="flex flex-wrap items-end justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Stock on hand</h1>
+			<h1 class="text-2xl font-semibold">{m.stock_onhand_title()}</h1>
 			<p class="text-muted-foreground">
-				By location and lot, valued at average cost. Held is promised to accepted proformas and
-				approved requisitions; free is what can still be sold or issued.
+				{m.stock_onhand_intro()}
 			</p>
 		</div>
 		<p class="text-lg font-semibold">{formatETB(total)}</p>
@@ -27,7 +27,7 @@
 	<DataTable
 		data={data.rows}
 		{columns}
-		fileName="Stock on hand"
+		fileName={m.stock_onhand_title()}
 		facetKeys={['branch', 'location', 'category']}
 		charts
 	/>

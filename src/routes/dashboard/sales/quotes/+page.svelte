@@ -13,6 +13,7 @@
 	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 	import { quoteHeader, QUOTE_STATUS_LABELS } from '$lib/schemas/quotes';
 	import QuoteHeaderFields from './QuoteHeaderFields.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 	let open = $state(false);
@@ -24,45 +25,46 @@
 	const columns: ColumnDef<Row>[] = [
 		{
 			accessorKey: 'number',
-			header: 'Proforma',
+			header: m.sales_proforma(),
 			cell: ({ row }) =>
 				renderComponent(DataTableLinks, {
 					id: row.original.id,
-					name: row.original.number ?? `Draft #${row.original.id}`,
+					name: row.original.number ?? m.sales_draft_number({ id: row.original.id }),
 					entity: 'quote'
 				})
 		},
-		{ accessorKey: 'buyer', header: 'For' },
-		{ accessorKey: 'quoteDate', header: 'Date', cell: (i) => ethiopianDate(i.getValue()) },
+		{ accessorKey: 'buyer', header: m.sales_for() },
+		{ accessorKey: 'quoteDate', header: m.common_date(), cell: (i) => ethiopianDate(i.getValue()) },
 		{
 			accessorKey: 'validUntil',
-			header: 'Valid until',
+			header: m.sales_valid_until(),
 			cell: (i) => (i.getValue() ? ethiopianDate(i.getValue()) : '—')
 		},
-		{ accessorKey: 'net', header: 'Before tax', cell: (i) => formatETB(Number(i.getValue())) },
+		{
+			accessorKey: 'net',
+			header: m.sales_pos_before_tax(),
+			cell: (i) => formatETB(Number(i.getValue()))
+		},
 		{
 			accessorKey: 'status',
-			header: 'Status',
+			header: m.common_status(),
 			cell: (i) => QUOTE_STATUS_LABELS[i.getValue() as string] ?? i.getValue()
 		}
 	];
 </script>
 
 <svelte:head>
-	<title>Proformas</title>
+	<title>{m.sales_quotes_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div class="flex flex-wrap items-start justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Proformas</h1>
-			<p class="text-muted-foreground">
-				Priced offers, valid until a date — what government offices and NGOs buy against. Nothing
-				leaves the shelf until one becomes a sale.
-			</p>
+			<h1 class="text-2xl font-semibold">{m.sales_quotes_title()}</h1>
+			<p class="text-muted-foreground">{m.sales_quotes_intro()}</p>
 		</div>
 		{#if data.canManage}
-			<DialogComp bind:open title="New proforma" variant="default" IconComp={Plus}>
+			<DialogComp bind:open title={m.sales_new_quote()} variant="default" IconComp={Plus}>
 				<form
 					method="POST"
 					action="?/create"
@@ -78,11 +80,18 @@
 						locations={data.locations}
 					/>
 					<Button type="submit" form="new-quote">
-						{#if $delayed}<LoadingBtn name="Creating" />{:else}Start proforma{/if}
+						{#if $delayed}<LoadingBtn
+								name={m.sales_creating()}
+							/>{:else}{m.sales_start_quote()}{/if}
 					</Button>
 				</form>
 			</DialogComp>
 		{/if}
 	</div>
-	<DataTable data={data.quotes} {columns} fileName="Proformas" facetKeys={['status']} />
+	<DataTable
+		data={data.quotes}
+		{columns}
+		fileName={m.sales_quotes_title()}
+		facetKeys={['status']}
+	/>
 </div>

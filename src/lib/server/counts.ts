@@ -6,6 +6,7 @@
  * Serial-tracked items are left out: counting them means checking serial numbers, not a number of
  * units, and a quantity difference could not say which unit is missing.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { localToday } from '@nahu/admin-kit/time';
@@ -29,12 +30,22 @@ import { round4 } from '$lib/server/stock/math';
 
 type Writer = typeof db | Tx;
 
+/** A count's status, in the viewer's language, for refusals that name it. */
+function countStatus(status: string) {
+	const names: Record<string, () => string> = {
+		open: m.stock_count_status_open,
+		posted: m.stock_count_status_posted,
+		cancelled: m.stock_count_status_cancelled
+	};
+	return names[status]?.() ?? status;
+}
+
 export async function orgCount(orgId: number, id: number, reader: Writer = db) {
 	const [row] = await reader
 		.select()
 		.from(stockCount)
 		.where(and(eq(stockCount.id, id), eq(stockCount.orgId, orgId), isNull(stockCount.deletedAt)));
-	if (!row) error(404, 'Count not found');
+	if (!row) error(404, m.stock_count_not_found());
 	return row;
 }
 
@@ -55,7 +66,7 @@ export async function openCount(
 		.select()
 		.from(location)
 		.where(and(eq(location.id, input.locationId), eq(location.orgId, input.orgId)));
-	if (!loc) throw new StockError('Choose a location from the list.');
+	if (!loc) throw new StockError(m.stock_err_location_list());
 
 	const [open] = await tx
 		.select({ id: stockCount.id })
@@ -68,9 +79,7 @@ export async function openCount(
 			)
 		);
 	if (open) {
-		throw new StockError(
-			`Count #${open.id} of this location is still open. Finish or cancel it first.`
-		);
+		throw new StockError(m.stock_err_count_open({ id: open.id }));
 	}
 
 	const [created] = await tx
@@ -166,11 +175,12 @@ export async function saveCounts(
 	userId?: string
 ) {
 	const count = await orgCount(orgId, countId, tx);
-	if (count.status !== 'open') throw new StockError(`This count is ${count.status}.`);
+	if (count.status !== 'open')
+		throw new StockError(m.stock_err_count_status({ status: countStatus(count.status) }));
 
 	for (const e of entries) {
 		if (e.counted !== null && (!Number.isFinite(e.counted) || e.counted < 0)) {
-			throw new StockError('Counted quantities must be zero or more.');
+			throw new StockError(m.stock_err_counted_negative());
 		}
 		await tx
 			.update(stockCountLine)
@@ -191,22 +201,23 @@ export async function addFoundLine(
 	input: { orgId: number; countId: number; itemId: number; lotId: number | null; counted: number }
 ) {
 	const count = await orgCount(input.orgId, input.countId, tx);
-	if (count.status !== 'open') throw new StockError(`This count is ${count.status}.`);
+	if (count.status !== 'open')
+		throw new StockError(m.stock_err_count_status({ status: countStatus(count.status) }));
 
 	const [it] = await tx
 		.select()
 		.from(item)
 		.where(and(eq(item.id, input.itemId), eq(item.orgId, input.orgId), isNull(item.deletedAt)));
-	if (!it || !it.stockTracked) throw new StockError('Choose a stock item from the list.');
-	if (it.trackSerials) throw new StockError(`${it.name} is counted by serial number, not here.`);
+	if (!it || !it.stockTracked) throw new StockError(m.stock_err_choose_stock_item());
+	if (it.trackSerials) throw new StockError(m.stock_err_counted_by_serial({ item: it.name }));
 	if (it.trackLots && !input.lotId)
-		throw new StockError(`Choose which lot of ${it.name} was found.`);
+		throw new StockError(m.stock_err_choose_lot_found({ item: it.name }));
 	if (input.lotId) {
 		const [l] = await tx
 			.select()
 			.from(lot)
 			.where(and(eq(lot.id, input.lotId), eq(lot.itemId, it.id)));
-		if (!l) throw new StockError('That lot is not of this item.');
+		if (!l) throw new StockError(m.stock_err_lot_not_item());
 	}
 
 	const lotKey = input.lotId ?? 0;
@@ -220,8 +231,7 @@ export async function addFoundLine(
 				eq(stockCountLine.lotKey, lotKey)
 			)
 		);
-	if (existing)
-		throw new StockError(`${it.name} is already on this count; enter the quantity on its line.`);
+	if (existing) throw new StockError(m.stock_err_already_on_count({ item: it.name }));
 
 	await tx.insert(stockCountLine).values({
 		orgId: input.orgId,
@@ -278,13 +288,16 @@ export async function postCount(
 ): Promise<{ adjustmentId: number | null; number: string | null; lines: number }> {
 	const { orgId, countId, userId } = input;
 	const count = await orgCount(orgId, countId, tx);
-	if (count.status !== 'open') throw new StockError(`This count is ${count.status}.`);
+	if (count.status !== 'open')
+		throw new StockError(m.stock_err_count_status({ status: countStatus(count.status) }));
 
 	const lines = await countLines(orgId, countId, tx);
 	const uncounted = lines.filter((l) => l.counted === null).length;
 	if (uncounted) {
 		throw new StockError(
-			`${uncounted} line${uncounted === 1 ? ' has' : 's have'} not been counted yet. Enter 0 for anything not on the shelf.`
+			uncounted === 1
+				? m.stock_err_uncounted_one()
+				: m.stock_err_uncounted_many({ count: uncounted })
 		);
 	}
 
@@ -302,7 +315,7 @@ export async function postCount(
 			throw new ApprovalRequired(
 				'count',
 				value,
-				`its differences come to ${value.toFixed(2)} at cost, over the ${org.limit.toFixed(2)} limit`
+				m.stock_reason_count_worth({ value: value.toFixed(2), limit: org.limit.toFixed(2) })
 			);
 		}
 	}

@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
 import { addLocalDays, localToday } from '@nahu/admin-kit/time';
@@ -138,9 +139,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 				return {
 					...r,
 					lost: lost
-						.map(
-							(l) =>
-								`${l.item}: ${Math.round((l.sent - (l.arrived ?? 0)) * 10000) / 10000} ${l.unit} of ${l.sent}`
+						.map((l) =>
+							m.stock_lost_of({
+								item: l.item,
+								lost: Math.round((l.sent - (l.arrived ?? 0)) * 10000) / 10000,
+								unit: l.unit,
+								sent: l.sent
+							})
 						)
 						.join('; '),
 					lostLines: lost.length

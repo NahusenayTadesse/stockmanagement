@@ -15,6 +15,7 @@
 	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 	import { orderHeader, PO_STATUS_LABELS } from '$lib/schemas/purchasing';
 	import OrderHeaderFields from './OrderHeaderFields.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 	let open = $state(false);
@@ -26,17 +27,17 @@
 	const columns: ColumnDef<Row>[] = [
 		{
 			accessorKey: 'number',
-			header: 'Order',
+			header: m.purchasing_col_order(),
 			cell: ({ row }) =>
 				renderComponent(DataTableLinks, {
 					id: row.original.id,
-					name: row.original.number ?? `Draft #${row.original.id}`,
+					name: row.original.number ?? m.purchasing_draft_number({ id: row.original.id }),
 					entity: 'purchaseOrder'
 				})
 		},
 		{
 			accessorKey: 'supplier',
-			header: 'Supplier',
+			header: m.purchasing_col_supplier(),
 			cell: ({ row }) =>
 				renderComponent(DataTableLinks, {
 					id: row.original.supplierId,
@@ -44,43 +45,50 @@
 					entity: 'supplier'
 				})
 		},
-		{ accessorKey: 'orderDate', header: 'Ordered', cell: (info) => ethiopianDate(info.getValue()) },
+		{
+			accessorKey: 'orderDate',
+			header: m.purchasing_col_ordered(),
+			cell: (info) => ethiopianDate(info.getValue())
+		},
 		{
 			accessorKey: 'expectedDate',
-			header: 'Expected',
+			header: m.purchasing_col_expected(),
 			cell: (info) => (info.getValue() ? ethiopianDate(info.getValue()) : '')
 		},
-		{ accessorKey: 'location', header: 'Deliver to' },
-		{ accessorKey: 'lines', header: 'Lines' },
-		{ accessorKey: 'value', header: 'Value', cell: (info) => formatETB(Number(info.getValue())) },
-		{ accessorKey: 'receipts', header: 'Deliveries' },
+		{ accessorKey: 'location', header: m.purchasing_col_deliver_to() },
+		{ accessorKey: 'lines', header: m.purchasing_col_lines() },
+		{
+			accessorKey: 'value',
+			header: m.purchasing_col_value(),
+			cell: (info) => formatETB(Number(info.getValue()))
+		},
+		{ accessorKey: 'receipts', header: m.purchasing_col_deliveries() },
 		{
 			accessorKey: 'status',
-			header: 'Status',
+			header: m.common_status(),
 			cell: ({ row }) => PO_STATUS_LABELS[row.original.status]
 		}
 	];
 </script>
 
 <svelte:head>
-	<title>Purchase orders</title>
+	<title>{m.purchasing_orders_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Purchase orders</h1>
+			<h1 class="text-2xl font-semibold">{m.purchasing_orders_title()}</h1>
 			<p class="text-muted-foreground">
-				What was ordered from whom, and what has arrived. Deliveries are received as goods receipts
-				against the order.
+				{m.purchasing_orders_intro()}
 			</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
 			<Button href={resolve('/dashboard/purchasing/reorder')} variant="outline"
-				><RefreshCw /> What to reorder</Button
+				><RefreshCw /> {m.purchasing_what_to_reorder()}</Button
 			>
 			{#if data.canManage}
-				<DialogComp bind:open title="New purchase order" variant="default" IconComp={Plus}>
+				<DialogComp bind:open title={m.purchasing_new_order()} variant="default" IconComp={Plus}>
 					<form
 						method="POST"
 						action="?/create"
@@ -97,7 +105,9 @@
 							supplierForm={data.supplierForm}
 						/>
 						<Button type="submit" form="new-order">
-							{#if $delayed}<LoadingBtn name="Creating" />{:else}Create draft order{/if}
+							{#if $delayed}<LoadingBtn
+									name={m.purchasing_creating()}
+								/>{:else}{m.purchasing_create_draft_order()}{/if}
 						</Button>
 					</form>
 				</DialogComp>
@@ -108,7 +118,7 @@
 	<DataTable
 		data={data.orders}
 		{columns}
-		fileName="Purchase orders"
+		fileName={m.purchasing_orders_title()}
 		facetKeys={['status', 'supplier']}
 	/>
 </div>

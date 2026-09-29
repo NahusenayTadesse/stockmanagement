@@ -15,6 +15,7 @@ import { removeStoredFile } from '$lib/server/files';
 import { seal } from '$lib/server/secrets';
 import { businessSchema, logoSchema } from '$lib/schemas/business';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 async function current(orgId: number) {
 	const [org] = await db.select().from(organization).where(eq(organization.id, orgId));
@@ -75,7 +76,7 @@ export const actions: Actions = {
 		const orgId = guard(event);
 		const form = await superValidate(event.request, zod4(businessSchema));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 
 		const before = await current(orgId);
 		const after = {
@@ -123,10 +124,7 @@ export const actions: Actions = {
 		});
 		return message(form, {
 			type: 'success',
-			text:
-				isFifo && !wasFifo
-					? 'Saved. Stock is now costed first in, first out, starting from today’s average cost'
-					: 'Business details saved'
+			text: isFifo && !wasFifo ? m.admin_biz_saved_fifo() : m.admin_biz_saved()
 		});
 	},
 
@@ -135,18 +133,14 @@ export const actions: Actions = {
 		const orgId = guard(event);
 		const form = await superValidate(event.request, zod4(logoSchema));
 		if (!form.valid)
-			return message(
-				form,
-				{ type: 'error', text: 'Choose a PNG, JPG or WebP image' },
-				{ status: 400 }
-			);
+			return message(form, { type: 'error', text: m.admin_biz_logo_type() }, { status: 400 });
 
 		const before = await current(orgId);
 		let fileName: string;
 		try {
 			fileName = await saveUploadedFile(form.data.logo);
 		} catch (err) {
-			const text = err instanceof Error ? err.message : 'Could not store the logo.';
+			const text = err instanceof Error ? err.message : m.admin_biz_logo_store_failed();
 			return message(form, { type: 'error', text }, { status: 400 });
 		}
 
@@ -161,7 +155,7 @@ export const actions: Actions = {
 			});
 		});
 		removeStoredFile(before.logo);
-		return message(form, { type: 'success', text: 'Logo updated' });
+		return message(form, { type: 'success', text: m.admin_biz_logo_updated() });
 	},
 
 	removeLogo: async (event) => {
@@ -180,7 +174,7 @@ export const actions: Actions = {
 			});
 		});
 		removeStoredFile(before.logo);
-		setFlash({ type: 'success', message: 'Logo removed' }, event.cookies);
+		setFlash({ type: 'success', message: m.admin_biz_logo_removed() }, event.cookies);
 		return { removed: true };
 	}
 };

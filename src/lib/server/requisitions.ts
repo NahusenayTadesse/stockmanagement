@@ -24,6 +24,20 @@ import {
 } from '$lib/server/db/schema';
 import { issueNumber, StockError, type Tx } from '$lib/server/stock/post';
 import { releaseRequisition, reserveRequisition } from '$lib/server/reservations';
+import { m } from '$lib/paraglide/messages.js';
+
+/** A requisition's status as a word in a sentence, in the viewer's language. */
+function stateWord(status: string): string {
+	const words: Record<string, () => string> = {
+		draft: m.purchasing_req_state_draft,
+		submitted: m.purchasing_req_state_submitted,
+		approved: m.purchasing_req_state_approved,
+		rejected: m.purchasing_req_state_rejected,
+		issued: m.purchasing_req_state_issued,
+		cancelled: m.purchasing_req_state_cancelled
+	};
+	return words[status]?.() ?? status;
+}
 
 type Reader = Pick<typeof db, 'select'>;
 
@@ -34,7 +48,7 @@ export async function orgRequisition(orgId: number, id: number, reader: Reader =
 		.where(
 			and(eq(requisition.id, id), eq(requisition.orgId, orgId), isNull(requisition.deletedAt))
 		);
-	if (!row) error(404, 'Requisition not found');
+	if (!row) error(404, m.purchasing_req_not_found());
 	return row;
 }
 
@@ -112,9 +126,11 @@ export async function submitRequisition(
 	input: { orgId: number; requisitionId: number; userId?: string }
 ) {
 	const req = await orgRequisition(input.orgId, input.requisitionId, tx);
-	if (req.status !== 'draft') throw new StockError(`This requisition is already ${req.status}.`);
+	if (req.status !== 'draft') {
+		throw new StockError(m.purchasing_req_already({ status: stateWord(req.status) }));
+	}
 	const lines = await requisitionLines(input.orgId, req.id, tx);
-	if (!lines.length) throw new StockError('Add at least one line before submitting.');
+	if (!lines.length) throw new StockError(m.purchasing_req_add_line_first());
 	const number =
 		req.number ??
 		(await issueNumber(tx, {
@@ -155,14 +171,16 @@ export async function decideRequisition(
 	const req = await orgRequisition(input.orgId, input.requisitionId, tx);
 	if (req.status !== 'submitted') {
 		throw new StockError(
-			req.status === 'draft' ? 'It has not been submitted yet.' : `It is already ${req.status}.`
+			req.status === 'draft'
+				? m.purchasing_req_not_submitted()
+				: m.purchasing_req_it_is_already({ status: stateWord(req.status) })
 		);
 	}
 	if (req.submittedBy === input.userId) {
-		throw new StockError('You submitted this, so someone else has to approve it.');
+		throw new StockError(m.purchasing_req_own());
 	}
 	if (!input.approve && !input.note?.trim()) {
-		throw new StockError('Say why it is rejected, so the department knows.');
+		throw new StockError(m.purchasing_req_reject_reason());
 	}
 
 	if (input.approve) {
@@ -173,7 +191,7 @@ export async function decideRequisition(
 			const approved = given === undefined ? l.quantity : given;
 			if (!(approved >= 0) || approved > l.quantity) {
 				throw new StockError(
-					`Approve between 0 and ${l.quantity} ${l.unit} of ${l.item}; more needs a new requisition.`
+					m.purchasing_req_approve_range({ quantity: l.quantity, unit: l.unit, item: l.item })
 				);
 			}
 			if (approved > 0) any = true;
@@ -182,7 +200,7 @@ export async function decideRequisition(
 				.set({ approvedQuantity: approved })
 				.where(eq(requisitionLine.id, l.id));
 		}
-		if (!any) throw new StockError('Nothing was approved. Reject it instead, saying why.');
+		if (!any) throw new StockError(m.purchasing_req_nothing_approved());
 	}
 
 	await tx
@@ -215,9 +233,7 @@ export async function issueFromRequisition(
 	const req = await orgRequisition(input.orgId, input.requisitionId, tx);
 	if (req.status !== 'approved') {
 		throw new StockError(
-			req.status === 'issued'
-				? 'This has already been issued.'
-				: 'Only an approved requisition is issued.'
+			req.status === 'issued' ? m.purchasing_req_already_issued() : m.purchasing_req_only_approved()
 		);
 	}
 	const [pending] = await tx
@@ -233,8 +249,8 @@ export async function issueFromRequisition(
 	if (pending) {
 		throw new StockError(
 			pending.status === 'draft'
-				? `Issue #${pending.id} is already filling this; post or cancel it first.`
-				: `It was already issued on ${pending.number ?? `#${pending.id}`}.`
+				? m.purchasing_req_issue_pending({ id: pending.id })
+				: m.purchasing_req_issued_on({ number: pending.number ?? `#${pending.id}` })
 		);
 	}
 
@@ -280,7 +296,7 @@ export async function cancelRequisition(
 ) {
 	const req = await orgRequisition(input.orgId, input.requisitionId, tx);
 	if (req.status === 'issued' || req.status === 'cancelled') {
-		throw new StockError(`This requisition is already ${req.status}.`);
+		throw new StockError(m.purchasing_req_already({ status: stateWord(req.status) }));
 	}
 	await releaseRequisition(tx, req.id);
 	await tx

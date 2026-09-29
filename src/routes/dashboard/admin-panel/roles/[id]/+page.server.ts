@@ -9,14 +9,15 @@ import { requireSuperAdmin } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
 import { permissions, rolePermissions, roles, user } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
-import { orgRole, permissionOptions, ungrantable } from '$lib/server/users';
+import { orgRole, permissionOptions, permissionWords, ungrantable } from '$lib/server/users';
 import { roleSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const orgId = orgIdOf(locals);
 	const role = await orgRole(orgId, Number(params.id));
-	if (!role) error(404, 'Role not found');
+	if (!role) error(404, m.admin_roles_not_found());
 
 	const [permissionList, userList, allPermissions] = await Promise.all([
 		db
@@ -45,7 +46,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		{ errors: false }
 	);
 
-	return { role, permissionList, userList, allPermissions, form };
+	return {
+		role,
+		permissionList: permissionList.map((p) => ({
+			...p,
+			description: permissionWords(p.name, p.description)
+		})),
+		userList,
+		allPermissions,
+		form
+	};
 };
 
 export const actions: Actions = {
@@ -53,17 +63,17 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(roleSchema));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		const role = await orgRole(orgId, Number(event.params.id));
-		if (!role) error(404, 'Role not found');
+		if (!role) error(404, m.admin_roles_not_found());
 		if (role.isOwner) {
 			return message(
 				form,
 				{
 					type: 'error',
-					text: 'The owner role always holds every permission and cannot be changed.'
+					text: m.admin_roles_owner_fixed()
 				},
 				{ status: 409 }
 			);
@@ -72,8 +82,8 @@ export const actions: Actions = {
 		const refused = await ungrantable(event.locals, form.data.permissions);
 		if (refused === null || refused.length) {
 			const text = refused
-				? `You cannot grant permissions you do not hold: ${refused.join(', ')}`
-				: 'Choose permissions from the list.';
+				? m.admin_users_cannot_grant({ names: refused.join(', ') })
+				: m.admin_users_choose_permissions();
 			setError(form, 'permissions._errors', text);
 			return message(form, { type: 'error', text }, { status: 403 });
 		}
@@ -96,14 +106,14 @@ export const actions: Actions = {
 			});
 		} catch (err) {
 			if (isDuplicateKey(err)) {
-				setError(form, 'name', 'A role with this name already exists.');
-				return message(form, { type: 'error', text: 'That role already exists.' }, { status: 409 });
+				setError(form, 'name', m.admin_roles_name_exists());
+				return message(form, { type: 'error', text: m.admin_roles_exists() }, { status: 409 });
 			}
 			console.error('role update failed', err);
-			return message(form, { type: 'error', text: 'Could not save the role.' }, { status: 500 });
+			return message(form, { type: 'error', text: m.admin_roles_save_failed() }, { status: 500 });
 		}
 
-		return message(form, { type: 'success', text: 'Role saved' });
+		return message(form, { type: 'success', text: m.admin_roles_saved() });
 	},
 
 	/** Soft delete, super admin only. Refused while anyone holds the role, and for the owner role. */
@@ -111,10 +121,10 @@ export const actions: Actions = {
 		requireSuperAdmin(locals);
 		const orgId = orgIdOf(locals);
 		const role = await orgRole(orgId, Number(params.id));
-		if (!role) error(404, 'Role not found');
+		if (!role) error(404, m.admin_roles_not_found());
 
 		if (role.isOwner) {
-			setFlash({ type: 'error', message: 'The owner role cannot be deleted.' }, cookies);
+			setFlash({ type: 'error', message: m.admin_roles_owner_no_delete() }, cookies);
 			return fail(409);
 		}
 
@@ -126,7 +136,7 @@ export const actions: Actions = {
 			setFlash(
 				{
 					type: 'error',
-					message: `${holders} user${holders === 1 ? ' is' : 's are'} still on this role. Move them to another role first.`
+					message: m.admin_roles_still_used({ count: holders })
 				},
 				cookies
 			);
@@ -138,6 +148,10 @@ export const actions: Actions = {
 			.set(deletionStamp(locals.user?.id) as never)
 			.where(eq(roles.id, role.id));
 
-		redirect('/dashboard/admin-panel/roles', { type: 'success', message: 'Role deleted' }, cookies);
+		redirect(
+			'/dashboard/admin-panel/roles',
+			{ type: 'success', message: m.admin_roles_deleted() },
+			cookies
+		);
 	}
 };

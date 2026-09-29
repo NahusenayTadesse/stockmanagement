@@ -1,12 +1,13 @@
 import { z } from 'zod/v4';
 import { formatEthPhone } from '$lib/phone';
+import { m } from '$lib/paraglide/messages.js';
 
 /** One Ethiopian mobile number, in any usual spelling. */
 const mobile = z
 	.string()
 	.trim()
 	.max(30)
-	.refine((v) => 'phone' in formatEthPhone(v), 'An Ethiopian mobile number, e.g. 0911 234 567');
+	.refine((v) => 'phone' in formatEthPhone(v), { error: () => m.admin_v_mobile() });
 
 export const smsSettingsSchema = z.object({
 	smsEnabled: z.boolean().default(false),
@@ -24,7 +25,7 @@ export const smsSettingsSchema = z.object({
 					.map((x) => x.trim())
 					.filter(Boolean)
 					.every((x) => 'phone' in formatEthPhone(x)),
-			'Ethiopian mobile numbers, separated by commas'
+			{ error: () => m.admin_v_mobiles() }
 		)
 		.default(''),
 	smsSignature: z.string().trim().max(40).default('')
@@ -33,5 +34,9 @@ export const smsSettingsSchema = z.object({
 /** A message someone writes: a test, a note to a customer. */
 export const smsWriteSchema = z.object({
 	to: mobile,
-	text: z.string().trim().min(1, 'Write the message').max(300, 'At most 300 characters')
+	text: z
+		.string()
+		.trim()
+		.min(1, { error: () => m.admin_v_write_message() })
+		.max(300, { error: () => m.admin_v_300() })
 });

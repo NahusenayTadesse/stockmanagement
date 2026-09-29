@@ -5,6 +5,7 @@ import { branch, roles, user } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { branchesByUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
@@ -32,7 +33,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			works
 				.get(r.id)
 				?.map((b) => b.name)
-				.join(', ') || 'All branches'
+				.join(', ') || m.admin_users_all_branches()
 	}));
 	return { userList };
 };

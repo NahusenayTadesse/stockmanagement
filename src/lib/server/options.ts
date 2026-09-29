@@ -20,6 +20,7 @@ import {
 	supplier,
 	uom
 } from '$lib/server/db/schema';
+import { m } from '$lib/paraglide/messages.js';
 
 export const branchOptions = (orgId: number) =>
 	db
@@ -114,7 +115,7 @@ export const lotOptions = (orgId: number) =>
 	db
 		.select({
 			value: lot.id,
-			name: sql<string>`CONCAT(${item.name}, ' · lot ', ${lot.lotNumber}, COALESCE(CONCAT(' · exp ', ${lot.expiryDate}), ''))`
+			name: sql<string>`CONCAT(${item.name}, ${` · ${m.admin_opt_lot()} `}, ${lot.lotNumber}, COALESCE(CONCAT(${` · ${m.admin_opt_exp()} `}, ${lot.expiryDate}), ''))`
 		})
 		.from(lot)
 		.innerJoin(item, eq(item.id, lot.itemId))
@@ -163,6 +164,20 @@ export const roleOptions = (orgId: number) =>
 		.where(and(eq(roles.orgId, orgId), eq(roles.isActive, true), isNull(roles.deletedAt)))
 		.orderBy(asc(roles.name));
 
+/** "Choose a branch from the list.", in the viewer's language. */
+function chooseFromList(label: string): string {
+	const known: Record<string, () => string> = {
+		branch: m.admin_opt_choose_branch,
+		category: m.admin_opt_choose_category,
+		supplier: m.admin_opt_choose_supplier,
+		unit: m.admin_opt_choose_unit,
+		customer: m.admin_opt_choose_customer,
+		item: m.admin_opt_choose_item,
+		location: m.admin_opt_choose_location
+	};
+	return known[label]?.() ?? m.admin_opt_choose_from_list({ label });
+}
+
 /**
  * Refuses the write unless `id` is a row of this business. For foreign keys posted by a form:
  * without it, a crafted request could file a location under another business's branch.
@@ -180,5 +195,5 @@ export async function belongsToOrg(
 		.from(table)
 		.where(and(eq(table.id, Number(id)), eq(table.orgId, orgId)))
 		.limit(1);
-	if (!row) throw new WriteRefused(field, `Choose a ${label} from the list.`);
+	if (!row) throw new WriteRefused(field, chooseFromList(label));
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
 	import { LOCATION_KINDS } from '$lib/format';
 	import { add, edit } from './schema';
@@ -10,25 +11,25 @@
 	{data}
 	schemas={{ add, edit }}
 	config={{
-		entity: 'Location',
-		plural: 'Locations',
+		entity: m.admin_loc_entity(),
+		plural: m.admin_loc_plural(),
 		fields: [
 			{
 				name: 'name',
-				label: 'Name',
+				label: m.common_name(),
 				type: 'text',
-				placeholder: 'Main store, Shop floor, Fridge 1…'
+				placeholder: m.admin_loc_name_placeholder()
 			},
 			{
 				name: 'branchId',
-				label: 'Branch',
+				label: m.common_branch(),
 				type: 'reference',
 				options: 'branchList',
 				display: 'branch',
 				picker: 'select'
 			},
-			{ name: 'kind', label: 'Kind', type: 'select', choices: LOCATION_KINDS },
-			{ name: 'status', label: 'Status', type: 'boolean' }
+			{ name: 'kind', label: m.admin_loc_kind(), type: 'select', choices: LOCATION_KINDS },
+			{ name: 'status', label: m.common_status(), type: 'boolean' }
 		]
 	}}
 />

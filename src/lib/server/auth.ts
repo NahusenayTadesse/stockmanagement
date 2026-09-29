@@ -10,6 +10,7 @@ import { getRequestEvent } from '$app/server';
 import { db } from '$lib/server/db';
 import { sendMail } from '$lib/server/mail';
 import * as schema from '$lib/server/db/schema';
+import { m } from '$lib/paraglide/messages.js';
 
 export const auth = betterAuth({
 	baseURL: env.ORIGIN,
@@ -28,13 +29,10 @@ export const auth = betterAuth({
 		 */
 		sendResetPassword: async ({ user, url }) => {
 			await sendMail(user.email, {
-				subject: 'Reset your password',
-				body: [
-					`Hello ${user.name},`,
-					'Someone asked to reset the password for your stock management account. The link works for one hour and only once.'
-				],
-				action: { label: 'Choose a new password', url },
-				footnote: 'If this was not you, ignore this email — your password stays as it is.'
+				subject: m.admin_mail_reset_subject(),
+				body: [m.admin_mail_hello({ name: user.name }), m.admin_mail_reset_body()],
+				action: { label: m.admin_mail_reset_action(), url },
+				footnote: m.admin_mail_reset_footnote()
 			});
 		},
 		resetPasswordTokenExpiresIn: 60 * 60,
@@ -42,12 +40,9 @@ export const auth = betterAuth({
 		revokeSessionsOnPasswordReset: true,
 		onPasswordReset: async ({ user }) => {
 			await sendMail(user.email, {
-				subject: 'Your password was changed',
-				body: [
-					`Hello ${user.name},`,
-					'The password for your stock management account has just been reset, and every device signed in as you was signed out.'
-				],
-				footnote: 'If you did not do this, contact your business owner straight away.'
+				subject: m.admin_mail_changed_subject(),
+				body: [m.admin_mail_hello({ name: user.name }), m.admin_mail_changed_body()],
+				footnote: m.admin_mail_changed_footnote()
 			});
 		}
 	},
@@ -94,7 +89,7 @@ export const auth = betterAuth({
 						.limit(1);
 
 					if (!row || !row.isActive || !row.orgActive) {
-						throw new APIError('UNAUTHORIZED', { message: 'This account is not active.' });
+						throw new APIError('UNAUTHORIZED', { message: m.admin_account_inactive() });
 					}
 					return { data: session };
 				}

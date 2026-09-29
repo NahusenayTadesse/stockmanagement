@@ -1,7 +1,8 @@
+import { m } from '$lib/paraglide/messages.js';
 import { z } from 'zod/v4';
 import { ADJUSTMENT_REASONS, DOCUMENT_TYPES, LOT_STATUSES } from '$lib/constants';
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick a date');
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.stock_v_date() });
 
 export const documentHeader = z.object({
 	type: z.enum(DOCUMENT_TYPES).default('receipt'),
@@ -24,14 +25,21 @@ export const documentHeader = z.object({
 		.string()
 		.trim()
 		.toUpperCase()
-		.regex(/^([A-Z]{3})?$/, 'Three letters, e.g. USD')
+		.regex(/^([A-Z]{3})?$/, { error: () => m.stock_v_three_letters() })
 		.default(''),
-	exchangeRate: z.number().positive('Above zero').nullable().default(null)
+	exchangeRate: z
+		.number()
+		.positive({ error: () => m.stock_v_above_zero() })
+		.nullable()
+		.default(null)
 });
 
 export const lineAdd = z.object({
-	itemId: z.coerce.number().int().positive('Choose an item'),
-	quantity: z.coerce.number().refine((n) => n !== 0, 'Enter a quantity'),
+	itemId: z.coerce
+		.number()
+		.int()
+		.positive({ error: () => m.stock_v_item() }),
+	quantity: z.coerce.number().refine((n) => n !== 0, { error: () => m.stock_v_quantity() }),
 	/** 0 means the item's base unit. */
 	uomId: z.coerce.number().int().min(0).default(0),
 	unitCost: z.number().min(0).nullable().default(null),
@@ -44,7 +52,7 @@ export const lineAdd = z.object({
 	lotNumber: z.string().trim().max(60).default(''),
 	expiryDate: z
 		.string()
-		.regex(/^(\d{4}-\d{2}-\d{2})?$/, 'Pick a date')
+		.regex(/^(\d{4}-\d{2}-\d{2})?$/, { error: () => m.stock_v_date() })
 		.default(''),
 	serials: z.string().max(5000).default('')
 });

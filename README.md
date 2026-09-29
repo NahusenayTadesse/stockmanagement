@@ -295,6 +295,27 @@ The first request after a boot seeds the `permissions` table from the route rule
   a word. Nothing throws: every attempt, with the provider's answer and message units, is in the
   SMS log (and the last 20 on each customer's page). `SMS_DRY_RUN=true` logs without sending —
   the local `.env` has it on, because the demo customers' numbers look real; remove it to send.
+- **Languages: English and Amharic** (paraglide). The switch in the header (and on the sign-in
+  pages) sets a cookie and reloads; with no cookie, the browser's preferred language decides,
+  else English. URLs are the same in both languages. Messages live in
+  `messages/{en,am}/<area>.json` (common, kit, stock, sales, purchasing, admin, reports), keys
+  prefixed by area; `messages/GLOSSARY.md` fixes the Amharic for each term so the same thing is
+  called the same everywhere. `npm run i18n` compiles them into `src/lib/paraglide` (Vite does it
+  on its own in dev and build; `npm run check` runs it first). Rules:
+  - Never call a message at module top level (a `.ts` module, `columns.ts`, a zod schema,
+    `<script module>`): the server shares modules between requests, so the first viewer's
+    language would stick for everyone. Use getters (`get header() { return m.x(); }`), functions,
+    or zod's `{ error: () => m.x() }`. `labels()`/`choices()` in `$lib/format.ts` build label
+    lists that way, and `$lib/navigation.ts` titles are getters.
+  - Server messages (refusals, flash messages) are read in the request's language; tests and the
+    seed run outside a request and get English, which is why tests match English text.
+  - The admin-kit's own words (tables, dialogs, pickers) come from `messages/*/kit.json`, passed
+    to the kit from the root layout.
+  - Data is never translated. Items and categories show their Amharic name in the Amharic
+    interface when they have one. SMS bodies stay English: Ge'ez text costs about twice the
+    message units.
+  - Amharic needs an Ethiopic font: `layout.css` names Noto Sans Ethiopic, Nyala, Kefa and
+    Abyssinica SIL, which cover Android, Windows, macOS and most Linux.
 - **Mail** (`src/lib/server/mail.ts`): nodemailer over SMTP (`SMTP_*` in `.env`). It never
   throws; without SMTP settings nothing is sent and the app carries on. Password reset uses it:
   "Forgot your password?" → a one-hour, single-use link → `/reset-password`; every session of

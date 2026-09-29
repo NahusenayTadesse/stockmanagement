@@ -1,4 +1,6 @@
+import { m } from '$lib/paraglide/messages.js';
 import { error, fail } from '@sveltejs/kit';
+import { DOCUMENT_STATUS_LABELS } from '$lib/format';
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
 import { message, setError, superValidate } from 'sveltekit-superforms';
@@ -70,7 +72,7 @@ import type { Actions, PageServerLoad, RequestEvent } from './$types';
 const lines = childCrud({
 	table: stockDocumentLine,
 	ownerColumn: 'documentId',
-	label: 'Line',
+	label: () => m.common_rec_line(),
 	addSchema: lineAdd,
 	editSchema: lineEdit,
 	permission: 'stock.draft',
@@ -79,10 +81,7 @@ const lines = childCrud({
 		const doc = await orgDocument(orgId, Number(event.params.id));
 		// A return's lines are what the original moved; only their quantities change, on the sheet.
 		if (doc.type === 'sales_return' || doc.type === 'purchase_return') {
-			throw new WriteRefused(
-				'itemId',
-				'A return lists what the original moved. Change quantities on the return sheet.'
-			);
+			throw new WriteRefused('itemId', m.stock_err_return_lines());
 		}
 		// An edited line keeps the order line it delivers; the form does not carry it.
 		const withOrderLine = before?.purchaseOrderLineId
@@ -96,14 +95,14 @@ const lines = childCrud({
 const landedSchema = z.object({
 	kind: z.enum(LANDED_COST_KINDS),
 	description: z.string().trim().max(160).default(''),
-	amount: z.number().positive('Enter the amount in birr'),
+	amount: z.number().positive({ error: () => m.stock_err_amount_birr() }),
 	method: z.enum(LANDED_COST_METHODS).default('value'),
 	supplierId: z.coerce.number().int().min(0).default(0)
 });
 const costs = childCrud({
 	table: landedCost,
 	ownerColumn: 'documentId',
-	label: 'Landed cost',
+	label: () => m.common_rec_landed_cost(),
 	addSchema: landedSchema,
 	editSchema: landedSchema.extend({ id: z.coerce.number() }),
 	permission: 'stock.draft',
@@ -111,7 +110,7 @@ const costs = childCrud({
 		const orgId = orgIdOf(event.locals);
 		const doc = await orgDocument(orgId, Number(event.params.id));
 		if (doc.type !== 'receipt') {
-			throw new WriteRefused('kind', 'Landed costs belong on goods receipts.');
+			throw new WriteRefused('kind', m.stock_err_landed_receipts_only());
 		}
 		if (values.supplierId)
 			await belongsToOrg(supplier, values.supplierId, orgId, 'supplierId', 'supplier');
@@ -132,7 +131,10 @@ async function draftOwner(event: RequestEvent) {
 	const doc = await orgDocument(orgIdOf(event.locals), Number(event.params.id));
 	await inViewersBranches(event.locals, doc);
 	if (doc.status !== 'draft')
-		error(409, `This document is ${doc.status} and can no longer change.`);
+		error(
+			409,
+			m.stock_err_doc_frozen({ status: DOCUMENT_STATUS_LABELS[doc.status] ?? doc.status })
+		);
 	return doc.id;
 }
 
@@ -163,7 +165,7 @@ async function fiscalPanel(orgId: number, doc: typeof stockDocument.$inferSelect
 	if (!device && !org?.mode && !doc.fiscalReceiptNumber && !doc.einvoiceIrn) return null;
 	return {
 		device: device && {
-			name: device.name || `Device #${device.id}`,
+			name: device.name || m.stock_device_number({ id: device.id }),
 			kind: device.kind ?? 'manual',
 			machineCode: device.machineCode
 		},
@@ -264,7 +266,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		item: itemName.get(l.itemId) ?? '—',
 		unit: unitName.get(l.uomId) ?? '—',
 		lotId: l.lotId ?? 0,
-		lot: l.lotId ? (lotName.get(l.lotId) ?? '—') : 'First expiry first out',
+		lot: l.lotId ? (lotName.get(l.lotId) ?? '—') : m.stock_fefo(),
 		lotNumber: l.lotNumber ?? '',
 		expiryDate: l.expiryDate ?? '',
 		serials: l.serials ?? ''
@@ -432,8 +434,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		approval,
 		lines: { ...lineSection, rows },
 		items,
-		units: [{ value: 0, name: 'Base unit' }, ...units],
-		lots: [{ value: 0, name: 'First expiry first out' }, ...lots],
+		units: [{ value: 0, name: m.stock_base_unit() }, ...units],
+		lots: [{ value: 0, name: m.stock_fefo() }, ...lots],
 		locations,
 		destinations:
 			doc.type === 'transfer' && doc.status === 'draft' ? await locationOptions(orgId) : null,
@@ -462,12 +464,12 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(documentHeader));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 		const doc = await orgDocument(orgId, Number(event.params.id));
 		await inViewersBranches(event.locals, doc);
 		if (doc.status !== 'draft') {
-			return message(form, { type: 'error', text: 'Only a draft can change.' }, { status: 409 });
+			return message(form, { type: 'error', text: m.stock_only_draft_changes() }, { status: 409 });
 		}
 		// A return keeps who it is from or to: that is the original's.
 		const keep =
@@ -505,7 +507,7 @@ export const actions: Actions = {
 			}
 			throw err;
 		}
-		return message(form, { type: 'success', text: 'Saved' });
+		return message(form, { type: 'success', text: m.common_saved() });
 	},
 
 	/** Posts the draft: the moment stock changes. All lines or none. */
@@ -535,8 +537,8 @@ export const actions: Actions = {
 					type: failed || warnings.length ? 'error' : 'success',
 					message: [
 						status === 'in_transit'
-							? `Dispatched as ${number}: in transit until the other branch receives it`
-							: `Posted as ${number}`,
+							? m.stock_dispatched_as({ number })
+							: m.stock_posted_as({ number }),
 						...warnings,
 						...notes
 					].join(' · ')
@@ -556,7 +558,7 @@ export const actions: Actions = {
 				setFlash(
 					{
 						type: 'success',
-						message: `Sent for approval: ${err.reason}. It posts when someone approves it.`
+						message: m.stock_sent_for_approval({ reason: err.reason })
 					},
 					event.cookies
 				);
@@ -567,7 +569,7 @@ export const actions: Actions = {
 				return fail(409, { stockError: err.message, lineId: err.lineId ?? null });
 			}
 			console.error('posting failed', err);
-			setFlash({ type: 'error', message: 'Posting failed. Nothing was changed.' }, event.cookies);
+			setFlash({ type: 'error', message: m.stock_posting_failed() }, event.cookies);
 			return fail(500);
 		}
 	},
@@ -597,7 +599,7 @@ export const actions: Actions = {
 			`/dashboard/stock/documents/${id}`,
 			{
 				type: 'success',
-				message: 'Return drafted with everything returnable — lower it to what is coming back'
+				message: m.stock_return_drafted()
 			},
 			event.cookies
 		);
@@ -642,7 +644,7 @@ export const actions: Actions = {
 				}
 			}
 		});
-		setFlash({ type: 'success', message: 'Return quantities saved' }, event.cookies);
+		setFlash({ type: 'success', message: m.stock_return_saved() }, event.cookies);
 		return { saved: true };
 	},
 
@@ -655,8 +657,8 @@ export const actions: Actions = {
 				? {
 						type: 'success',
 						message: r.fsNumber
-							? `Fiscal receipt FS No. ${r.fsNumber}`
-							: 'Ring it up on the device, then enter its FS No.'
+							? m.stock_fiscal_printed_fs({ fs: r.fsNumber })
+							: m.stock_fiscal_ring_it_up()
 					}
 				: { type: 'error', message: r.error },
 			event.cookies
@@ -671,7 +673,7 @@ export const actions: Actions = {
 		const fsNumber = String(data.get('fsNumber') ?? '').trim();
 		const machineCode = String(data.get('machineCode') ?? '').trim();
 		if (!/^[\w-]{1,30}$/.test(fsNumber)) {
-			setFlash({ type: 'error', message: 'Enter the FS No. as printed.' }, event.cookies);
+			setFlash({ type: 'error', message: m.stock_fiscal_enter_fs() }, event.cookies);
 			return fail(400);
 		}
 		const doc = await orgDocument(orgIdOf(event.locals), Number(event.params.id));
@@ -680,7 +682,10 @@ export const actions: Actions = {
 			fsNumber,
 			machineCode: machineCode.slice(0, 30) || doc.fiscalMachineCode
 		});
-		setFlash({ type: 'success', message: `FS No. ${fsNumber} recorded` }, event.cookies);
+		setFlash(
+			{ type: 'success', message: m.stock_fiscal_recorded({ fs: fsNumber }) },
+			event.cookies
+		);
 		return { recorded: true };
 	},
 
@@ -690,7 +695,7 @@ export const actions: Actions = {
 		const r = await submitEinvoice(orgIdOf(event.locals), Number(event.params.id));
 		setFlash(
 			r.ok
-				? { type: 'success', message: `E-invoice accepted: IRN ${r.irn}` }
+				? { type: 'success', message: m.stock_einvoice_accepted_irn({ irn: r.irn }) }
 				: { type: 'error', message: r.error },
 			event.cookies
 		);
@@ -738,9 +743,11 @@ export const actions: Actions = {
 				lost.length
 					? {
 							type: 'error',
-							message: `Received. Lost in transit: ${lost.map((l) => `${l.quantity} ${l.item}`).join(', ')} — written off.`
+							message: m.stock_received_lost({
+								lost: lost.map((l) => `${l.quantity} ${l.item}`).join(', ')
+							})
 						}
-					: { type: 'success', message: 'Received in full' },
+					: { type: 'success', message: m.stock_received_in_full() },
 				event.cookies
 			);
 			return { received: true };
@@ -771,7 +778,7 @@ export const actions: Actions = {
 			}
 			throw err;
 		}
-		setFlash({ type: 'success', message: 'Approval request withdrawn' }, event.cookies);
+		setFlash({ type: 'success', message: m.stock_approval_withdrawn() }, event.cookies);
 		return { withdrawn: true };
 	},
 
@@ -781,7 +788,7 @@ export const actions: Actions = {
 		const doc = await orgDocument(orgIdOf(event.locals), Number(event.params.id));
 		await inViewersBranches(event.locals, doc);
 		if (doc.status !== 'draft') {
-			setFlash({ type: 'error', message: 'Only a draft can be cancelled.' }, event.cookies);
+			setFlash({ type: 'error', message: m.stock_only_draft_cancel() }, event.cookies);
 			return fail(409);
 		}
 		await db.transaction(async (tx) => {
@@ -796,7 +803,7 @@ export const actions: Actions = {
 		if (doc.type === 'adjustment') {
 			await closePendingFor(doc.orgId, { kind: 'adjustment', documentId: doc.id });
 		}
-		setFlash({ type: 'success', message: 'Draft cancelled' }, event.cookies);
+		setFlash({ type: 'success', message: m.stock_draft_cancelled() }, event.cookies);
 		return { cancelled: true };
 	}
 };

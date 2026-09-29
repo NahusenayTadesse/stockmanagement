@@ -27,6 +27,7 @@ import { afterSale } from '$lib/server/afterSale';
 import { StockError } from '$lib/server/stock/post';
 import { checkoutPayload } from '$lib/schemas/pos';
 import { smsSettings } from '$lib/server/sms';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -236,10 +237,10 @@ export const actions: Actions = {
 				JSON.parse(String((await event.request.formData()).get('payload')))
 			);
 		} catch {
-			return fail(400, { error: 'The sale could not be read. Try again.' });
+			return fail(400, { error: m.sales_err_sale_unreadable() });
 		}
 		const shift = await currentShift(orgId, userId);
-		if (!shift) return fail(409, { error: 'Open a shift before selling.' });
+		if (!shift) return fail(409, { error: m.sales_err_open_shift_first() });
 		const [org] = await db
 			.select({ maxDiscountPercent: organization.maxDiscountPercent })
 			.from(organization)
@@ -282,7 +283,7 @@ export const actions: Actions = {
 		try {
 			cart = JSON.parse(String(data.get('cart')));
 		} catch {
-			return fail(400, { error: 'The cart could not be read.' });
+			return fail(400, { error: m.sales_err_cart_unreadable() });
 		}
 		const shift = await currentShift(orgId, event.locals.user!.id);
 		await holdCart(db, {
@@ -301,7 +302,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'pos.use');
 		const id = Number((await event.request.formData()).get('id'));
 		const row = await db.transaction((tx) => takeCart(tx, orgIdOf(event.locals), id));
-		if (!row) return fail(404, { error: 'That cart is gone — someone else took it.' });
+		if (!row) return fail(404, { error: m.sales_err_cart_gone() });
 		return { taken: row.cart };
 	}
 };

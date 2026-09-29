@@ -43,6 +43,7 @@ import { creditSummary, customerStatement } from '$lib/server/credit';
 import { expiryWatch } from '$lib/server/expiry';
 import { quoteLines } from '$lib/server/quotes';
 import { formatEthPhone } from '$lib/phone';
+import { m } from '$lib/paraglide/messages.js';
 
 export { formatEthPhone };
 
@@ -84,7 +85,7 @@ export async function deliver(
 ): Promise<{ ok: boolean; error?: string; units?: number }> {
 	const token = options.token ?? env.SMS_KEY;
 	const fetcher = options.fetcher ?? fetch;
-	if (!token) return { ok: false, error: 'SMS is not set up on this server (SMS_KEY).' };
+	if (!token) return { ok: false, error: m.sales_sms_err_no_key() };
 	try {
 		const body = new URLSearchParams({ token, phone, msg: text });
 		const res = await fetcher(SMS_API_URL, {
@@ -154,8 +155,7 @@ export async function sendSms(
 ): Promise<SmsResult> {
 	const conn = options.conn ?? db;
 	const settings = await smsSettings(orgId, conn);
-	if (!settings?.enabled)
-		return { ok: false, status: 'off', error: 'SMS is turned off for this business.' };
+	if (!settings?.enabled) return { ok: false, status: 'off', error: m.sales_sms_err_off() };
 
 	const body = capSms(`${settings.signature || settings.name}: ${input.text.trim()}`);
 	const number = formatEthPhone(input.to);
@@ -219,14 +219,6 @@ export async function alertStaff(
 		if (r.ok) sent++;
 	}
 	return sent;
-}
-
-/** A line for the person who did it: "texted to 2519…", or why not. Null when SMS is off. */
-export function resultNote(r: SmsResult, to: string) {
-	if (r.status === 'off') return null;
-	if (r.status === 'sent') return `SMS sent to ${to}`;
-	if (r.status === 'dry_run') return `SMS logged for ${to} (test mode, not sent)`;
-	return `SMS to ${to} not sent: ${r.error}`;
 }
 
 // ── Automatic messages ────────────────────────────────────────────────────────────────────
@@ -475,10 +467,10 @@ export async function remindCustomer(
 		.select({ name: customer.name, phone: customer.phone })
 		.from(customer)
 		.where(and(eq(customer.id, customerId), eq(customer.orgId, orgId)));
-	if (!c) return { ok: false, status: 'skipped', error: 'No such customer.' };
+	if (!c) return { ok: false, status: 'skipped', error: m.sales_sms_err_no_customer() };
 	const position = await customerStatement(orgId, customerId);
 	if (position.balance <= 0.004) {
-		return { ok: false, status: 'skipped', error: `${c.name} owes nothing.` };
+		return { ok: false, status: 'skipped', error: m.sales_sms_err_owes_nothing({ name: c.name }) };
 	}
 	const text = [
 		`Dear ${c.name}, your account stands at ${birr(position.balance)}`,
@@ -527,7 +519,7 @@ export async function smsQuote(
 		.from(quote)
 		.leftJoin(customer, eq(customer.id, quote.customerId))
 		.where(and(eq(quote.id, quoteId), eq(quote.orgId, orgId)));
-	if (!q) return { ok: false, status: 'skipped', error: 'No such proforma.' };
+	if (!q) return { ok: false, status: 'skipped', error: m.sales_sms_err_no_quote() };
 	const { lines, totals } = await quoteLines(orgId, quoteId);
 	const listed = lines
 		.slice(0, 3)
@@ -563,8 +555,8 @@ export async function smsOrder(
 		.innerJoin(supplier, eq(supplier.id, purchaseOrder.supplierId))
 		.innerJoin(location, eq(location.id, purchaseOrder.locationId))
 		.where(and(eq(purchaseOrder.id, orderId), eq(purchaseOrder.orgId, orgId)));
-	if (!o) return { ok: false, status: 'skipped', error: 'No such order.' };
-	if (!o.number) return { ok: false, status: 'skipped', error: 'Mark it as ordered first.' };
+	if (!o) return { ok: false, status: 'skipped', error: m.sales_sms_err_no_order() };
+	if (!o.number) return { ok: false, status: 'skipped', error: m.sales_sms_err_order_first() };
 	const lines = await db
 		.select({ name: item.name, quantity: purchaseOrderLine.quantity, unit: uom.symbol })
 		.from(purchaseOrderLine)

@@ -21,6 +21,7 @@ import {
 import { issueNumber, StockError, type Tx } from '$lib/server/stock/post';
 import { lineAmounts, saleTotRate, saleVatRate, taxSettings } from '$lib/server/tax';
 import { qualified } from '$lib/server/db/sql';
+import { m } from '$lib/paraglide/messages.js';
 
 type Conn = typeof db | Tx;
 const cents = (n: number) => Math.round(n * 100) / 100;
@@ -30,7 +31,7 @@ export async function orgQuote(orgId: number, id: number, reader: Conn = db) {
 		.select()
 		.from(quote)
 		.where(and(eq(quote.id, id), eq(quote.orgId, orgId), isNull(quote.deletedAt)));
-	if (!row) error(404, 'Proforma not found');
+	if (!row) error(404, m.sales_quote_not_found());
 	return row;
 }
 
@@ -43,6 +44,7 @@ export async function quoteLines(orgId: number, quoteId: number, reader: Conn = 
 				id: quoteLine.id,
 				itemId: quoteLine.itemId,
 				item: item.name,
+				itemAm: item.nameAm,
 				sku: item.sku,
 				uomId: quoteLine.uomId,
 				unit: uom.symbol,
@@ -126,18 +128,18 @@ export async function convertQuote(
 	input: { orgId: number; quoteId: number; date: string; userId?: string; locationId?: number }
 ): Promise<number> {
 	const q = await orgQuote(input.orgId, input.quoteId, tx);
-	if (q.status === 'converted') throw new StockError('This proforma has already become a sale.');
-	if (q.status === 'cancelled') throw new StockError('This proforma was cancelled.');
+	if (q.status === 'converted') throw new StockError(m.sales_quote_already_sale());
+	if (q.status === 'cancelled') throw new StockError(m.sales_quote_was_cancelled());
 	const { lines } = await quoteLines(input.orgId, q.id, tx);
-	if (!lines.length) throw new StockError('Add at least one line first.');
+	if (!lines.length) throw new StockError(m.sales_add_line_first());
 
 	const locationId = input.locationId ?? q.locationId;
-	if (!locationId) throw new StockError('Choose the location the goods will come from.');
+	if (!locationId) throw new StockError(m.sales_choose_source_location());
 	const [loc] = await tx
 		.select({ id: location.id, branchId: location.branchId })
 		.from(location)
 		.where(and(eq(location.id, locationId), eq(location.orgId, input.orgId)));
-	if (!loc) throw new StockError('Choose a location from the list.');
+	if (!loc) throw new StockError(m.sales_err_choose_location());
 	const number = q.number ?? (await numberQuote(tx, input.orgId, q.id));
 
 	const [doc] = await tx

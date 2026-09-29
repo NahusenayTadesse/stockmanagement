@@ -10,6 +10,7 @@ import { organization, user } from '$lib/server/db/schema';
 import { createOrganization } from '$lib/server/seedPermissions';
 import { registerSchema } from '$lib/schemas/auth';
 import type { Actions, PageServerLoad } from './$types';
+import { m } from '$lib/paraglide/messages.js';
 
 export const load: PageServerLoad = async (event) => {
 	if (event.locals.user) redirect(302, '/dashboard');
@@ -33,10 +34,10 @@ export const actions: Actions = {
 
 		const [taken] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
 		if (taken) {
-			setError(form, 'email', 'An account with this email already exists.');
+			setError(form, 'email', m.admin_register_email_taken());
 			return message(
 				form,
-				{ type: 'error', text: 'An account with this email already exists.' },
+				{ type: 'error', text: m.admin_register_email_taken() },
 				{ status: 409 }
 			);
 		}
@@ -62,16 +63,12 @@ export const actions: Actions = {
 		} catch (err) {
 			console.error('registration failed', err);
 			await db.delete(organization).where(eq(organization.id, created.orgId));
-			return message(
-				form,
-				{ type: 'error', text: 'The account could not be created. Please try again.' },
-				{ status: 500 }
-			);
+			return message(form, { type: 'error', text: m.admin_register_failed() }, { status: 500 });
 		}
 
 		redirect(
 			'/dashboard',
-			{ type: 'success', message: `Welcome. ${business} is ready.` },
+			{ type: 'success', message: m.admin_register_welcome({ business }) },
 			event.cookies
 		);
 	}

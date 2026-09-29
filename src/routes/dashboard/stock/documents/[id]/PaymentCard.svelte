@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -19,10 +20,8 @@
 
 <Card.Root>
 	<Card.Header>
-		<Card.Title>Payment</Card.Title>
-		<Card.Description
-			>The money that went with this document, with its screenshots and receipts.</Card.Description
-		>
+		<Card.Title>{m.stock_payment()}</Card.Title>
+		<Card.Description>{m.stock_payment_hint()}</Card.Description>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
 		{#if p}
@@ -42,8 +41,9 @@
 						{#if p.party}· {p.party}{/if}
 					</p>
 					<p class="text-sm">
-						{#if p.reference}Ref. <span class="font-mono">{p.reference}</span>{/if}
-						{#if p.receiptNumber}· Receipt {p.receiptNumber}{/if}
+						{#if p.reference}{m.stock_payment_ref()}
+							<span class="font-mono">{p.reference}</span>{/if}
+						{#if p.receiptNumber}· {m.stock_payment_receipt({ number: p.receiptNumber })}{/if}
 					</p>
 					<div>
 						<Badge
@@ -53,13 +53,17 @@
 									? 'destructive'
 									: 'secondary'}
 						>
-							{p.status === 'recorded' ? 'not yet verified' : p.status}
+							{p.status === 'recorded'
+								? m.stock_payment_not_verified()
+								: p.status === 'verified'
+									? m.stock_payment_verified()
+									: m.stock_payment_void()}
 						</Badge>
 					</div>
 				</div>
 				{#if canManage}
 					<form method="POST" action="?/unlinkTransaction" use:enhance>
-						<Button type="submit" variant="ghost" size="sm"><Unlink /> Unlink</Button>
+						<Button type="submit" variant="ghost" size="sm"><Unlink /> {m.stock_unlink()}</Button>
 					</form>
 				{/if}
 			</div>
@@ -93,7 +97,7 @@
 							{#if file.mimeType?.startsWith('image/')}
 								<img
 									src={fileUrl(file.fileName)}
-									alt="Payment attachment"
+									alt={m.stock_payment_attachment()}
 									class="h-20 w-20 rounded object-cover"
 								/>
 							{:else}
@@ -106,7 +110,7 @@
 				</div>
 			{/if}
 		{:else}
-			<p class="text-muted-foreground">No payment linked.</p>
+			<p class="text-muted-foreground">{m.stock_no_payment()}</p>
 			{#if pay.canPay}
 				<PaymentForms
 					paymentForm={pay.paymentForm}

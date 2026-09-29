@@ -16,6 +16,7 @@
 	import TransactionFields from '$lib/components/TransactionFields.svelte';
 	import { PURPOSE_CHOICES, transactionAdd } from '$lib/schemas/transactions';
 	import { columns } from './columns';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 	let open = $state(false);
@@ -44,7 +45,7 @@
 	const tiles = $derived<Stat[]>([
 		{
 			key: 'in',
-			label: 'Money in',
+			label: m.sales_money_in(),
 			value: data.totals.moneyIn,
 			format: 'money',
 			group: 'money',
@@ -52,7 +53,7 @@
 		},
 		{
 			key: 'out',
-			label: 'Money out',
+			label: m.sales_money_out(),
 			value: data.totals.moneyOut,
 			format: 'money',
 			group: 'money',
@@ -60,7 +61,7 @@
 		},
 		{
 			key: 'net',
-			label: 'Net',
+			label: m.sales_net(),
 			value: data.totals.net,
 			format: 'money',
 			group: 'money',
@@ -68,11 +69,11 @@
 		},
 		{
 			key: 'unverified',
-			label: 'Not yet verified',
+			label: m.sales_not_verified(),
 			value: data.totals.unverified,
 			format: 'count',
 			group: 'money',
-			hint: `of ${data.totals.count} transactions`,
+			hint: m.sales_of_transactions({ count: data.totals.count }),
 			tone: data.totals.unverified ? 'warning' : 'neutral'
 		}
 	]);
@@ -81,19 +82,19 @@
 </script>
 
 <svelte:head>
-	<title>Transactions</title>
+	<title>{m.sales_transactions_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Transactions</h1>
+			<h1 class="text-2xl font-semibold">{m.sales_transactions_title()}</h1>
 			<p class="text-muted-foreground">
-				Every birr in and out: {ethiopian(f.from)} – {ethiopian(f.to)}.
+				{m.sales_every_birr({ from: ethiopian(f.from), to: ethiopian(f.to) })}
 			</p>
 		</div>
 		{#if data.canManage}
-			<DialogComp bind:open title="Record a transaction" variant="default" IconComp={Plus}>
+			<DialogComp bind:open title={m.sales_record_transaction()} variant="default" IconComp={Plus}>
 				<form
 					method="POST"
 					action="?/add"
@@ -113,7 +114,7 @@
 						withFile
 					/>
 					<Button type="submit" form="add">
-						{#if $delayed}<LoadingBtn name="Saving" />{:else}Record{/if}
+						{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.sales_record()}{/if}
 					</Button>
 				</form>
 			</DialogComp>
@@ -133,62 +134,64 @@
 			</div>
 			<form method="GET" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 				<div class="flex flex-col gap-1">
-					<Label for="from">From</Label>
+					<Label for="from">{m.sales_from()}</Label>
 					<Input id="from" name="from" type="date" value={f.from} />
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="to">To</Label>
+					<Label for="to">{m.sales_to_date()}</Label>
 					<Input id="to" name="to" type="date" value={f.to} />
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="direction">Money</Label>
+					<Label for="direction">{m.sales_money()}</Label>
 					<select id="direction" name="direction" class={select} value={f.direction}>
-						<option value="">In and out</option>
-						<option value="in">In</option>
-						<option value="out">Out</option>
+						<option value="">{m.sales_in_and_out()}</option>
+						<option value="in">{m.sales_in()}</option>
+						<option value="out">{m.sales_out()}</option>
 					</select>
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="method">Method</Label>
+					<Label for="method">{m.sales_method()}</Label>
 					<select id="method" name="method" class={select} value={String(f.methodId)}>
-						<option value="0">Any method</option>
-						{#each data.methods.slice(1) as m (m.value)}<option value={String(m.value)}
-								>{m.name}</option
+						<option value="0">{m.sales_any_method()}</option>
+						{#each data.methods.slice(1) as method (method.value)}<option
+								value={String(method.value)}>{method.name}</option
 							>{/each}
 					</select>
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="purpose">For</Label>
+					<Label for="purpose">{m.sales_for()}</Label>
 					<select id="purpose" name="purpose" class={select} value={f.purpose}>
-						<option value="">Anything</option>
+						<option value="">{m.sales_anything()}</option>
 						{#each PURPOSE_CHOICES as p (p.value)}<option value={p.value}>{p.name}</option>{/each}
 					</select>
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="status">Status</Label>
+					<Label for="status">{m.common_status()}</Label>
 					<select id="status" name="status" class={select} value={f.status}>
-						<option value="">Recorded and verified</option>
-						<option value="recorded">Not yet verified</option>
-						<option value="verified">Verified</option>
-						<option value="void">Voided</option>
+						<option value="">{m.sales_recorded_and_verified()}</option>
+						<option value="recorded">{m.sales_not_verified()}</option>
+						<option value="verified">{m.sales_verified()}</option>
+						<option value="void">{m.sales_voided()}</option>
 					</select>
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="branch">Branch</Label>
+					<Label for="branch">{m.common_branch()}</Label>
 					<select id="branch" name="branch" class={select} value={String(f.branchId)}>
-						<option value="0">All branches</option>
+						<option value="0">{m.sales_all_branches()}</option>
 						{#each data.branches.slice(1) as b (b.value)}<option value={String(b.value)}
 								>{b.name}</option
 							>{/each}
 					</select>
 				</div>
 				<div class="flex flex-col gap-1">
-					<Label for="q">Search</Label>
-					<Input id="q" name="q" value={f.q} placeholder="Name, reference, receipt no." />
+					<Label for="q">{m.common_search()}</Label>
+					<Input id="q" name="q" value={f.q} placeholder={m.sales_search_placeholder()} />
 				</div>
 				<div class="flex gap-2 sm:col-span-2 lg:col-span-4">
-					<Button type="submit">Apply</Button>
-					<Button href={resolve('/dashboard/transactions')} variant="ghost">Reset</Button>
+					<Button type="submit">{m.sales_apply()}</Button>
+					<Button href={resolve('/dashboard/transactions')} variant="ghost"
+						>{m.sales_reset()}</Button
+					>
 				</div>
 			</form>
 		</Card.Content>
@@ -201,28 +204,26 @@
 	{#if data.byMethod.length}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>By payment method</Card.Title>
-				<Card.Description
-					>What should have gone through each till, wallet and account.</Card.Description
-				>
+				<Card.Title>{m.sales_by_payment_method()}</Card.Title>
+				<Card.Description>{m.sales_by_method_intro()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="border-b text-left text-muted-foreground">
-							<th class="py-1">Method</th>
-							<th class="py-1 text-right">In</th>
-							<th class="py-1 text-right">Out</th>
-							<th class="py-1 text-right">Net</th>
+							<th class="py-1">{m.sales_method()}</th>
+							<th class="py-1 text-right">{m.sales_in()}</th>
+							<th class="py-1 text-right">{m.sales_out()}</th>
+							<th class="py-1 text-right">{m.sales_net()}</th>
 						</tr>
 					</thead>
 					<tbody>
-						{#each data.byMethod as m (m.method)}
+						{#each data.byMethod as row (row.method)}
 							<tr class="border-b last:border-0">
-								<td class="py-1">{m.method}</td>
-								<td class="py-1 text-right">{formatETB(m.moneyIn)}</td>
-								<td class="py-1 text-right">{formatETB(m.moneyOut)}</td>
-								<td class="py-1 text-right font-medium">{formatETB(m.moneyIn - m.moneyOut)}</td>
+								<td class="py-1">{row.method}</td>
+								<td class="py-1 text-right">{formatETB(row.moneyIn)}</td>
+								<td class="py-1 text-right">{formatETB(row.moneyOut)}</td>
+								<td class="py-1 text-right font-medium">{formatETB(row.moneyIn - row.moneyOut)}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -231,5 +232,9 @@
 		</Card.Root>
 	{/if}
 
-	<DataTable data={data.rows} {columns} fileName="Transactions {f.from} to {f.to}" />
+	<DataTable
+		data={data.rows}
+		{columns}
+		fileName={m.sales_tx_file_range({ from: f.from, to: f.to })}
+	/>
 </div>

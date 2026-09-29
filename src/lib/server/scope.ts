@@ -12,6 +12,7 @@ import type { MySqlColumn } from 'drizzle-orm/mysql-core';
 import { hasPermission } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
 import { location, userBranch } from '$lib/server/db/schema';
+import { m } from '$lib/paraglide/messages.js';
 
 /** Null: every branch. Otherwise the branch ids this user works in. */
 export type Scope = number[] | null;
@@ -52,7 +53,7 @@ export async function requireBranch(
 	...branchIds: (number | null | undefined)[]
 ) {
 	const scope = await branchScope(locals);
-	if (!branchIds.some((b) => inScope(scope, b))) error(404, 'Not found');
+	if (!branchIds.some((b) => inScope(scope, b))) error(404, m.admin_scope_not_found());
 }
 
 /** The branch of each location, for checks on documents that name locations. */

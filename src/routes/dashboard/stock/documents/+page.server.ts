@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { alias } from 'drizzle-orm/mysql-core';
 import { desc, eq, sql, and, isNull } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
@@ -102,7 +103,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(documentHeader));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 
 		let id: number;
@@ -126,7 +127,7 @@ export const actions: Actions = {
 
 		redirect(
 			`/dashboard/stock/documents/${id}`,
-			{ type: 'success', message: 'Draft created — add the lines' },
+			{ type: 'success', message: m.stock_draft_created() },
 			event.cookies
 		);
 	}

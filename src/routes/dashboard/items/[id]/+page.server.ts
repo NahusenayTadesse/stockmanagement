@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { eq } from 'drizzle-orm';
 import { childActions, childCrud } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission } from '@nahu/admin-kit/server/permissions';
@@ -15,7 +16,7 @@ import type { PageServerLoad, RequestEvent } from './$types';
 const units = childCrud({
 	table: itemUnit,
 	ownerColumn: 'itemId',
-	label: 'Unit',
+	label: () => m.common_rec_unit(),
 	addSchema: unitAdd,
 	editSchema: unitEdit,
 	permission: 'items.manage',
@@ -27,7 +28,7 @@ const units = childCrud({
 const barcodes = childCrud({
 	table: barcode,
 	ownerColumn: 'itemId',
-	label: 'Barcode',
+	label: () => m.common_rec_barcode(),
 	addSchema: barcodeAdd,
 	editSchema: barcodeEdit,
 	permission: 'items.manage',
@@ -61,7 +62,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		rows.map((r) => ({
 			...r,
 			uomId: r.uomId ?? 0,
-			unit: r.uomId ? unitName.get(r.uomId) : 'Base unit'
+			unit: r.uomId ? unitName.get(r.uomId) : m.stock_base_unit()
 		}));
 
 	return {

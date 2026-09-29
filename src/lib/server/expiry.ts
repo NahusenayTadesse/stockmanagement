@@ -3,6 +3,7 @@
  * it — move it into quarantine so nobody sells it, or write it off. Both are drafted as ordinary
  * stock documents for someone with posting rights to check and post.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { addLocalDays } from '@nahu/admin-kit/time';
 import { formatETB } from '@nahu/admin-kit/global';
@@ -117,7 +118,7 @@ export async function draftFollowUp(
 		userId?: string;
 	}
 ): Promise<number[]> {
-	if (!input.picks.length) throw new StockError('Tick at least one lot.');
+	if (!input.picks.length) throw new StockError(m.stock_err_tick_lot());
 
 	const balances = await tx
 		.select({
@@ -148,13 +149,11 @@ export async function draftFollowUp(
 	const chosen = balances.filter((b) =>
 		input.picks.some((p) => p.lotId === b.lotId && p.locationId === b.locationId)
 	);
-	if (!chosen.length) throw new StockError('None of those lots has stock left there any more.');
+	if (!chosen.length) throw new StockError(m.stock_err_no_stock_left());
 
 	const serial = chosen.find((b) => b.trackSerials);
 	if (serial) {
-		throw new StockError(
-			`${serial.item} is tracked by serial number; draft its document by hand so the right units are named.`
-		);
+		throw new StockError(m.stock_err_expiry_serial({ item: serial.item }));
 	}
 
 	const quarantines =
@@ -185,9 +184,7 @@ export async function draftFollowUp(
 			if (locationKind === 'quarantine') continue; // already where it should be
 			const target = quarantines.find((q) => q.branchId === branchId) ?? quarantines[0] ?? null;
 			if (!target) {
-				throw new StockError(
-					'There is no quarantine location. Add one (kind: Quarantine) under Admin panel → Locations first.'
-				);
+				throw new StockError(m.stock_err_no_quarantine());
 			}
 			toLocationId = target.id;
 		}
@@ -202,10 +199,7 @@ export async function draftFollowUp(
 				fromLocationId: locationId,
 				toLocationId,
 				reason: input.action === 'writeoff' ? 'expiry' : null,
-				note:
-					input.action === 'quarantine'
-						? 'Expired or expiring stock moved out of sale.'
-						: 'Expired stock written off.',
+				note: input.action === 'quarantine' ? m.stock_note_moved_out() : m.stock_note_written_off(),
 				createdBy: input.userId
 			})
 			.$returningId();
@@ -223,7 +217,7 @@ export async function draftFollowUp(
 		ids.push(doc.id);
 	}
 
-	if (!ids.length) throw new StockError('Those lots are already in quarantine.');
+	if (!ids.length) throw new StockError(m.stock_err_already_quarantine());
 	return ids;
 }
 
@@ -240,34 +234,47 @@ export function digestContent(
 
 	return {
 		subject: expired.length
-			? `${expired.length} expired lot${expired.length === 1 ? '' : 's'} still in stock at ${orgName}`
-			: `Expiring within 30 days at ${orgName}`,
-		heading: 'Expiry follow-up',
+			? expired.length === 1
+				? m.stock_digest_subject_expired_one({ org: orgName })
+				: m.stock_digest_subject_expired_many({ count: expired.length, org: orgName })
+			: m.stock_digest_subject_soon({ org: orgName }),
+		heading: m.stock_digest_heading(),
 		body: [
 			expired.length
-				? `${expired.length} lot${expired.length === 1 ? ' has' : 's have'} expired and ${expired.length === 1 ? 'is' : 'are'} still on the shelves (${value(expired)} at cost). Move ${expired.length === 1 ? 'it' : 'them'} to quarantine or write ${expired.length === 1 ? 'it' : 'them'} off.`
-				: 'Nothing expired is outside quarantine.',
+				? expired.length === 1
+					? m.stock_digest_expired_one({ value: value(expired) })
+					: m.stock_digest_expired_many({ count: expired.length, value: value(expired) })
+				: m.stock_digest_nothing_expired(),
 			soon.length
-				? `${soon.length} more expire${soon.length === 1 ? 's' : ''} within 30 days (${value(soon)}).`
+				? soon.length === 1
+					? m.stock_digest_soon_one({ value: value(soon) })
+					: m.stock_digest_soon_many({ count: soon.length, value: value(soon) })
 				: ''
 		],
 		table: urgent.length
 			? {
-					head: ['Item', 'Lot', 'Expiry', 'Where', 'Quantity'],
+					head: [
+						m.common_item(),
+						m.stock_col_lot(),
+						m.stock_col_expiry(),
+						m.stock_digest_where(),
+						m.common_quantity()
+					],
 					rows: urgent
 						.slice(0, 40)
 						.map((r) => [
 							r.item,
 							r.lotNumber,
-							r.band === 'expired' ? `${r.expiryDate} (expired)` : r.expiryDate!,
+							r.band === 'expired'
+								? m.stock_digest_expired_date({ date: r.expiryDate! })
+								: r.expiryDate!,
 							r.location,
 							`${r.quantity} ${r.unit}`
 						])
 				}
 			: undefined,
-		action: { label: 'Open expiry follow-up', url: link },
-		footnote:
-			urgent.length > 40 ? `Showing 40 of ${urgent.length}; the page has them all.` : undefined,
+		action: { label: m.stock_digest_open(), url: link },
+		footnote: urgent.length > 40 ? m.stock_digest_showing({ count: urgent.length }) : undefined,
 		urgent: urgent.length
 	};
 }

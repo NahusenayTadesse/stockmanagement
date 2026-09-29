@@ -5,6 +5,7 @@
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/**
 	 * "Send by SMS": a number (prefilled with the one on file) and, when `withText`, a message to
@@ -12,7 +13,7 @@
 	 */
 	let {
 		action,
-		title = 'Send by SMS',
+		title = m.sales_send_by_sms(),
 		phone = '',
 		withText = false,
 		preview = ''
@@ -50,7 +51,7 @@
 		}}
 	>
 		<div class="flex flex-col gap-2">
-			<Label for="{id}-to">Mobile number</Label>
+			<Label for="{id}-to">{m.sales_mobile_number()}</Label>
 			<Input
 				id="{id}-to"
 				name="to"
@@ -62,7 +63,7 @@
 		</div>
 		{#if withText}
 			<div class="flex flex-col gap-2">
-				<Label for="{id}-text">Message</Label>
+				<Label for="{id}-text">{m.sales_sms_what_message()}</Label>
 				<textarea
 					id="{id}-text"
 					name="text"
@@ -76,6 +77,8 @@
 		{:else if preview}
 			<p class="rounded-md bg-muted p-3 text-sm">{preview}</p>
 		{/if}
-		<Button type="submit" disabled={sending}>{sending ? 'Sending…' : 'Send'}</Button>
+		<Button type="submit" disabled={sending}
+			>{sending ? m.common_sending() : m.common_send()}</Button
+		>
 	</form>
 </DialogComp>

@@ -2,15 +2,27 @@ import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
 import { formatETB } from '@nahu/admin-kit/global';
+import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
 
 type Row = PageData['rows'][number];
 const etb = (v: unknown) => (Number(v) ? formatETB(Number(v)) : '—');
 
+/** An amount column, headed in the viewer's language. */
+const money = (key: keyof Row & string, header: () => string): ColumnDef<Row> => ({
+	accessorKey: key,
+	get header() {
+		return header();
+	},
+	cell: (i) => etb(i.getValue())
+});
+
 export const columns: ColumnDef<Row>[] = [
 	{
 		accessorKey: 'name',
-		header: 'Customer',
+		get header() {
+			return m.sales_customer();
+		},
 		cell: ({ row }) =>
 			renderComponent(DataTableLinks, {
 				id: row.original.id,
@@ -18,33 +30,47 @@ export const columns: ColumnDef<Row>[] = [
 				entity: 'customer'
 			})
 	},
-	{ accessorKey: 'phone', header: 'Phone', cell: (i) => i.getValue() ?? '' },
+	{
+		accessorKey: 'phone',
+		get header() {
+			return m.common_phone();
+		},
+		cell: (i) => i.getValue() ?? ''
+	},
 	{
 		accessorKey: 'balance',
-		header: 'Owes',
+		get header() {
+			return m.sales_owes();
+		},
 		cell: ({ row }) =>
 			row.original.balance < 0
-				? `${formatETB(-row.original.balance)} in credit`
+				? m.sales_in_credit({ amount: formatETB(-row.original.balance) })
 				: formatETB(row.original.balance)
 	},
-	{ accessorKey: 'current', header: 'Not yet due', cell: (i) => etb(i.getValue()) },
-	{ accessorKey: 'd1_30', header: '1–30 days', cell: (i) => etb(i.getValue()) },
-	{ accessorKey: 'd31_60', header: '31–60', cell: (i) => etb(i.getValue()) },
-	{ accessorKey: 'd61_90', header: '61–90', cell: (i) => etb(i.getValue()) },
-	{ accessorKey: 'd90_plus', header: 'Over 90', cell: (i) => etb(i.getValue()) },
+	money('current', m.sales_bucket_current),
+	money('d1_30', m.sales_col_1_30),
+	money('d31_60', m.sales_col_31_60),
+	money('d61_90', m.sales_col_61_90),
+	money('d90_plus', m.sales_col_over_90),
 	{
 		accessorKey: 'oldestOverdueDays',
-		header: 'Longest overdue',
-		cell: (i) => (Number(i.getValue()) > 0 ? `${i.getValue()} days` : '—')
+		get header() {
+			return m.sales_longest_overdue();
+		},
+		cell: (i) =>
+			Number(i.getValue()) > 0 ? m.sales_days_count({ count: Number(i.getValue()) }) : '—'
 	},
 	{
 		accessorKey: 'creditLimit',
-		header: 'Limit',
+		get header() {
+			return m.sales_limit();
+		},
 		cell: ({ row }) =>
 			row.original.creditLimit === null
-				? 'No limit'
+				? m.sales_no_limit()
 				: row.original.creditLimit === 0
-					? 'Cash only'
-					: formatETB(row.original.creditLimit) + (row.original.overLimit ? ' ⚠ over' : '')
+					? m.sales_cash_only()
+					: formatETB(row.original.creditLimit) +
+						(row.original.overLimit ? m.sales_over_flag() : '')
 	}
 ];

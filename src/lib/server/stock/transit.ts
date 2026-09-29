@@ -4,6 +4,7 @@
  * branch then says what arrived: that moves out of transit onto its shelf, and whatever did not
  * arrive is written off as lost in transit — so the ledger shows the loss rather than hiding it.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { localToday } from '@nahu/admin-kit/time';
 import {
@@ -72,17 +73,15 @@ export async function receiveTransfer(
 		.from(stockDocument)
 		.where(and(eq(stockDocument.id, input.documentId), eq(stockDocument.orgId, orgId)))
 		.for('update');
-	if (!doc) throw new StockError('That document does not exist.');
+	if (!doc) throw new StockError(m.stock_err_no_document());
 	if (doc.status !== 'in_transit') {
 		throw new StockError(
-			doc.status === 'posted'
-				? 'This transfer has already been received.'
-				: 'Nothing is on the way.'
+			doc.status === 'posted' ? m.stock_err_already_received() : m.stock_err_nothing_on_way()
 		);
 	}
 	const transitId = doc.transitLocationId!;
 	const toId = doc.toLocationId!;
-	if (today < doc.docDate) throw new StockError('It cannot arrive before it was sent.');
+	if (today < doc.docDate) throw new StockError(m.stock_err_arrive_before_sent());
 
 	const lines = await tx
 		.select()
@@ -163,13 +162,13 @@ export async function receiveTransfer(
 		if (it.trackSerials) {
 			const { serials, duplicates } = parseSerials((arrival?.serials ?? []).join('\n'));
 			if (duplicates.length) {
-				throw new StockError(`Serial ${duplicates.join(', ')} is entered twice.`, line.id);
+				throw new StockError(m.stock_err_serial_twice({ serials: duplicates.join(', ') }), line.id);
 			}
 			const listed = arrival ? serials : sent.map((m) => m.serialNumber!);
 			const stranger = listed.find((s) => !sent.some((m) => m.serialNumber === s));
 			if (stranger) {
 				throw new StockError(
-					`Serial ${stranger} of ${it.name} was not sent on this transfer.`,
+					m.stock_err_serial_not_sent({ serial: stranger, item: it.name }),
 					line.id
 				);
 			}
@@ -178,11 +177,11 @@ export async function receiveTransfer(
 		} else {
 			arrivedBase = arrival ? toBase(arrival.quantity, factor) : sentBase;
 			if (!(arrivedBase >= 0)) {
-				throw new StockError(`Enter how much of ${it.name} arrived.`, line.id);
+				throw new StockError(m.stock_err_enter_arrived({ item: it.name }), line.id);
 			}
 			if (arrivedBase > sentBase + 0.00001) {
 				throw new StockError(
-					`More of ${it.name} arrived than was sent (${round4(sentBase / factor)}). Record the extra as an adjustment.`,
+					m.stock_err_more_arrived({ item: it.name, sent: round4(sentBase / factor) }),
 					line.id
 				);
 			}

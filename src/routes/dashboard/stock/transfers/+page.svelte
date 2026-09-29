@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import type { ColumnDef } from '@tanstack/table-core';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
@@ -19,67 +20,100 @@
 		});
 
 	const roadColumns: ColumnDef<Road>[] = [
-		{ accessorKey: 'number', header: 'Transfer', cell: ({ row }) => docLink(row.original) },
-		{ accessorKey: 'from', header: 'From' },
-		{ accessorKey: 'to', header: 'To' },
-		{ accessorKey: 'docDate', header: 'Sent', cell: (info) => ethiopianDate(info.getValue()) },
+		{
+			accessorKey: 'number',
+			header: m.stock_col_transfer(),
+			cell: ({ row }) => docLink(row.original)
+		},
+		{ accessorKey: 'from', header: m.stock_col_from() },
+		{ accessorKey: 'to', header: m.stock_col_to() },
+		{
+			accessorKey: 'docDate',
+			header: m.stock_sent(),
+			cell: (info) => ethiopianDate(info.getValue())
+		},
 		{
 			accessorKey: 'days',
-			header: 'Days on the road',
+			header: m.stock_days_on_road(),
 			cell: (info) => {
 				const d = Number(info.getValue());
-				return d === 0 ? 'Today' : d === 1 ? '1 day' : `${d} days`;
+				return d === 0
+					? m.stock_today()
+					: d === 1
+						? m.stock_one_day()
+						: m.stock_n_days({ days: d });
 			}
 		},
-		{ accessorKey: 'driverName', header: 'Driver', cell: (info) => info.getValue() ?? '' },
-		{ accessorKey: 'vehiclePlate', header: 'Plate', cell: (info) => info.getValue() ?? '' },
-		{ accessorKey: 'lines', header: 'Lines' },
-		{ accessorKey: 'sentBy', header: 'Sent by', cell: (info) => info.getValue() ?? '' }
+		{ accessorKey: 'driverName', header: m.stock_driver(), cell: (info) => info.getValue() ?? '' },
+		{
+			accessorKey: 'vehiclePlate',
+			header: m.stock_col_plate(),
+			cell: (info) => info.getValue() ?? ''
+		},
+		{ accessorKey: 'lines', header: m.stock_col_lines() },
+		{ accessorKey: 'sentBy', header: m.stock_sent_by(), cell: (info) => info.getValue() ?? '' }
 	];
 
 	const shortColumns: ColumnDef<Short>[] = [
-		{ accessorKey: 'number', header: 'Transfer', cell: ({ row }) => docLink(row.original) },
-		{ accessorKey: 'from', header: 'From' },
-		{ accessorKey: 'to', header: 'To' },
-		{ accessorKey: 'docDate', header: 'Sent', cell: (info) => ethiopianDate(info.getValue()) },
+		{
+			accessorKey: 'number',
+			header: m.stock_col_transfer(),
+			cell: ({ row }) => docLink(row.original)
+		},
+		{ accessorKey: 'from', header: m.stock_col_from() },
+		{ accessorKey: 'to', header: m.stock_col_to() },
+		{
+			accessorKey: 'docDate',
+			header: m.stock_sent(),
+			cell: (info) => ethiopianDate(info.getValue())
+		},
 		{
 			accessorKey: 'receivedAt',
-			header: 'Received',
+			header: m.stock_received(),
 			cell: (info) => {
 				const v = info.getValue() as Date | string | null;
 				return v ? formatEthiopianDate(new Date(v)) : '';
 			}
 		},
-		{ accessorKey: 'lost', header: 'Did not arrive' },
-		{ accessorKey: 'driverName', header: 'Driver', cell: (info) => info.getValue() ?? '' },
-		{ accessorKey: 'vehiclePlate', header: 'Plate', cell: (info) => info.getValue() ?? '' },
-		{ accessorKey: 'receivedBy', header: 'Received by', cell: (info) => info.getValue() ?? '' }
+		{ accessorKey: 'lost', header: m.stock_did_not_arrive() },
+		{ accessorKey: 'driverName', header: m.stock_driver(), cell: (info) => info.getValue() ?? '' },
+		{
+			accessorKey: 'vehiclePlate',
+			header: m.stock_col_plate(),
+			cell: (info) => info.getValue() ?? ''
+		},
+		{
+			accessorKey: 'receivedBy',
+			header: m.stock_received_by(),
+			cell: (info) => info.getValue() ?? ''
+		}
 	];
 </script>
 
 <svelte:head>
-	<title>Transfers in transit</title>
+	<title>{m.stock_transfers_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div>
-		<h1 class="text-2xl font-semibold">Transfers in transit</h1>
+		<h1 class="text-2xl font-semibold">{m.stock_transfers_title()}</h1>
 		<p class="text-muted-foreground">
-			Stock sent between branches and not yet received. The receiving branch opens the transfer and
-			records what arrived; anything missing is written off as lost in transit.
+			{m.stock_transfers_intro()}
 		</p>
 	</div>
 
 	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">On the road ({data.onTheRoad.length})</h2>
-		<DataTable data={data.onTheRoad} columns={roadColumns} fileName="Transfers in transit" />
+		<h2 class="text-xl font-semibold">
+			{m.stock_on_the_road_count({ count: data.onTheRoad.length })}
+		</h2>
+		<DataTable data={data.onTheRoad} columns={roadColumns} fileName={m.stock_transfers_title()} />
 	</section>
 
 	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">Arrived short</h2>
+		<h2 class="text-xl font-semibold">{m.stock_arrived_short()}</h2>
 		<p class="text-sm text-muted-foreground">
-			Transfers received in the last {data.lossDays} days where something did not arrive.
+			{m.stock_arrived_short_hint({ days: data.lossDays })}
 		</p>
-		<DataTable data={data.short} columns={shortColumns} fileName="Transfers arrived short" />
+		<DataTable data={data.short} columns={shortColumns} fileName={m.stock_arrived_short_file()} />
 	</section>
 </div>

@@ -5,6 +5,7 @@
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { qty } from '$lib/format';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -43,45 +44,40 @@
 </script>
 
 <svelte:head>
-	<title>Reorder</title>
+	<title>{m.purchasing_reorder_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div>
-		<h1 class="text-2xl font-semibold">What to reorder</h1>
+		<h1 class="text-2xl font-semibold">{m.purchasing_reorder_heading()}</h1>
 		<p class="text-muted-foreground">
-			Items whose free stock (on hand, less what is held for proformas and requisitions) is at or
-			below their minimum, and items that — at the rate they were used over the last 90 days — will
-			run out before a delivery ordered today could arrive. The suggestion fills up to the maximum
-			(twice the minimum when there is none), or enough for the supplier's lead time and a month
-			after, less what is on order. Orders are created as drafts you can still change.
+			{m.purchasing_reorder_intro()}
 		</p>
 	</div>
 
 	<form method="GET" class="flex max-w-md flex-col gap-1 text-sm">
-		<label for="plan-location">Plan for</label>
+		<label for="plan-location">{m.purchasing_reorder_plan_for()}</label>
 		<select
 			id="plan-location"
 			name="location"
 			class="h-9 rounded-md border bg-background px-2"
 			onchange={(e) => e.currentTarget.form?.requestSubmit()}
 		>
-			<option value="0" selected={!data.locationId}
-				>The whole business (items' reorder levels)</option
-			>
+			<option value="0" selected={!data.locationId}>{m.purchasing_reorder_whole()}</option>
 			{#each data.locations as l (l.value)}
 				<option value={l.value} selected={l.value === data.locationId}
-					>{l.name} (its minimum and maximum)</option
+					>{m.purchasing_reorder_location_opt({ name: l.name })}</option
 				>
 			{/each}
 		</select>
-		<noscript><Button type="submit" variant="outline">Show</Button></noscript>
+		<noscript
+			><Button type="submit" variant="outline">{m.purchasing_reorder_show()}</Button></noscript
+		>
 	</form>
 
 	{#if !data.items.length}
 		<p class="rounded-md border p-6 text-center text-muted-foreground">
-			Nothing needs reordering {data.locationId ? 'here' : ''}. Set minimum and maximum levels on an
-			item's page (per location), or a reorder level, to plan by them.
+			{data.locationId ? m.purchasing_reorder_nothing_here() : m.purchasing_reorder_nothing()}
 		</p>
 	{:else}
 		<form
@@ -106,9 +102,9 @@
 								>{g.supplier}</a
 							>
 						{:else}
-							No main supplier
+							{m.purchasing_reorder_no_supplier()}
 							<span class="text-sm font-normal text-muted-foreground"
-								>— set one on the item to order it from here</span
+								>{m.purchasing_reorder_no_supplier_hint()}</span
 							>
 						{/if}
 					</h2>
@@ -116,17 +112,19 @@
 						<table class="w-full text-sm">
 							<thead class="bg-muted/50 text-left">
 								<tr>
-									<th class="w-10 px-3 py-2"><span class="sr-only">Order</span></th>
-									<th class="px-3 py-2">Item</th>
-									<th class="px-3 py-2 text-right">On hand</th>
-									<th class="px-3 py-2 text-right">Held</th>
-									<th class="px-3 py-2 text-right">Min / max</th>
-									<th class="px-3 py-2 text-right">Use / day</th>
-									<th class="px-3 py-2 text-right">Days left</th>
-									<th class="px-3 py-2 text-right">Lead time</th>
-									<th class="px-3 py-2 text-right">On order</th>
-									<th class="px-3 py-2 text-right">Order</th>
-									<th class="px-3 py-2 text-right">Est. cost</th>
+									<th class="w-10 px-3 py-2"
+										><span class="sr-only">{m.purchasing_col_order_qty()}</span></th
+									>
+									<th class="px-3 py-2">{m.common_item()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_on_hand()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_held()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_min_max()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_use_day()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_days_left()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_lead_time()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_on_order()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_order_qty()}</th>
+									<th class="px-3 py-2 text-right">{m.purchasing_col_est_cost()}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -140,7 +138,7 @@
 												checked={isPicked(r)}
 												onchange={(e) => (ticks[r.id] = e.currentTarget.checked)}
 												disabled={!g.supplierId || !data.canManage}
-												aria-label="Order {r.name}"
+												aria-label={m.purchasing_order_item({ name: r.name })}
 												class="size-4"
 											/>
 										</td>
@@ -151,7 +149,7 @@
 											>
 											<p class="text-xs text-muted-foreground">
 												{r.sku}{#if r.runsOut}
-													· <span class="text-amber-600">runs out before a delivery</span>{/if}
+													· <span class="text-amber-600">{m.purchasing_runs_out()}</span>{/if}
 											</p>
 										</td>
 										<td
@@ -173,9 +171,10 @@
 										>
 										<td
 											class="px-3 py-2 text-right"
-											title={r.leadTimeAssumed
-												? 'The supplier has no lead time; a week is assumed'
-												: undefined}>{r.leadTimeDays} d{r.leadTimeAssumed ? '*' : ''}</td
+											title={r.leadTimeAssumed ? m.purchasing_lead_assumed() : undefined}
+											>{m.purchasing_days_short({ n: r.leadTimeDays })}{r.leadTimeAssumed
+												? '*'
+												: ''}</td
 										>
 										<td class="px-3 py-2 text-right">{r.onOrder ? qty(r.onOrder, r.unit) : '—'}</td>
 										<td class="px-3 py-2 text-right">
@@ -188,7 +187,7 @@
 												value={quantityOf(r)}
 												oninput={(e) => (edits[r.id] = Number(e.currentTarget.value))}
 												disabled={!g.supplierId || !data.canManage}
-												aria-label="Quantity of {r.name}"
+												aria-label={m.purchasing_quantity_of({ name: r.name })}
 												class="h-9 w-24 rounded-md border bg-background px-2 text-right"
 											/>
 											<span class="ml-1 text-xs text-muted-foreground">{r.unit}</span>
@@ -209,7 +208,7 @@
 					class="sticky bottom-0 flex flex-wrap items-end gap-3 rounded-md border bg-background p-3 shadow-sm"
 				>
 					<label class="flex flex-col gap-1 text-sm">
-						Deliver to
+						{m.purchasing_f_deliver_to()}
 						<select name="locationId" class="h-9 rounded-md border bg-background px-2" required>
 							{#each data.locations as l (l.value)}
 								<option value={l.value} selected={l.value === defaultLocation}>{l.name}</option>
@@ -217,16 +216,27 @@
 						</select>
 					</label>
 					<p class="text-sm text-muted-foreground">
-						{chosen.length} item{chosen.length === 1 ? '' : 's'} from {suppliersChosen} supplier{suppliersChosen ===
-						1
-							? ''
-							: 's'} · about {formatETB(estimate)} at average cost
+						{m.purchasing_reorder_summary({
+							items:
+								chosen.length === 1
+									? m.purchasing_n_item_one()
+									: m.purchasing_n_items({ n: chosen.length }),
+							suppliers:
+								suppliersChosen === 1
+									? m.purchasing_n_supplier_one()
+									: m.purchasing_n_suppliers({ n: suppliersChosen }),
+							estimate: formatETB(estimate)
+						})}
 					</p>
 					<Button type="submit" class="ml-auto" disabled={busy || !chosen.length}>
 						<ShoppingCart />
 						{busy
-							? 'Creating…'
-							: `Create ${suppliersChosen || ''} draft order${suppliersChosen === 1 ? '' : 's'}`}
+							? m.purchasing_creating_ellipsis()
+							: suppliersChosen === 1
+								? m.purchasing_create_orders_one()
+								: suppliersChosen
+									? m.purchasing_create_orders_many({ n: suppliersChosen })
+									: m.purchasing_create_orders_none()}
 					</Button>
 				</div>
 			{/if}

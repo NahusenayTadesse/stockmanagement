@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
 	import { add, edit } from './schema';
 
@@ -9,12 +10,17 @@
 	{data}
 	schemas={{ add, edit }}
 	config={{
-		entity: 'Unit',
-		plural: 'Units of Measure',
+		entity: m.admin_units_entity(),
+		plural: m.admin_units_plural(),
 		fields: [
-			{ name: 'name', label: 'Name', type: 'text' },
-			{ name: 'symbol', label: 'Symbol', type: 'text', placeholder: 'pcs, kg, qt, box…' },
-			{ name: 'status', label: 'Status', type: 'boolean' }
+			{ name: 'name', label: m.common_name(), type: 'text' },
+			{
+				name: 'symbol',
+				label: m.admin_units_symbol(),
+				type: 'text',
+				placeholder: m.admin_units_symbol_placeholder()
+			},
+			{ name: 'status', label: m.common_status(), type: 'boolean' }
 		]
 	}}
 />

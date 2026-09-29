@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import type { LookupField } from '@nahu/admin-kit/components/lookup/types';
 	import { itemAdd, itemEdit, STORAGE_CHOICES, TAX_CODE_CHOICES } from '$lib/schemas/items';
@@ -9,6 +10,7 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Barcode from '@lucide/svelte/icons/barcode';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 
 	let { data } = $props();
@@ -19,18 +21,25 @@
 		type: 'checkbox',
 		required: false,
 		inTable: false,
-		trueLabel: 'Yes',
-		falseLabel: 'No'
+		trueLabel: m.common_yes(),
+		falseLabel: m.common_no()
 	});
 
 	const fields: LookupField[] = [
-		{ name: 'name', label: 'Name', type: 'text' },
-		{ name: 'sku', label: 'Code / SKU', type: 'text' },
-		{ name: 'nameAm', label: 'Name (Amharic)', type: 'text', required: false, inTable: false },
-		{ name: 'variantLabel', label: 'Variant', type: 'text', required: false },
+		{ name: 'name', label: m.common_name(), type: 'text' },
+		{ name: 'sku', label: m.stock_f_code_sku(), type: 'text' },
+		// The Amharic name shows as a column when the interface is in Amharic.
+		{
+			name: 'nameAm',
+			label: m.stock_f_name_am(),
+			type: 'text',
+			required: false,
+			inTable: getLocale() === 'am'
+		},
+		{ name: 'variantLabel', label: m.stock_f_variant(), type: 'text', required: false },
 		{
 			name: 'parentItemId',
-			label: 'Variant of (optional)',
+			label: m.stock_f_variant_of(),
 			type: 'reference',
 			options: 'parentList',
 			display: 'parent',
@@ -39,7 +48,7 @@
 		},
 		{
 			name: 'categoryId',
-			label: 'Category',
+			label: m.stock_col_category(),
 			type: 'reference',
 			options: 'categoryList',
 			display: 'category',
@@ -47,7 +56,7 @@
 		},
 		{
 			name: 'supplierId',
-			label: 'Main supplier',
+			label: m.stock_f_main_supplier(),
 			type: 'reference',
 			options: 'supplierList',
 			display: 'supplier',
@@ -56,75 +65,75 @@
 		},
 		{
 			name: 'baseUomId',
-			label: 'Counted in',
+			label: m.stock_f_counted_in(),
 			type: 'reference',
 			options: 'unitList',
 			display: 'unit'
 		},
-		{ name: 'salePrice', label: 'Sale price (before VAT)', type: 'money', required: false },
+		{ name: 'salePrice', label: m.stock_f_sale_price(), type: 'money', required: false },
 		{
 			name: 'taxCode',
-			label: 'VAT',
+			label: m.stock_f_vat(),
 			type: 'select',
 			choices: TAX_CODE_CHOICES,
 			inTable: false
 		},
 		{
 			name: 'totRate',
-			label: 'TOT rate % (optional, TOT payers only)',
+			label: m.stock_f_tot(),
 			type: 'number',
 			required: false,
 			inTable: false
 		},
 		{
 			name: 'reorderLevel',
-			label: 'Reorder at (base units)',
+			label: m.stock_f_reorder(),
 			type: 'number',
 			required: false,
 			inTable: false
 		},
 		{
 			name: 'warrantyMonths',
-			label: 'Warranty (months from sale, optional)',
+			label: m.stock_f_warranty(),
 			type: 'number',
 			required: false,
 			inTable: false
 		},
 		{
 			name: 'weightKg',
-			label: 'Weight per base unit, kg (optional; shares freight by weight)',
+			label: m.stock_f_weight(),
 			type: 'number',
 			required: false,
 			inTable: false
 		},
 		{
 			name: 'storageCondition',
-			label: 'Storage',
+			label: m.stock_f_storage(),
 			type: 'select',
 			choices: STORAGE_CHOICES,
 			inTable: false
 		},
-		flag('stockTracked', 'Counted in stock (untick for services)'),
-		flag('isKit', 'Kit or recipe — sold as one, made of components (never counted itself)'),
-		flag('trackLots', 'Track lot / batch numbers'),
-		flag('trackExpiry', 'Track expiry dates (FEFO; expired lots are blocked)'),
-		flag('trackSerials', 'Track serial numbers'),
-		flag('sellable', 'Sold'),
-		flag('purchasable', 'Bought'),
-		flag('leasable', 'Rented out'),
-		flag('consumable', 'Used internally'),
-		flag('perishable', 'Perishable'),
-		flag('prescriptionOnly', 'Prescription only'),
-		flag('controlledSubstance', 'Controlled substance (narcotic / psychotropic)'),
+		flag('stockTracked', m.stock_f_stock_tracked()),
+		flag('isKit', m.stock_f_is_kit()),
+		flag('trackLots', m.stock_f_track_lots()),
+		flag('trackExpiry', m.stock_f_track_expiry()),
+		flag('trackSerials', m.stock_f_track_serials()),
+		flag('sellable', m.stock_f_sold()),
+		flag('purchasable', m.stock_f_bought()),
+		flag('leasable', m.stock_f_rented()),
+		flag('consumable', m.stock_f_consumable()),
+		flag('perishable', m.stock_f_perishable()),
+		flag('prescriptionOnly', m.stock_f_prescription()),
+		flag('controlledSubstance', m.stock_f_controlled()),
 		{
 			name: 'description',
-			label: 'Description',
+			label: m.stock_f_description(),
 			type: 'textarea',
 			rows: 3,
 			required: false,
 			inTable: false
 		},
-		{ name: 'status', label: 'Status', type: 'boolean' }
+		{ name: 'status', label: m.common_status(), type: 'boolean' }
 	];
 
 	const options = $derived({
@@ -136,25 +145,25 @@
 </script>
 
 <svelte:head>
-	<title>Items</title>
+	<title>{m.common_items()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div>
-		<h1 class="text-2xl font-semibold">Items ({data.rows.length})</h1>
+		<h1 class="text-2xl font-semibold">{m.stock_items_count({ count: data.rows.length })}</h1>
 		<p class="text-muted-foreground">
-			Everything you stock, sell, buy, use or rent out. The ticks decide how it is tracked: medicine
-			and food usually track lots and expiry; equipment tracks serial numbers.
+			{m.stock_items_intro()}
 		</p>
 	</div>
 	<div class="flex flex-wrap items-center gap-2">
 		<Button variant="outline" size="sm" href={resolve('/dashboard/items/labels')}>
-			<Barcode class="size-4" /> Print labels
+			<Barcode class="size-4" />
+			{m.stock_print_labels()}
 		</Button>
 		{#if data.canManage && data.withoutBarcode}
 			<form method="POST" action="?/generateBarcodes" use:enhance>
 				<Button type="submit" variant="outline" size="sm">
-					Give barcodes to {data.withoutBarcode} item(s) without one
+					{m.stock_give_barcodes({ count: data.withoutBarcode })}
 				</Button>
 			</form>
 		{/if}
@@ -165,12 +174,12 @@
 			form={data.supplierForm}
 			onCreated={async (s) => {
 				await invalidateAll();
-				toast.success(`${s.name} added — pick it as the main supplier.`);
+				toast.success(m.stock_supplier_added_pick({ name: s.name }));
 			}}
 		/>
 	{/if}
 	<LookupSection
-		config={{ entity: 'Item', plural: 'Items', fields, extraColumns }}
+		config={{ entity: m.stock_item(), plural: m.common_items(), fields, extraColumns }}
 		rows={data.rows}
 		addForm={data.addForm}
 		editForm={data.editForm}

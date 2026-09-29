@@ -3,6 +3,7 @@
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
 	import FileUpload from '@nahu/admin-kit/formComponents/FileUpload.svelte';
 	import { DIRECTION_CHOICES, PURPOSE_CHOICES } from '$lib/schemas/transactions';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/**
 	 * The fields of a transaction, shared by "record transaction" on the list, "record payment"
@@ -29,28 +30,57 @@
 	} = $props();
 </script>
 
-<InputComp {form} {errors} name="direction" type="select" label="Money" items={DIRECTION_CHOICES} />
-<InputComp {form} {errors} name="amount" type="number" label="Amount (ETB)" step="0.01" required />
+<InputComp
+	{form}
+	{errors}
+	name="direction"
+	type="select"
+	label={m.sales_money()}
+	items={DIRECTION_CHOICES}
+/>
+<InputComp
+	{form}
+	{errors}
+	name="amount"
+	type="number"
+	label={m.sales_amount_etb()}
+	step="0.01"
+	required
+/>
 <InputComp
 	{form}
 	{errors}
 	name="occurredOn"
 	type="date"
-	label="Date the money moved"
+	label={m.sales_date_money_moved()}
 	year
 	required
 />
-<InputComp {form} {errors} name="paymentMethodId" type="select" label="Paid by" items={methods} />
-<InputComp {form} {errors} name="purpose" type="select" label="For" items={PURPOSE_CHOICES} />
+<InputComp
+	{form}
+	{errors}
+	name="paymentMethodId"
+	type="select"
+	label={m.sales_paid_by()}
+	items={methods}
+/>
+<InputComp
+	{form}
+	{errors}
+	name="purpose"
+	type="select"
+	label={m.sales_for()}
+	items={PURPOSE_CHOICES}
+/>
 {#if suppliers.length}
 	<InputComp
 		{form}
 		{errors}
 		name="supplierId"
 		type="combo"
-		label="Supplier (optional)"
-		items={[{ value: 0, name: '— Not a supplier —' }, ...suppliers]}
-		description="Counts towards what is paid to them on their page."
+		label={m.sales_supplier_optional()}
+		items={[{ value: 0, name: m.sales_not_a_supplier() }, ...suppliers]}
+		description={m.sales_supplier_hint()}
 	/>
 {/if}
 {#if customers?.length}
@@ -59,32 +89,32 @@
 		{errors}
 		name="customerId"
 		type="combo"
-		label="Customer (optional)"
-		items={[{ value: 0, name: '— No customer named —' }, ...customers]}
-		description="Only for listed customers. Walk-in takings need none."
+		label={m.sales_pos_customer_optional()}
+		items={[{ value: 0, name: m.sales_no_customer_named() }, ...customers]}
+		description={m.sales_customer_hint()}
 	/>
 {/if}
 <InputComp
 	{form}
 	{errors}
 	name="party"
-	label={$form.direction === 'out' ? 'Paid to' : 'Received from'}
-	placeholder="Supplier, customer, landlord…"
+	label={$form.direction === 'out' ? m.sales_paid_to() : m.sales_received_from_label()}
+	placeholder={m.sales_party_placeholder()}
 />
 <InputComp
 	{form}
 	{errors}
 	name="reference"
-	label="Transaction reference"
-	placeholder="Bank FT number, Telebirr transaction ID, cheque no."
-	description="Checked against every other transaction: the same payment cannot be recorded twice."
+	label={m.sales_tx_reference()}
+	placeholder={m.sales_reference_long_placeholder()}
+	description={m.sales_tx_reference_hint()}
 />
 <InputComp
 	{form}
 	{errors}
 	name="receiptNumber"
-	label="Receipt / invoice no."
-	placeholder="As printed on the receipt"
+	label={m.sales_receipt_invoice_no()}
+	placeholder={m.sales_as_printed()}
 />
 <InputComp
 	{form}
@@ -92,30 +122,31 @@
 	name="withheld"
 	type="number"
 	step="0.01"
-	label="Tax withheld (ETB, optional)"
-	description={$form.direction === 'out'
-		? 'Kept back from the supplier and paid to the tax office. Counts as paid to them.'
-		: 'Kept back by the customer, who gives you a withholding receipt. Counts as paid by them.'}
+	label={m.sales_tax_withheld_optional()}
+	description={$form.direction === 'out' ? m.sales_withheld_out_hint() : m.sales_withheld_in_hint()}
 />
 {#if Number($form.withheld) > 0}
 	<InputComp
 		{form}
 		{errors}
 		name="withholdingReceipt"
-		label="Withholding receipt no."
-		placeholder="As printed on the withholding receipt"
+		label={m.sales_withholding_receipt_no()}
+		placeholder={m.sales_as_printed_withholding()}
 	/>
 {/if}
-<InputComp {form} {errors} name="description" label="Note" />
-<InputComp {form} {errors} name="branchId" type="select" label="Branch" items={branches} />
+<InputComp {form} {errors} name="description" label={m.common_note()} />
+<InputComp
+	{form}
+	{errors}
+	name="branchId"
+	type="select"
+	label={m.common_branch()}
+	items={branches}
+/>
 {#if withFile}
 	<div class="flex flex-col gap-2">
-		<span class="text-sm font-medium">Screenshot or PDF (optional)</span>
-		<FileUpload
-			{form}
-			name="file"
-			placeholder="Transfer screenshot or receipt — images or PDF, up to 10 MB"
-		/>
+		<span class="text-sm font-medium">{m.sales_screenshot_optional()}</span>
+		<FileUpload {form} name="file" placeholder={m.sales_file_placeholder()} />
 		{#if $errors.file}<span class="text-sm text-destructive">{$errors.file}</span>{/if}
 	</div>
 {/if}

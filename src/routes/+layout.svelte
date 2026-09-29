@@ -4,11 +4,16 @@
 	import { toast } from 'svelte-sonner';
 	import { Toaster } from 'svelte-sonner';
 	import { ModeWatcher } from 'mode-watcher';
-	import { locales, localizeHref } from '$lib/paraglide/runtime';
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import { setKitLabels } from '@nahu/admin-kit/labels';
+	import { kitLabels } from '$lib/kitLabels';
 
 	let { children } = $props();
+
+	// The admin-kit's own words (tables, dialogs, pickers) in the viewer's language — for every
+	// page, sign-in and print sheets included. A function, read as each component renders.
+	setKitLabels(kitLabels);
 
 	// Messages set on a redirect (`redirect(url, { type, message }, cookies)`), shown once.
 	const flash = getFlash(page, { clearAfterMs: 5000 });
@@ -26,12 +31,3 @@
 <Toaster richColors closeButton position="bottom-right" />
 
 {@render children()}
-
-<!-- Links to this page in each language, so the prerenderer and crawlers find every locale.
-     `localizeHref` already returns a full path; `resolve()` is typed per route and cannot take one. -->
-<div style="display:none">
-	{#each locales as locale (locale)}
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-		<a href={localizeHref(page.url.pathname, { locale })}>{locale}</a>
-	{/each}
-</div>

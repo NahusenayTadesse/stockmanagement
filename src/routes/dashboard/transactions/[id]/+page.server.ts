@@ -27,6 +27,7 @@ import {
 	orgTransaction
 } from '$lib/server/transactions';
 import { attachmentAdd, transactionEdit, voidSchema } from '$lib/schemas/transactions';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const verifier = alias(user, 'verifier');
@@ -96,8 +97,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		names,
 		files,
 		documents,
-		methods: [{ value: 0, name: '— Not said —' }, ...methods],
-		branches: [{ value: 0, name: 'Whole business' }, ...branches],
+		methods: [{ value: 0, name: m.sales_not_said_option() }, ...methods],
+		branches: [{ value: 0, name: m.sales_whole_business() }, ...branches],
 		editForm,
 		suppliers: await supplierOptions(orgId),
 		customers: await customerChoices(orgId),
@@ -116,9 +117,9 @@ async function editable(event: RequestEvent) {
 	const txn = await orgTransaction(orgIdOf(event.locals), Number(event.params.id));
 	const locked =
 		txn.status === 'void'
-			? 'This transaction is void and can no longer change.'
+			? m.sales_tx_void_locked()
 			: txn.status === 'verified'
-				? 'This transaction has been verified and can no longer change.'
+				? m.sales_tx_verified_locked()
 				: null;
 	return { txn, locked };
 }
@@ -127,7 +128,7 @@ export const actions: Actions = {
 	edit: async (event) => {
 		const form = await superValidate(event.request, zod4(transactionEdit));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		const { txn, locked } = await editable(event);
 		if (locked) return message(form, { type: 'error', text: locked }, { status: 409 });
 
@@ -153,17 +154,17 @@ export const actions: Actions = {
 			}
 			throw err;
 		}
-		return message(form, { type: 'success', text: 'Saved' });
+		return message(form, { type: 'success', text: m.common_saved() });
 	},
 
 	attach: async (event) => {
 		const form = await superValidate(event.request, zod4(attachmentAdd));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Choose a screenshot or PDF' }, { status: 400 });
+			return message(form, { type: 'error', text: m.sales_choose_screenshot() }, { status: 400 });
 		requirePermission(event.locals, 'transactions.manage');
 		const txn = await orgTransaction(orgIdOf(event.locals), Number(event.params.id));
 		if (txn.status === 'void') {
-			return message(form, { type: 'error', text: 'This transaction is void.' }, { status: 409 });
+			return message(form, { type: 'error', text: m.sales_tx_is_void() }, { status: 409 });
 		}
 		try {
 			await addAttachment(db, {
@@ -173,10 +174,10 @@ export const actions: Actions = {
 				userId: event.locals.user?.id
 			});
 		} catch (err) {
-			const text = err instanceof Error ? err.message : 'Could not store the file.';
+			const text = err instanceof Error ? err.message : m.sales_file_store_failed();
 			return message(form, { type: 'error', text }, { status: 400 });
 		}
-		return message(form, { type: 'success', text: 'File attached' });
+		return message(form, { type: 'success', text: m.sales_file_attached() });
 	},
 
 	/** Files can be taken off while the transaction is still open to change. */
@@ -198,7 +199,7 @@ export const actions: Actions = {
 					isNull(transactionAttachment.deletedAt)
 				)
 			);
-		setFlash({ type: 'success', message: 'File removed' }, event.cookies);
+		setFlash({ type: 'success', message: m.sales_file_removed() }, event.cookies);
 		return { removed: true };
 	},
 
@@ -207,14 +208,19 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'transactions.verify');
 		const txn = await orgTransaction(orgIdOf(event.locals), Number(event.params.id));
 		if (txn.status !== 'recorded') {
-			setFlash({ type: 'error', message: `This transaction is ${txn.status}.` }, event.cookies);
+			setFlash(
+				{
+					type: 'error',
+					message: m.sales_tx_is_status({
+						status: txn.status === 'void' ? m.sales_tx_status_void() : m.sales_tx_status_verified()
+					})
+				},
+				event.cookies
+			);
 			return fail(409);
 		}
 		if (txn.createdBy === event.locals.user?.id && !event.locals.isSuperAdmin) {
-			setFlash(
-				{ type: 'error', message: 'Someone other than the person who recorded it must verify it.' },
-				event.cookies
-			);
+			setFlash({ type: 'error', message: m.sales_verify_someone_else() }, event.cookies);
 			return fail(403);
 		}
 		await db
@@ -225,26 +231,23 @@ export const actions: Actions = {
 				verifiedAt: new Date()
 			})
 			.where(eq(transactions.id, txn.id));
-		setFlash({ type: 'success', message: 'Verified' }, event.cookies);
+		setFlash({ type: 'success', message: m.sales_verified_done() }, event.cookies);
 		return { verified: true };
 	},
 
 	/** Transactions are never deleted; a mistake is voided with the reason, and stops counting. */
 	void: async (event) => {
 		const form = await superValidate(event.request, zod4(voidSchema));
-		if (!form.valid) return message(form, { type: 'error', text: 'Say why' }, { status: 400 });
+		if (!form.valid)
+			return message(form, { type: 'error', text: m.sales_say_why() }, { status: 400 });
 		requirePermission(event.locals, 'transactions.manage');
 		const txn = await orgTransaction(orgIdOf(event.locals), Number(event.params.id));
 		if (txn.status === 'void') {
-			return message(form, { type: 'error', text: 'Already void.' }, { status: 409 });
+			return message(form, { type: 'error', text: m.sales_already_void() }, { status: 409 });
 		}
 		// A verified transaction is a fact someone checked; only an owner may undo it.
 		if (txn.status === 'verified' && !event.locals.isSuperAdmin) {
-			return message(
-				form,
-				{ type: 'error', text: 'Only an owner can void a verified transaction.' },
-				{ status: 403 }
-			);
+			return message(form, { type: 'error', text: m.sales_only_owner_void() }, { status: 403 });
 		}
 		await db.transaction(async (tx) => {
 			await tx
@@ -259,6 +262,6 @@ export const actions: Actions = {
 				after: { status: 'void', voidReason: form.data.reason }
 			});
 		});
-		return message(form, { type: 'success', text: 'Voided' });
+		return message(form, { type: 'success', text: m.sales_voided_done() });
 	}
 };

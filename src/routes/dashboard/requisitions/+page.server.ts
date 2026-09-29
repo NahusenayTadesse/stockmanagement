@@ -11,6 +11,7 @@ import { locationOptions } from '$lib/server/options';
 import { branchScope, inScope } from '$lib/server/scope';
 import { departmentNames, requisitionList } from '$lib/server/requisitions';
 import { requisitionHeader } from '$lib/schemas/requisitions';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -40,7 +41,7 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(requisitionHeader));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 		const [loc] = await db
 			.select({ id: location.id, branchId: location.branchId, kind: location.kind })
@@ -53,10 +54,10 @@ export const actions: Actions = {
 				)
 			);
 		if (!loc || loc.kind === 'transit' || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setError(form, 'locationId', 'Choose a store from the list.');
+			setError(form, 'locationId', m.purchasing_v_store_from_list());
 			return message(
 				form,
-				{ type: 'error', text: 'Choose a store from the list.' },
+				{ type: 'error', text: m.purchasing_v_store_from_list() },
 				{ status: 400 }
 			);
 		}
@@ -77,7 +78,7 @@ export const actions: Actions = {
 
 		redirect(
 			`/dashboard/requisitions/${row.id}`,
-			{ type: 'success', message: 'Requisition drafted — add what is needed, then submit it' },
+			{ type: 'success', message: m.purchasing_req_drafted() },
 			event.cookies
 		);
 	}

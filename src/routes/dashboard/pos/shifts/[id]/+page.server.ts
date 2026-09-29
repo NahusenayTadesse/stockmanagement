@@ -5,6 +5,7 @@ import { db } from '$lib/server/db';
 import { orgIdOf } from '$lib/server/tenant';
 import { closeShift, shiftSummary } from '$lib/server/pos';
 import { StockError } from '$lib/server/stock/post';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 async function allowed(locals: App.Locals, shiftUserId: string) {
@@ -19,7 +20,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	try {
 		summary = await shiftSummary(orgId, Number(params.id));
 	} catch {
-		error(404, 'Shift not found');
+		error(404, m.sales_shift_not_found());
 	}
 	await allowed(locals, summary.shift.userId);
 	return { summary };
@@ -55,8 +56,10 @@ export const actions: Actions = {
 				type: diff === 0 ? 'success' : 'error',
 				message:
 					diff === 0
-						? 'Shift closed: the drawer is exact'
-						: `Shift closed: the drawer is ${diff > 0 ? 'over' : 'short'} by ${Math.abs(diff).toFixed(2)}`
+						? m.sales_shift_closed_exact()
+						: diff > 0
+							? m.sales_shift_closed_over({ amount: Math.abs(diff).toFixed(2) })
+							: m.sales_shift_closed_short({ amount: Math.abs(diff).toFixed(2) })
 			},
 			event.cookies
 		);

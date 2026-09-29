@@ -26,6 +26,8 @@ import {
 } from '$lib/server/db/schema';
 import { round4 } from '$lib/server/stock/math';
 import { lineNetSql, lineTotSql, lineVatSql } from '$lib/server/tax';
+import { m } from '$lib/paraglide/messages.js';
+import { labels } from '$lib/format';
 
 export type ReportFilters = { from: string; to: string; branchId: number };
 
@@ -80,7 +82,7 @@ export async function stockValuation(orgId: number, branchId: number) {
 			itemId: item.id,
 			sku: item.sku,
 			item: item.name,
-			category: sql<string>`COALESCE(${category.name}, 'Uncategorised')`,
+			category: sql<string>`COALESCE(${category.name}, ${m.reports_uncategorised()})`,
 			unit: uom.symbol,
 			location: location.name,
 			quantity: stockBalance.quantity,
@@ -274,7 +276,7 @@ export async function issuedByCustomer(orgId: number, f: ReportFilters) {
 
 	return rows.map((r) => ({
 		customerId: r.customerId,
-		customer: r.customer ?? 'No customer named',
+		customer: r.customer ?? m.reports_no_customer(),
 		value: money(r.value),
 		documents: Number(r.documents)
 	}));
@@ -392,13 +394,15 @@ export async function purchasesBySupplier(orgId: number, f: ReportFilters) {
 
 // ── Wastage ───────────────────────────────────────────────────────────────────────────────────
 
-const REASON_NAMES: Record<string, string> = {
-	count: 'Count shortage',
-	damage: 'Damaged',
-	expiry: 'Expired',
-	found: 'Found',
-	other: 'Other'
-};
+/** Why stock was written off, in the viewer's language. Read per request, not at import. */
+const REASON_NAMES: Record<string, string> = labels({
+	count: m.reports_reason_count,
+	damage: m.common_reason_damage,
+	expiry: m.common_reason_expiry,
+	found: m.common_reason_found,
+	opening: m.common_reason_opening,
+	other: m.common_reason_other
+});
 
 /** Stock written off over the period: adjustments out, by reason, with every line. */
 export async function wastage(orgId: number, f: ReportFilters) {
@@ -459,7 +463,7 @@ export async function moneyOverTime(orgId: number, f: ReportFilters) {
 			occurredOn: transactions.occurredOn,
 			direction: transactions.direction,
 			purpose: transactions.purpose,
-			method: sql<string>`COALESCE(${paymentMethod.name}, 'Unspecified')`,
+			method: sql<string>`COALESCE(${paymentMethod.name}, ${m.reports_unspecified()})`,
 			amount: sql<number>`SUM(${transactions.amount})`
 		})
 		.from(transactions)
@@ -538,7 +542,7 @@ export async function vatRegisters(orgId: number, f: ReportFilters) {
 			type: stockDocument.type,
 			number: stockDocument.number,
 			docDate: stockDocument.docDate,
-			party: sql<string>`COALESCE(${customer.name}, ${supplier.name}, ${stockDocument.party}, 'Walk-in')`,
+			party: sql<string>`COALESCE(${customer.name}, ${supplier.name}, ${stockDocument.party}, ${m.reports_walk_in()})`,
 			tin: sql<string | null>`COALESCE(${customer.tin}, ${supplier.tin})`,
 			net: sql<number>`SUM(${lineNetSql})`,
 			vat: sql<number>`SUM(${lineVatSql})`,
@@ -574,7 +578,12 @@ export async function vatRegisters(orgId: number, f: ReportFilters) {
 					id: r.id,
 					number: r.number,
 					docDate: r.docDate,
-					kind: r.type === negative ? 'Return' : r.type === 'issue' ? 'Sale' : 'Delivery',
+					kind:
+						r.type === negative
+							? m.reports_kind_return()
+							: r.type === 'issue'
+								? m.reports_kind_sale()
+								: m.reports_kind_delivery(),
 					party: r.party,
 					tin: r.tin,
 					net,

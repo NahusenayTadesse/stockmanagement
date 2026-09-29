@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
+	import LanguageSwitch from '$lib/components/LanguageSwitch.svelte';
 	import { resolve } from '$app/paths';
 	import MailCheck from '@lucide/svelte/icons/mail-check';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
@@ -18,38 +20,46 @@
 </script>
 
 <svelte:head>
-	<title>Forgot password</title>
+	<title>{m.admin_forgot_page_title()}</title>
 </svelte:head>
 
 <div class="flex min-h-dvh w-full items-center justify-center px-4">
 	<Card.Root class="w-full max-w-md">
 		<Card.Header>
-			<Card.Title class="text-2xl">Forgot your password?</Card.Title>
-			<Card.Description
-				>Enter the email you sign in with and we will send you a link to choose a new one.</Card.Description
+			<Card.Title class="flex flex-row items-center justify-between text-2xl"
+				>{m.admin_forgot_title()} <LanguageSwitch compact /></Card.Title
 			>
+			<Card.Description>{m.admin_forgot_intro()}</Card.Description>
 		</Card.Header>
 		<Card.Content>
 			{#if sent}
 				<div class="flex flex-col items-center gap-3 py-4 text-center">
 					<MailCheck class="size-10 text-primary" />
-					<p>If that email has an account, a reset link is on its way.</p>
+					<p>{m.admin_forgot_sent()}</p>
 					<p class="text-sm text-muted-foreground">
-						It works for one hour. Check the spam folder if it is not in your inbox. No email? Your
-						business owner can also set a new password for you from the Users screen.
+						{m.admin_forgot_sent_help()}
 					</p>
 				</div>
 			{:else}
 				<form method="POST" use:enhance class="flex flex-col gap-4">
-					<InputComp {form} {errors} name="email" type="email" label="Email" required />
+					<InputComp
+						{form}
+						{errors}
+						name="email"
+						type="email"
+						label={m.admin_login_email()}
+						required
+					/>
 					<Button type="submit" class="w-full">
-						{#if $delayed}<LoadingBtn name="Sending" />{:else}Send reset link{/if}
+						{#if $delayed}<LoadingBtn
+								name={m.common_sending()}
+							/>{:else}{m.admin_forgot_send()}{/if}
 					</Button>
 				</form>
 			{/if}
 		</Card.Content>
 		<Card.Footer class="text-sm text-muted-foreground">
-			<a href={resolve('/login')} class="underline">Back to sign in</a>
+			<a href={resolve('/login')} class="underline">{m.admin_back_to_sign_in()}</a>
 		</Card.Footer>
 	</Card.Root>
 </div>

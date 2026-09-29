@@ -11,6 +11,7 @@ import {
 } from '$lib/server/approvals';
 import { branchScope, inScope } from '$lib/server/scope';
 import { StockError } from '$lib/server/stock/post';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -86,7 +87,7 @@ export const actions: Actions = {
 			}
 			throw err;
 		}
-		setFlash({ type: 'success', message: 'Request withdrawn' }, event.cookies);
+		setFlash({ type: 'success', message: m.purchasing_appr_withdrawn_msg() }, event.cookies);
 		return { withdrawn: true };
 	}
 };

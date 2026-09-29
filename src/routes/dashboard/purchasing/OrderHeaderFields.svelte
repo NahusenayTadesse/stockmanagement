@@ -2,6 +2,7 @@
 	import type { SuperForm, SuperValidated } from 'sveltekit-superforms';
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
 	import QuickSupplier from '$lib/components/QuickSupplier.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/** A purchase order's header, shared by "new order" and the draft's edit dialog. */
 	let {
@@ -31,7 +32,7 @@
 		{errors}
 		name="supplierId"
 		type="combo"
-		label="Supplier"
+		label={m.purchasing_f_supplier()}
 		items={supplierItems}
 		required
 	/>
@@ -50,17 +51,25 @@
 	{errors}
 	name="locationId"
 	type="combo"
-	label="Deliver to"
+	label={m.purchasing_f_deliver_to()}
 	items={locations}
 	required
 />
-<InputComp {form} {errors} name="orderDate" type="date" label="Order date" year required />
+<InputComp
+	{form}
+	{errors}
+	name="orderDate"
+	type="date"
+	label={m.purchasing_f_order_date()}
+	year
+	required
+/>
 <InputComp
 	{form}
 	{errors}
 	name="expectedDate"
 	type="date"
-	label="Expected delivery (optional)"
+	label={m.purchasing_f_expected()}
 	year
 	futureDays
 />
@@ -68,8 +77,8 @@
 	{form}
 	{errors}
 	name="reference"
-	label="Reference (optional)"
-	placeholder="Supplier's quotation / proforma no."
+	label={m.purchasing_f_reference()}
+	placeholder={m.purchasing_f_reference_ph()}
 />
 <InputComp
 	{form}
@@ -77,5 +86,5 @@
 	name="note"
 	type="textarea"
 	rows={3}
-	label="Note for the supplier (optional)"
+	label={m.purchasing_f_note_supplier()}
 />

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { ColumnDef } from '@tanstack/table-core';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
@@ -26,30 +27,34 @@
 	const columns: ColumnDef<Row>[] = [
 		{
 			accessorKey: 'id',
-			header: 'Count',
+			header: m.stock_count(),
 			cell: ({ row }) =>
 				renderComponent(DataTableLinks, {
 					id: row.original.id,
-					name: `Count #${row.original.id}`,
+					name: m.stock_count_number({ id: row.original.id }),
 					entity: 'count'
 				})
 		},
-		{ accessorKey: 'countDate', header: 'Date', cell: (info) => ethiopianDate(info.getValue()) },
-		{ accessorKey: 'location', header: 'Location' },
+		{
+			accessorKey: 'countDate',
+			header: m.common_date(),
+			cell: (info) => ethiopianDate(info.getValue())
+		},
+		{ accessorKey: 'location', header: m.common_location() },
 		{
 			accessorKey: 'category',
-			header: 'Category',
-			cell: (info) => info.getValue() ?? 'Everything'
+			header: m.stock_col_category(),
+			cell: (info) => info.getValue() ?? m.stock_everything()
 		},
 		{
 			accessorKey: 'counted',
-			header: 'Counted',
+			header: m.stock_counted(),
 			cell: ({ row }) => `${row.original.counted} / ${row.original.lines}`
 		},
-		{ accessorKey: 'differences', header: 'Differences' },
+		{ accessorKey: 'differences', header: m.stock_differences() },
 		{
 			accessorKey: 'adjustment',
-			header: 'Adjustment',
+			header: m.stock_adjustment(),
 			cell: ({ row }) =>
 				row.original.adjustmentId
 					? renderComponent(DataTableLinks, {
@@ -58,33 +63,40 @@
 							entity: 'document'
 						})
 					: row.original.status === 'posted'
-						? 'None needed'
+						? m.stock_none_needed()
 						: ''
 		},
 		{
 			accessorKey: 'status',
-			header: 'Status',
-			cell: ({ row }) => renderComponent(Statuses, { status: STATUS_WORD[row.original.status] })
+			header: m.common_status(),
+			cell: ({ row }) =>
+				renderComponent(Statuses, {
+					status: STATUS_WORD[row.original.status],
+					label: {
+						open: m.stock_count_status_open,
+						posted: m.stock_count_status_posted,
+						cancelled: m.stock_count_status_cancelled
+					}[row.original.status]()
+				})
 		},
-		{ accessorKey: 'openedBy', header: 'Opened by', cell: (info) => info.getValue() ?? '' }
+		{ accessorKey: 'openedBy', header: m.stock_opened_by(), cell: (info) => info.getValue() ?? '' }
 	];
 </script>
 
 <svelte:head>
-	<title>Stock counts</title>
+	<title>{m.stock_counts_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Stock counts</h1>
+			<h1 class="text-2xl font-semibold">{m.stock_counts_title()}</h1>
 			<p class="text-muted-foreground">
-				Count a location, and post the differences as one adjustment. Serial-tracked items are
-				checked by serial number instead.
+				{m.stock_counts_intro()}
 			</p>
 		</div>
 		{#if data.canCount}
-			<DialogComp bind:open title="Start a count" variant="default" IconComp={Plus}>
+			<DialogComp bind:open title={m.stock_start_a_count()} variant="default" IconComp={Plus}>
 				<form method="POST" action="?/open" use:enhance id="open-count" class="flex flex-col gap-4">
 					<Errors allErrors={$allErrors} />
 					<InputComp
@@ -92,7 +104,7 @@
 						{errors}
 						name="locationId"
 						type="combo"
-						label="Location"
+						label={m.common_location()}
 						items={data.locations}
 						required
 					/>
@@ -101,32 +113,42 @@
 						{errors}
 						name="categoryId"
 						type="select"
-						label="Count"
+						label={m.stock_count()}
 						items={data.categories}
 					/>
-					<InputComp {form} {errors} name="countDate" type="date" label="Date" year required />
+					<InputComp
+						{form}
+						{errors}
+						name="countDate"
+						type="date"
+						label={m.common_date()}
+						year
+						required
+					/>
 					<InputComp
 						{form}
 						{errors}
 						name="blind"
 						type="checkboxSingle"
-						label="Blind count"
-						placeholder="Hide the expected quantities from the counters"
+						label={m.stock_blind_count()}
+						placeholder={m.stock_blind_hint()}
 					/>
 					<InputComp
 						{form}
 						{errors}
 						name="note"
-						label="Note"
-						placeholder="Who is counting, anything unusual"
+						label={m.common_note()}
+						placeholder={m.stock_count_note_placeholder()}
 					/>
 					<Button type="submit" form="open-count">
-						{#if $delayed}<LoadingBtn name="Taking the snapshot" />{:else}Start count{/if}
+						{#if $delayed}<LoadingBtn
+								name={m.stock_taking_snapshot()}
+							/>{:else}{m.stock_start_count()}{/if}
 					</Button>
 				</form>
 			</DialogComp>
 		{/if}
 	</div>
 
-	<DataTable data={data.counts} {columns} fileName="Stock counts" />
+	<DataTable data={data.counts} {columns} fileName={m.stock_counts_title()} />
 </div>

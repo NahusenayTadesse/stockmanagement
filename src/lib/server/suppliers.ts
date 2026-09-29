@@ -7,6 +7,7 @@ import { and, asc, desc, eq, inArray, isNull, ne, sql, type Column } from 'drizz
 import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
 import { lineNetSql, lineVatSql } from '$lib/server/tax';
+import { m } from '$lib/paraglide/messages.js';
 import {
 	item,
 	paymentMethod,
@@ -94,7 +95,7 @@ export async function orgSupplier(orgId: number, id: number) {
 		.select()
 		.from(supplier)
 		.where(and(eq(supplier.id, id), eq(supplier.orgId, orgId), isNull(supplier.deletedAt)));
-	if (!row) error(404, 'Supplier not found');
+	if (!row) error(404, m.purchasing_supplier_not_found());
 	return row;
 }
 

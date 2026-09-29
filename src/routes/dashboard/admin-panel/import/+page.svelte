@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Download from '@lucide/svelte/icons/download';
@@ -43,25 +44,22 @@
 </script>
 
 <svelte:head>
-	<title>Import</title>
+	<title>{m.admin_imp_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div>
-		<h1 class="text-2xl font-semibold">Import from a spreadsheet</h1>
+		<h1 class="text-2xl font-semibold">{m.admin_imp_heading()}</h1>
 		<p class="text-muted-foreground">
-			Bring in what you already keep in Excel. Import suppliers first, then items (they name their
-			main supplier), then opening stock (it names items by SKU). Nothing is written until you have
-			seen the preview, and a file with any bad row imports nothing at all.
+			{m.admin_imp_intro()}
 		</p>
 	</div>
 
 	<Card.Root>
 		<Card.Header>
-			<Card.Title>1. Choose a file</Card.Title>
+			<Card.Title>{m.admin_imp_step1()}</Card.Title>
 			<Card.Description>
-				A .csv or .xlsx file whose first row names the columns, up to {data.maxRows} rows. Start from
-				the template: column names are matched loosely, and columns you do not need may be left out.
+				{m.admin_imp_step1_desc({ max: data.maxRows })}
 			</Card.Description>
 		</Card.Header>
 		<Card.Content>
@@ -73,7 +71,7 @@
 				use:enhance={submitting}
 			>
 				<fieldset class="flex flex-wrap gap-2">
-					<legend class="mb-2 text-sm font-medium">What the file holds</legend>
+					<legend class="mb-2 text-sm font-medium">{m.admin_imp_what_holds()}</legend>
 					{#each data.kinds as k (k.value)}
 						<label
 							class="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm has-checked:border-primary has-checked:bg-primary/5"
@@ -93,13 +91,16 @@
 				{#if current}
 					<div class="flex flex-col gap-2 rounded-md bg-muted/50 p-3 text-sm">
 						<div class="flex flex-wrap items-center justify-between gap-2">
-							<span class="font-medium">Columns for {current.name.toLowerCase()}</span>
+							<span class="font-medium"
+								>{m.admin_imp_columns_for({ kind: current.name.toLowerCase() })}</span
+							>
 							<a
 								href={resolve('/dashboard/admin-panel/import/template/[kind]', { kind })}
 								download
 								class="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
 							>
-								<Download class="size-4" /> Download the template
+								<Download class="size-4" />
+								{m.admin_imp_download()}
 							</a>
 						</div>
 						<ul class="flex flex-wrap gap-x-4 gap-y-1">
@@ -114,7 +115,7 @@
 				{/if}
 
 				<div class="flex flex-col gap-2">
-					<Label for="import-file">File</Label>
+					<Label for="import-file">{m.admin_imp_file()}</Label>
 					<input
 						id="import-file"
 						name="file"
@@ -127,7 +128,7 @@
 				<div>
 					<Button type="submit" disabled={busy}>
 						<Upload class="size-4" />
-						{busy ? 'Reading…' : 'Preview'}
+						{busy ? m.admin_imp_reading() : m.admin_imp_preview()}
 					</Button>
 				</div>
 			</form>
@@ -145,14 +146,14 @@
 	{#if imported}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Imported</Card.Title>
+				<Card.Title>{m.admin_imp_imported()}</Card.Title>
 				<Card.Description>
-					{imported.created} added, {imported.updated} updated.
+					{m.admin_imp_imported_desc({ created: imported.created, updated: imported.updated })}
 				</Card.Description>
 			</Card.Header>
 			{#if imported.documents.length}
 				<Card.Content class="flex flex-wrap gap-2 text-sm">
-					Opening stock posted as
+					{m.admin_imp_opening_as()}
 					{#each imported.documents as d (d.id)}
 						<a
 							class="font-medium text-primary underline-offset-4 hover:underline"
@@ -168,14 +169,19 @@
 		{@const counts = preview.plan.counts}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>2. Check the preview</Card.Title>
+				<Card.Title>{m.admin_imp_step2()}</Card.Title>
 				<Card.Description>
-					{preview.fileName}: {preview.plan.rows.length} rows — {counts.create} to add, {counts.update}
-					to update{#if counts.errors}, <strong class="text-destructive"
-							>{counts.errors} with problems</strong
+					{m.admin_imp_summary({
+						file: preview.fileName,
+						rows: preview.plan.rows.length,
+						create: counts.create,
+						update: counts.update
+					})}{#if counts.errors},
+						<strong class="text-destructive"
+							>{m.admin_imp_with_problems({ count: counts.errors })}</strong
 						>{/if}.
 					{#if preview.ignored.length}
-						Columns not used: {preview.ignored.join(', ')}.
+						{m.admin_imp_ignored({ columns: preview.ignored.join(', ') })}
 					{/if}
 				</Card.Description>
 			</Card.Header>
@@ -184,10 +190,10 @@
 					<table class="w-full text-sm">
 						<thead class="bg-muted/50 text-left">
 							<tr>
-								<th class="px-3 py-2">Row</th>
-								<th class="px-3 py-2">What</th>
-								<th class="px-3 py-2">Will</th>
-								<th class="px-3 py-2">Notes</th>
+								<th class="px-3 py-2">{m.admin_imp_th_row()}</th>
+								<th class="px-3 py-2">{m.admin_imp_th_what()}</th>
+								<th class="px-3 py-2">{m.admin_imp_th_will()}</th>
+								<th class="px-3 py-2">{m.admin_imp_th_notes()}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -197,11 +203,11 @@
 									<td class="px-3 py-2">{r.label || '—'}</td>
 									<td class="px-3 py-2">
 										{#if r.errors.length}
-											<Badge variant="destructive">Fix first</Badge>
+											<Badge variant="destructive">{m.admin_imp_fix_first()}</Badge>
 										{:else if r.action === 'update'}
-											<Badge variant="secondary">Update</Badge>
+											<Badge variant="secondary">{m.admin_imp_update()}</Badge>
 										{:else}
-											<Badge>Add</Badge>
+											<Badge>{m.admin_imp_add()}</Badge>
 										{/if}
 									</td>
 									<td class="px-3 py-2">
@@ -219,21 +225,22 @@
 				</div>
 				{#if preview.plan.rows.length > shown.length}
 					<p class="text-sm text-muted-foreground">
-						Showing {shown.length} of {preview.plan.rows.length} rows, problems first.
+						{m.admin_imp_showing({ shown: shown.length, total: preview.plan.rows.length })}
 					</p>
 				{/if}
 
 				{#if counts.errors}
 					<p class="text-sm">
-						Fix the rows marked “Fix first” in your spreadsheet and preview it again. Nothing is
-						imported while any row has a problem.
+						{m.admin_imp_fix_rows()}
 					</p>
 				{:else}
 					<form method="POST" action="?/import" use:enhance={submitting}>
 						<input type="hidden" name="kind" value={preview.kind} />
 						<input type="hidden" name="rows" value={JSON.stringify(preview.rows)} />
 						<Button type="submit" disabled={busy}>
-							{busy ? 'Importing…' : `Import ${counts.create + counts.update} rows`}
+							{busy
+								? m.admin_imp_importing()
+								: m.admin_imp_import_n({ count: counts.create + counts.update })}
 						</Button>
 					</form>
 				{/if}

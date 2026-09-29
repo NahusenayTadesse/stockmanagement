@@ -26,6 +26,7 @@ import {
 } from '$lib/server/requisitions';
 import { StockError } from '$lib/server/stock/post';
 import { smsRequisitionSubmitted } from '$lib/server/sms';
+import { m } from '$lib/paraglide/messages.js';
 import {
 	requisitionHeader,
 	requisitionLineAdd,
@@ -43,7 +44,7 @@ async function mine(event: Pick<RequestEvent, 'locals' | 'params'>) {
 const lines = childCrud({
 	table: requisitionLine,
 	ownerColumn: 'requisitionId',
-	label: 'Line',
+	label: () => m.common_rec_line(),
 	addSchema: requisitionLineAdd,
 	editSchema: requisitionLineEdit,
 	permission: 'requisitions.request',
@@ -55,7 +56,7 @@ const lines = childCrud({
 async function draftOwner(event: RequestEvent) {
 	const req = await mine(event);
 	if (req.status !== 'draft') {
-		error(409, 'This requisition has been submitted and its lines can no longer change.');
+		error(409, m.purchasing_req_lines_locked());
 	}
 	return req.id;
 }
@@ -119,7 +120,7 @@ export const load: PageServerLoad = async (event) => {
 		issues,
 		lines: { ...lineSection, rows },
 		items,
-		units: [{ value: 0, name: 'Base unit' }, ...units],
+		units: [{ value: 0, name: m.purchasing_base_unit() }, ...units],
 		headerForm: await superValidate(
 			{
 				department: req.department,
@@ -164,11 +165,15 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(requisitionHeader));
 		if (!form.valid) {
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 		}
 		const req = await mine(event);
 		if (req.status !== 'draft') {
-			return message(form, { type: 'error', text: 'Only a draft can change.' }, { status: 409 });
+			return message(
+				form,
+				{ type: 'error', text: m.purchasing_only_draft_changes() },
+				{ status: 409 }
+			);
 		}
 		const [loc] = await db
 			.select({ id: location.id, branchId: location.branchId, kind: location.kind })
@@ -181,10 +186,10 @@ export const actions: Actions = {
 				)
 			);
 		if (!loc || loc.kind === 'transit' || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setError(form, 'locationId', 'Choose a store from the list.');
+			setError(form, 'locationId', m.purchasing_v_store_from_list());
 			return message(
 				form,
-				{ type: 'error', text: 'Choose a store from the list.' },
+				{ type: 'error', text: m.purchasing_v_store_from_list() },
 				{ status: 400 }
 			);
 		}
@@ -200,7 +205,7 @@ export const actions: Actions = {
 				updatedBy: event.locals.user?.id
 			})
 			.where(eq(requisition.id, req.id));
-		return message(form, { type: 'success', text: 'Saved' });
+		return message(form, { type: 'success', text: m.common_saved() });
 	},
 
 	/** Sent for approval: it gets its number and its lines are fixed. */
@@ -217,7 +222,7 @@ export const actions: Actions = {
 			);
 			// The alert numbers hear of it, when the business sends alerts.
 			await smsRequisitionSubmitted(req.orgId, req.id);
-			return `Submitted as ${number} — someone who may approve requisitions decides next`;
+			return m.purchasing_req_submitted_as({ number });
 		});
 	},
 
@@ -242,7 +247,7 @@ export const actions: Actions = {
 					note: String(data.get('note') ?? '')
 				})
 			);
-			return 'Approved — the store can issue it';
+			return m.purchasing_req_approved_msg();
 		});
 	},
 
@@ -260,7 +265,7 @@ export const actions: Actions = {
 					note: String(data.get('note') ?? '')
 				})
 			);
-			return 'Rejected';
+			return m.purchasing_req_rejected_msg();
 		});
 	},
 
@@ -287,7 +292,7 @@ export const actions: Actions = {
 		}
 		redirect(
 			`/dashboard/stock/documents/${documentId}`,
-			{ type: 'success', message: 'Issue drafted from the requisition — check it, then post' },
+			{ type: 'success', message: m.purchasing_req_issue_drafted() },
 			event.cookies
 		);
 	},
@@ -306,7 +311,7 @@ export const actions: Actions = {
 					userId: event.locals.user?.id
 				})
 			);
-			return 'Requisition cancelled';
+			return m.purchasing_req_cancelled_msg();
 		});
 	}
 };

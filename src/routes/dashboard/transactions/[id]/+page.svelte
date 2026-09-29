@@ -29,6 +29,8 @@
 		voidSchema
 	} from '$lib/schemas/transactions';
 	import { signed } from '../columns';
+	import { DOCUMENT_STATUS_LABELS } from '$lib/format';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -73,33 +75,48 @@
 
 	const details = $derived(
 		[
-			{ name: 'Date', value: formatEthiopianDate(new Date(`${txn.occurredOn}T12:00:00+03:00`)) },
-			{ name: 'Money', value: txn.direction === 'in' ? 'In — received' : 'Out — paid' },
-			{ name: 'Paid by', value: data.names.method ?? '—' },
-			{ name: 'For', value: PURPOSE_LABELS[txn.purpose] },
-			{ name: txn.direction === 'in' ? 'Received from' : 'Paid to', value: txn.party ?? '—' },
+			{
+				name: m.common_date(),
+				value: formatEthiopianDate(new Date(`${txn.occurredOn}T12:00:00+03:00`))
+			},
+			{
+				name: m.sales_money(),
+				value: txn.direction === 'in' ? m.sales_in_received() : m.sales_out_paid()
+			},
+			{ name: m.sales_paid_by(), value: data.names.method ?? '—' },
+			{ name: m.sales_for(), value: PURPOSE_LABELS[txn.purpose] },
+			{
+				name: txn.direction === 'in' ? m.sales_received_from_label() : m.sales_paid_to(),
+				value: txn.party ?? '—'
+			},
 			txn.customerId && {
-				name: 'Customer',
+				name: m.sales_customer(),
 				value: data.names.customer ?? '—',
 				href: resolve('/dashboard/customers/[id]', { id: String(txn.customerId) })
 			},
-			{ name: 'Transaction reference', value: txn.reference ?? '—' },
+			{ name: m.sales_tx_reference(), value: txn.reference ?? '—' },
 			txn.withheld > 0 && {
-				name: txn.direction === 'out' ? 'Tax we withheld' : 'Tax they withheld',
-				value: `${formatETB(txn.withheld)}${txn.withholdingReceipt ? ` · receipt ${txn.withholdingReceipt}` : ' · no receipt number yet'}`
+				name: txn.direction === 'out' ? m.sales_tax_we_withheld() : m.sales_tax_they_withheld(),
+				value: `${formatETB(txn.withheld)}${txn.withholdingReceipt ? m.sales_receipt_part({ number: txn.withholdingReceipt }) : m.sales_no_receipt_yet()}`
 			},
-			{ name: 'Receipt / invoice no.', value: txn.receiptNumber ?? '—' },
-			{ name: 'Note', value: txn.description ?? '—' },
-			{ name: 'Branch', value: data.names.branch ?? 'Whole business' },
+			{ name: m.sales_receipt_invoice_no(), value: txn.receiptNumber ?? '—' },
+			{ name: m.common_note(), value: txn.description ?? '—' },
+			{ name: m.common_branch(), value: data.names.branch ?? m.sales_whole_business() },
 			{
-				name: 'Recorded',
-				value: `${ethiopianDateTime(txn.createdAt)} by ${data.names.recordedBy ?? '—'}`
+				name: m.sales_recorded(),
+				value: m.sales_when_by({
+					when: ethiopianDateTime(txn.createdAt),
+					who: data.names.recordedBy ?? '—'
+				})
 			},
 			txn.verifiedAt && {
-				name: 'Verified',
-				value: `${ethiopianDateTime(txn.verifiedAt)} by ${data.names.verifiedBy ?? '—'}`
+				name: m.sales_verified(),
+				value: m.sales_when_by({
+					when: ethiopianDateTime(txn.verifiedAt),
+					who: data.names.verifiedBy ?? '—'
+				})
 			},
-			txn.voidReason && { name: 'Voided because', value: txn.voidReason }
+			txn.voidReason && { name: m.sales_voided_because(), value: txn.voidReason }
 		].filter(Boolean) as { name: string; value: string; href?: string }[]
 	);
 
@@ -108,13 +125,13 @@
 </script>
 
 <svelte:head>
-	<title>Transaction #{txn.id}</title>
+	<title>{m.sales_transaction_number({ id: txn.id })}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">Transaction #{txn.id}</p>
+			<p class="text-sm text-muted-foreground">{m.sales_transaction_number({ id: txn.id })}</p>
 			<h1
 				class="flex items-center gap-2 text-2xl font-semibold {txn.status === 'void'
 					? 'text-muted-foreground line-through'
@@ -132,7 +149,11 @@
 							? 'destructive'
 							: 'secondary'}
 				>
-					{txn.status === 'recorded' ? 'not yet verified' : txn.status}
+					{txn.status === 'recorded'
+						? m.sales_not_yet_verified_badge()
+						: txn.status === 'void'
+							? m.sales_tx_status_void()
+							: m.sales_tx_status_verified()}
 				</Badge>
 			</div>
 		</div>
@@ -141,7 +162,7 @@
 			{#if data.canManage && open}
 				<DialogComp
 					bind:open={editOpen}
-					title="Edit transaction"
+					title={m.sales_edit_transaction()}
 					variant="outline"
 					IconComp={Pencil}
 				>
@@ -162,7 +183,7 @@
 							customers={data.customers}
 						/>
 						<Button type="submit" form="edit">
-							{#if $editDelayed}<LoadingBtn name="Saving" />{:else}Save{/if}
+							{#if $editDelayed}<LoadingBtn name={m.common_saving()} />{:else}{m.common_save()}{/if}
 						</Button>
 					</form>
 				</DialogComp>
@@ -170,18 +191,18 @@
 
 			{#if data.canVerify && open}
 				<form method="POST" action="?/verify" use:enhance>
-					<Button type="submit"><BadgeCheck /> Verify</Button>
+					<Button type="submit"><BadgeCheck /> {m.sales_verify()}</Button>
 				</form>
 			{:else if open && data.isRecorder}
 				<p class="self-center text-sm text-muted-foreground">
-					Someone else verifies what you record.
+					{m.sales_someone_else_verifies()}
 				</p>
 			{/if}
 
 			{#if data.canManage && txn.status !== 'void'}
 				<DialogComp
 					bind:open={voidOpen}
-					title="Void this transaction?"
+					title={m.sales_void_question()}
 					variant="outline"
 					IconComp={Ban}
 				>
@@ -193,10 +214,16 @@
 						class="flex flex-col gap-4"
 					>
 						<p class="text-sm text-muted-foreground">
-							It stays on record, struck through, and stops counting in every total.
+							{m.sales_void_intro()}
 						</p>
-						<InputComp form={voidData} errors={voidErrors} name="reason" label="Why" required />
-						<Button type="submit" form="void" variant="destructive">Void</Button>
+						<InputComp
+							form={voidData}
+							errors={voidErrors}
+							name="reason"
+							label={m.sales_why()}
+							required
+						/>
+						<Button type="submit" form="void" variant="destructive">{m.sales_void()}</Button>
 					</form>
 				</DialogComp>
 			{/if}
@@ -212,15 +239,13 @@
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between">
 					<div>
-						<Card.Title>Screenshots and receipts</Card.Title>
-						<Card.Description
-							>Transfer confirmations, receipts, cheques — images or PDF.</Card.Description
-						>
+						<Card.Title>{m.sales_files_title()}</Card.Title>
+						<Card.Description>{m.sales_files_intro()}</Card.Description>
 					</div>
 					{#if data.canManage && txn.status !== 'void'}
 						<DialogComp
 							bind:open={fileOpen}
-							title="Attach a file"
+							title={m.sales_attach_file()}
 							variant="outline"
 							IconComp={Paperclip}
 						>
@@ -237,7 +262,9 @@
 										>{$attachErrors.file}</span
 									>{/if}
 								<Button type="submit" form="attach">
-									{#if $attachDelayed}<LoadingBtn name="Uploading" />{:else}Attach{/if}
+									{#if $attachDelayed}<LoadingBtn
+											name={m.sales_uploading()}
+										/>{:else}{m.sales_attach()}{/if}
 								</Button>
 							</form>
 						</DialogComp>
@@ -245,7 +272,7 @@
 				</Card.Header>
 				<Card.Content>
 					{#if data.files.length === 0}
-						<p class="text-muted-foreground">No files yet.</p>
+						<p class="text-muted-foreground">{m.sales_no_files()}</p>
 					{:else}
 						<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
 							{#each data.files as file (file.id)}
@@ -259,7 +286,7 @@
 										{#if isImage(file.mimeType)}
 											<img
 												src={fileUrl(file.fileName)}
-												alt={file.originalName ?? 'Attachment'}
+												alt={file.originalName ?? m.sales_attachment()}
 												loading="lazy"
 												class="h-32 w-full rounded object-cover"
 											/>
@@ -282,7 +309,8 @@
 												variant="ghost"
 												class="h-7 w-full text-destructive"
 											>
-												<Trash class="size-3" /> Remove
+												<Trash class="size-3" />
+												{m.sales_remove()}
 											</Button>
 										</form>
 									{/if}
@@ -295,12 +323,12 @@
 
 			<Card.Root>
 				<Card.Header>
-					<Card.Title>Documents</Card.Title>
-					<Card.Description>Stock documents this money was for.</Card.Description>
+					<Card.Title>{m.sales_documents()}</Card.Title>
+					<Card.Description>{m.sales_documents_intro()}</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					{#if data.documents.length === 0}
-						<p class="text-muted-foreground">Not linked to any document.</p>
+						<p class="text-muted-foreground">{m.sales_not_linked()}</p>
 					{:else}
 						<ul class="divide-y">
 							{#each data.documents as doc (doc.id)}
@@ -309,10 +337,10 @@
 										class="hover:underline"
 										href={resolve('/dashboard/stock/documents/[id]', { id: String(doc.id) })}
 									>
-										{doc.number ?? `Draft #${doc.id}`}
+										{doc.number ?? m.sales_draft_number({ id: doc.id })}
 									</a>
 									<span class="text-sm text-muted-foreground"
-										>{DOCUMENT_LABELS[doc.type]} · {doc.status}</span
+										>{DOCUMENT_LABELS[doc.type]} · {DOCUMENT_STATUS_LABELS[doc.status]}</span
 									>
 								</li>
 							{/each}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SuperForm } from 'sveltekit-superforms';
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/** A customer's fields, shared by the full form, the quick-add dialog and the edit dialog. */
 	let {
@@ -21,16 +22,23 @@
 	} = $props();
 </script>
 
-<InputComp {form} {errors} id="{idPrefix}name" name="name" label="Customer name" required />
+<InputComp
+	{form}
+	{errors}
+	id="{idPrefix}name"
+	name="name"
+	label={m.sales_customer_name()}
+	required
+/>
 <InputComp
 	{form}
 	{errors}
 	id="{idPrefix}phone"
 	name="phone"
 	type="tel"
-	label="Phone (optional)"
+	label={m.sales_phone_optional()}
 	placeholder="0911 234 567"
-	description="Tells apart two customers with the same name."
+	description={m.sales_phone_hint()}
 />
 {#if full}
 	<InputComp
@@ -39,25 +47,25 @@
 		id="{idPrefix}email"
 		name="email"
 		type="email"
-		label="Email (optional)"
+		label={m.sales_email_optional()}
 	/>
 	<InputComp
 		{form}
 		{errors}
 		id="{idPrefix}address"
 		name="address"
-		label="Address (optional)"
-		placeholder="City, sub-city, woreda"
+		label={m.sales_address_optional()}
+		placeholder={m.sales_address_placeholder()}
 	/>
 	<InputComp
 		{form}
 		{errors}
 		id="{idPrefix}tin"
 		name="tin"
-		label="TIN (optional)"
-		placeholder="10 digits — for business customers"
+		label={m.sales_tin_optional()}
+		placeholder={m.sales_tin_placeholder()}
 	/>
-	<InputComp {form} {errors} id="{idPrefix}note" name="note" label="Note (optional)" />
+	<InputComp {form} {errors} id="{idPrefix}note" name="note" label={m.sales_note_optional()} />
 	<InputComp
 		{form}
 		{errors}
@@ -65,8 +73,8 @@
 		name="creditLimit"
 		type="number"
 		step="0.01"
-		label="Credit limit (ETB, optional)"
-		description="How much they may owe at once (ዱቤ). Empty: no limit. 0: cash only."
+		label={m.sales_credit_limit_field()}
+		description={m.sales_credit_limit_hint()}
 	/>
 	<InputComp
 		{form}
@@ -74,8 +82,8 @@
 		id="{idPrefix}creditDays"
 		name="creditDays"
 		type="number"
-		label="Days to pay"
-		description="A credit sale is overdue this many days after the sale."
+		label={m.sales_days_to_pay()}
+		description={m.sales_days_to_pay_hint()}
 	/>
 	{#if priceLists.length}
 		<InputComp
@@ -84,9 +92,9 @@
 			id="{idPrefix}priceListId"
 			name="priceListId"
 			type="select"
-			label="Prices"
-			items={[{ value: 0, name: 'List prices' }, ...priceLists]}
-			description="The till and proformas price their purchases from this list."
+			label={m.sales_prices()}
+			items={[{ value: 0, name: m.sales_list_prices() }, ...priceLists]}
+			description={m.sales_prices_hint()}
 		/>
 	{/if}
 	<InputComp
@@ -95,13 +103,10 @@
 		id="{idPrefix}withholdsTax"
 		name="withholdsTax"
 		type="select"
-		label="Withholding"
+		label={m.sales_withholding()}
 		items={[
-			{ value: false, name: 'Pays in full' },
-			{
-				value: true,
-				name: 'Withholding agent — keeps back tax and gives a withholding receipt'
-			}
+			{ value: false, name: m.sales_pays_in_full() },
+			{ value: true, name: m.sales_withholding_agent() }
 		]}
 	/>
 {/if}

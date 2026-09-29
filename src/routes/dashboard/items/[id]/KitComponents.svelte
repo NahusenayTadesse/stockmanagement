@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import type { SuperValidated } from 'sveltekit-superforms';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import type { LookupRow } from '@nahu/admin-kit/components/lookup/types';
@@ -35,31 +36,31 @@
 
 	const options = $derived({
 		componentItemId: kit.componentList,
-		uomId: [{ value: 0, name: "Component's base unit" }, ...unitList]
+		uomId: [{ value: 0, name: m.stock_component_base_unit() }, ...unitList]
 	});
 </script>
 
 <div class="flex flex-col gap-3">
 	<LookupSection
 		config={{
-			entity: 'Component',
-			plural: 'Components',
+			entity: m.stock_component(),
+			plural: m.stock_components(),
 			fields: [
 				{
 					name: 'componentItemId',
-					label: 'Item',
+					label: m.common_item(),
 					type: 'reference',
 					options: 'componentList',
 					display: 'component'
 				},
 				{
 					name: 'quantity',
-					label: `How many in one ${unit ?? ''}`.trim(),
+					label: m.stock_how_many_in_one({ unit: unit ?? '' }).trim(),
 					type: 'number'
 				},
 				{
 					name: 'uomId',
-					label: 'Unit',
+					label: m.stock_unit(),
 					type: 'reference',
 					options: 'unitList',
 					display: 'unit',
@@ -70,12 +71,12 @@
 			extraColumns: [
 				{
 					accessorKey: 'cost',
-					header: 'Cost',
+					header: m.stock_cost(),
 					cell: ({ row }) => formatETB(Number(row.original.cost ?? 0))
 				},
 				{
 					accessorKey: 'onHand',
-					header: 'On hand',
+					header: m.stock_on_hand(),
 					cell: ({ row }) => qty(Number(row.original.onHand ?? 0))
 				}
 			]
@@ -91,21 +92,21 @@
 	/>
 	<dl class="grid grid-cols-3 gap-2 text-sm">
 		<div>
-			<dt class="text-muted-foreground">Components cost</dt>
+			<dt class="text-muted-foreground">{m.stock_components_cost()}</dt>
 			<dd class="font-medium">{formatETB(kit.cost)}</dd>
 		</div>
 		<div>
-			<dt class="text-muted-foreground">Margin at list price</dt>
+			<dt class="text-muted-foreground">{m.stock_margin_list()}</dt>
 			<dd class="font-medium" class:text-destructive={kit.margin !== null && kit.margin < 0}>
-				{kit.margin === null ? '— (no sale price)' : formatETB(kit.margin)}
+				{kit.margin === null ? m.stock_no_sale_price() : formatETB(kit.margin)}
 				{#if kit.margin !== null && salePrice}
 					<span class="text-muted-foreground">({Math.round((kit.margin / salePrice) * 100)}%)</span>
 				{/if}
 			</dd>
 		</div>
 		<div>
-			<dt class="text-muted-foreground">Could make now</dt>
-			<dd class="font-medium">{kit.makes === null ? 'No limit (services only)' : kit.makes}</dd>
+			<dt class="text-muted-foreground">{m.stock_could_make()}</dt>
+			<dd class="font-medium">{kit.makes === null ? m.stock_no_limit_services() : kit.makes}</dd>
 		</div>
 	</dl>
 </div>

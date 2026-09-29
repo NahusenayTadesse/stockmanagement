@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { and, asc, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
@@ -27,7 +28,7 @@ export async function orgItem(orgId: number, id: number) {
 
 export async function requireOrgItem(orgId: number, id: number) {
 	const row = await orgItem(orgId, id);
-	if (!row) error(404, 'Item not found');
+	if (!row) error(404, m.stock_item_not_found());
 	return row;
 }
 
@@ -60,10 +61,7 @@ export async function checkItem(
 	// Every stock-tracked item has a main supplier; a service is nobody's stock.
 	if (!values.supplierId) {
 		if (values.stockTracked !== false) {
-			throw new WriteRefused(
-				'supplierId',
-				'Choose the main supplier. Use “New supplier” above the list if it is not there yet.'
-			);
+			throw new WriteRefused('supplierId', m.stock_err_main_supplier());
 		}
 		values.supplierId = null;
 	} else if (Number(values.supplierId) !== Number(before?.supplierId)) {
@@ -78,7 +76,7 @@ export async function checkItem(
 					isNull(supplier.deletedAt)
 				)
 			);
-		if (!s) throw new WriteRefused('supplierId', 'Choose a supplier from the list.');
+		if (!s) throw new WriteRefused('supplierId', m.stock_err_supplier_list());
 	}
 	if (values.trackExpiry) values.trackLots = true;
 	if (!values.stockTracked) {
@@ -101,10 +99,7 @@ export async function checkItem(
 				.from(stockMovement)
 				.where(eq(stockMovement.itemId, Number(before.id)));
 			if (moves > 0) {
-				throw new WriteRefused(
-					changed[0],
-					'Stock of this item has already moved, so its base unit and its lot, expiry and serial tracking can no longer change. Create a new item instead.'
-				);
+				throw new WriteRefused(changed[0], m.stock_err_item_moved());
 			}
 		}
 	}
@@ -122,7 +117,7 @@ export async function checkUnit(
 	const it = await requireOrgItem(orgId, itemId);
 	await belongsToOrg(uom, values.uomId, orgId, 'uomId', 'unit');
 	if (Number(values.uomId) === it.baseUomId) {
-		throw new WriteRefused('uomId', 'That is the base unit already; add the pack sizes here.');
+		throw new WriteRefused('uomId', m.stock_err_already_base());
 	}
 	const [dup] = await db
 		.select({ id: itemUnit.id })
@@ -135,7 +130,7 @@ export async function checkUnit(
 				excludeId ? ne(itemUnit.id, Number(excludeId)) : undefined
 			)
 		);
-	if (dup) throw new WriteRefused('uomId', 'This item already has that unit.');
+	if (dup) throw new WriteRefused('uomId', m.stock_err_unit_exists());
 	values.orgId = orgId;
 	return values;
 }
@@ -161,7 +156,7 @@ export async function checkBarcode(
 				excludeId ? ne(barcode.id, Number(excludeId)) : undefined
 			)
 		);
-	if (dup) throw new WriteRefused('code', 'This barcode is already on an item.');
+	if (dup) throw new WriteRefused('code', m.stock_err_barcode_taken());
 	values.orgId = orgId;
 	return values;
 }
@@ -183,15 +178,12 @@ async function checkVariant(
 		return;
 	}
 	if (before && Number(before.id) === parentId) {
-		throw new WriteRefused('parentItemId', 'An item cannot be a variant of itself.');
+		throw new WriteRefused('parentItemId', m.stock_err_variant_self());
 	}
 	const parent = await orgItem(orgId, parentId);
-	if (!parent) throw new WriteRefused('parentItemId', 'Choose an item from the list.');
+	if (!parent) throw new WriteRefused('parentItemId', m.stock_err_item_list());
 	if (parent.parentItemId) {
-		throw new WriteRefused(
-			'parentItemId',
-			`${parent.name} is itself a variant. Choose the item it is a variant of.`
-		);
+		throw new WriteRefused('parentItemId', m.stock_err_parent_is_variant({ item: parent.name }));
 	}
 	if (before) {
 		const [child] = await db
@@ -200,14 +192,11 @@ async function checkVariant(
 			.where(and(eq(item.parentItemId, Number(before.id)), isNull(item.deletedAt)))
 			.limit(1);
 		if (child) {
-			throw new WriteRefused(
-				'parentItemId',
-				'This item has variants of its own, so it cannot be one.'
-			);
+			throw new WriteRefused('parentItemId', m.stock_err_has_variants());
 		}
 	}
 	if (!values.variantLabel) {
-		throw new WriteRefused('variantLabel', 'Say what tells this variant apart, e.g. Red / XL.');
+		throw new WriteRefused('variantLabel', m.stock_err_variant_label());
 	}
 }
 
@@ -224,18 +213,18 @@ export async function checkComponent(
 ) {
 	const kit = await requireOrgItem(orgId, kitId);
 	if (!kit.isKit) {
-		throw new WriteRefused('componentItemId', 'Mark this item as a kit or recipe first.');
+		throw new WriteRefused('componentItemId', m.stock_err_mark_kit());
 	}
 	const comp = await orgItem(orgId, Number(values.componentItemId));
-	if (!comp) throw new WriteRefused('componentItemId', 'Choose an item from the list.');
-	if (comp.id === kit.id) throw new WriteRefused('componentItemId', 'A kit cannot contain itself.');
+	if (!comp) throw new WriteRefused('componentItemId', m.stock_err_item_list());
+	if (comp.id === kit.id) throw new WriteRefused('componentItemId', m.stock_err_kit_self());
 	if (comp.isKit) {
-		throw new WriteRefused('componentItemId', `${comp.name} is a kit; add its components instead.`);
+		throw new WriteRefused('componentItemId', m.stock_err_component_is_kit({ item: comp.name }));
 	}
 	if (comp.trackSerials) {
 		throw new WriteRefused(
 			'componentItemId',
-			`${comp.name} is tracked by serial number, so it cannot be part of a kit.`
+			m.stock_err_component_serial_kit({ item: comp.name })
 		);
 	}
 	const uomId = Number(values.uomId) || comp.baseUomId;
@@ -247,7 +236,7 @@ export async function checkComponent(
 				and(eq(itemUnit.itemId, comp.id), eq(itemUnit.uomId, uomId), isNull(itemUnit.deletedAt))
 			);
 		if (!pack) {
-			throw new WriteRefused('uomId', `${comp.name} has no such unit. Add it on its page first.`);
+			throw new WriteRefused('uomId', m.stock_err_component_no_unit({ item: comp.name }));
 		}
 	}
 	const [dup] = await db
@@ -261,7 +250,8 @@ export async function checkComponent(
 				excludeId ? ne(kitComponent.id, Number(excludeId)) : undefined
 			)
 		);
-	if (dup) throw new WriteRefused('componentItemId', `${comp.name} is already in this kit.`);
+	if (dup)
+		throw new WriteRefused('componentItemId', m.stock_err_component_dup({ item: comp.name }));
 	values.uomId = uomId;
 	values.orgId = orgId;
 	return values;
@@ -405,16 +395,13 @@ export async function createVariant(
 ) {
 	const parent = await requireOrgItem(orgId, parentId);
 	if (parent.parentItemId) {
-		throw new WriteRefused(
-			'variantLabel',
-			'This is a variant; add variants to the item it belongs to.'
-		);
+		throw new WriteRefused('variantLabel', m.stock_err_variant_of_variant());
 	}
 	const [skuTaken] = await db
 		.select({ id: item.id })
 		.from(item)
 		.where(and(eq(item.orgId, orgId), eq(item.sku, input.sku)));
-	if (skuTaken) throw new WriteRefused('sku', 'Another item already has this code.');
+	if (skuTaken) throw new WriteRefused('sku', m.stock_err_sku_taken());
 	if (input.barcode) await checkBarcode({ code: input.barcode, uomId: 0 }, orgId, parent.id);
 
 	return db.transaction(async (tx) => {

@@ -8,6 +8,7 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { supplierSchema } from '$lib/schemas/suppliers';
 	import SupplierFields from './SupplierFields.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	/**
 	 * "+ New supplier", for the forms that need one chosen — so receiving is never held up by a
@@ -47,7 +48,7 @@
 
 <DialogComp
 	bind:open
-	title="New supplier"
+	title={m.purchasing_new_supplier()}
 	variant="outline"
 	IconComp={Plus}
 	triggerClass="self-start"
@@ -59,11 +60,11 @@
 		id="quick-supplier"
 		class="flex flex-col gap-4"
 	>
-		<p class="text-sm text-muted-foreground">It is selected as soon as it is saved.</p>
+		<p class="text-sm text-muted-foreground">{m.purchasing_selected_when_saved()}</p>
 		<Errors allErrors={$allErrors} />
 		<SupplierFields {form} {errors} idPrefix="quick-" full={false} />
 		<Button type="submit" form="quick-supplier">
-			{#if $delayed}<LoadingBtn name="Saving" />{:else}Add supplier{/if}
+			{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.purchasing_add_supplier()}{/if}
 		</Button>
 	</form>
 </DialogComp>

@@ -26,7 +26,8 @@
 		requisitionLineAdd,
 		requisitionLineEdit
 	} from '$lib/schemas/requisitions';
-	import { qty } from '$lib/format';
+	import { DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
+	import { m } from '$lib/paraglide/messages.js';
 	import RequisitionHeaderFields from '../RequisitionHeaderFields.svelte';
 
 	let { data } = $props();
@@ -51,18 +52,24 @@
 	const headerAllErrors = header.allErrors;
 
 	const fields: LookupField[] = [
-		{ name: 'itemId', label: 'Item', type: 'reference', options: 'items', display: 'item' },
-		{ name: 'quantity', label: 'Quantity', type: 'number' },
+		{
+			name: 'itemId',
+			label: m.common_item(),
+			type: 'reference',
+			options: 'items',
+			display: 'item'
+		},
+		{ name: 'quantity', label: m.common_quantity(), type: 'number' },
 		{
 			name: 'uomId',
-			label: 'Unit',
+			label: m.common_unit(),
 			type: 'reference',
 			options: 'units',
 			display: 'unit',
 			picker: 'select',
 			required: false
 		},
-		{ name: 'note', label: 'Note', type: 'text', required: false }
+		{ name: 'note', label: m.common_note(), type: 'text', required: false }
 	];
 	const options = $derived({ itemId: data.items, uomId: data.units });
 
@@ -77,15 +84,15 @@
 </script>
 
 <svelte:head>
-	<title>{req.number ?? `Draft requisition #${req.id}`}</title>
+	<title>{req.number ?? m.purchasing_draft_requisition({ id: req.id })}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">Requisition</p>
+			<p class="text-sm text-muted-foreground">{m.purchasing_requisition()}</p>
 			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{req.number ?? `Draft #${req.id}`}
+				{req.number ?? m.purchasing_draft_number({ id: req.id })}
 				<Badge
 					variant={req.status === 'rejected' || req.status === 'cancelled'
 						? 'destructive'
@@ -97,8 +104,11 @@
 				</Badge>
 			</h1>
 			<p class="text-muted-foreground">
-				<strong>{req.department}</strong> asks {data.details.location} ({data.details.branch}) ·
-				{day(req.requestDate)}{req.neededBy ? ` · needed by ${day(req.neededBy)}` : ''}
+				<strong>{req.department}</strong>
+				{m.purchasing_req_asks({ place: `${data.details.location} (${data.details.branch})` })} ·
+				{day(req.requestDate)}{req.neededBy
+					? ` · ${m.purchasing_req_needed_by({ date: day(req.neededBy) })}`
+					: ''}
 			</p>
 		</div>
 
@@ -106,7 +116,7 @@
 			{#if isDraft && data.canRequest}
 				<DialogComp
 					bind:open={editOpen}
-					title="Edit requisition"
+					title={m.purchasing_edit_requisition()}
 					variant="outline"
 					IconComp={Pencil}
 				>
@@ -124,14 +134,16 @@
 							locations={data.locations}
 							departments={data.departments}
 						/>
-						<Button type="submit" form="requisition-header">Save</Button>
+						<Button type="submit" form="requisition-header">{m.common_save()}</Button>
 					</form>
 				</DialogComp>
 			{/if}
 
 			{#if req.status !== 'issued' && req.status !== 'cancelled' && req.status !== 'rejected' && (data.canRequest || data.canApprove)}
 				<form method="POST" action="?/cancel" use:enhance={submit}>
-					<Button type="submit" variant="outline" disabled={busy}><Ban /> Cancel</Button>
+					<Button type="submit" variant="outline" disabled={busy}
+						><Ban /> {m.common_cancel()}</Button
+					>
 				</form>
 			{/if}
 
@@ -139,14 +151,15 @@
 				<Button
 					href={resolve('/dashboard/requisitions/[id]/print', { id: String(req.id) })}
 					target="_blank"
-					variant="outline"><Printer /> Print</Button
+					variant="outline"><Printer /> {m.common_print()}</Button
 				>
 			{/if}
 
 			{#if isDraft && data.canRequest}
 				<form method="POST" action="?/submit" use:enhance={submit}>
 					<Button type="submit" disabled={busy || !data.lines.rows.length}>
-						{#if busy}<LoadingBtn name="Submitting" />{:else}<Send /> Submit for approval{/if}
+						{#if busy}<LoadingBtn name={m.purchasing_submitting()} />{:else}<Send />
+							{m.purchasing_submit_for_approval()}{/if}
 					</Button>
 				</form>
 			{/if}
@@ -154,11 +167,13 @@
 			{#if req.status === 'approved' && data.canIssue}
 				{#if openIssue}
 					<Button href={resolve('/dashboard/stock/documents/[id]', { id: String(openIssue.id) })}
-						><PackageMinus /> Open the issue</Button
+						><PackageMinus /> {m.purchasing_open_issue()}</Button
 					>
 				{:else}
 					<form method="POST" action="?/issue" use:enhance={submit}>
-						<Button type="submit" disabled={busy}><PackageMinus /> Issue from the store</Button>
+						<Button type="submit" disabled={busy}
+							><PackageMinus /> {m.purchasing_issue_from_store()}</Button
+						>
 					</form>
 				{/if}
 			{/if}
@@ -167,8 +182,7 @@
 
 	{#if req.status === 'submitted' && data.isAsker}
 		<p class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950">
-			Waiting for approval. You submitted it, so someone else who may approve requisitions has to
-			decide.
+			{m.purchasing_req_waiting_own()}
 		</p>
 	{/if}
 
@@ -176,8 +190,15 @@
 		<Card.Root>
 			<Card.Content class="flex flex-col gap-1 text-sm">
 				<p>
-					<strong>{req.status === 'rejected' ? 'Rejected' : 'Approved'}</strong> by {data.details
-						.decidedBy ?? '—'} on {formatEthiopianDate(new Date(req.decidedAt))}
+					<strong
+						>{req.status === 'rejected'
+							? m.purchasing_rejected_word()
+							: m.purchasing_approved_word()}</strong
+					>
+					{m.purchasing_decided_by({
+						who: data.details.decidedBy ?? '—',
+						date: formatEthiopianDate(new Date(req.decidedAt))
+					})}
 				</p>
 				{#if req.decisionNote}<p class="whitespace-pre-line">{req.decisionNote}</p>{/if}
 			</Card.Content>
@@ -187,10 +208,14 @@
 	{#if req.note}
 		<Card.Root>
 			<Card.Content class="flex flex-col gap-1 text-sm">
-				<p class="whitespace-pre-line"><strong>Note:</strong> {req.note}</p>
+				<p class="whitespace-pre-line">
+					<strong>{m.purchasing_note_label()}</strong>
+					{req.note}
+				</p>
 				<p class="text-muted-foreground">
-					Written by {data.details.createdBy ?? '—'}{data.details.submittedBy
-						? ` · submitted by ${data.details.submittedBy}`
+					{m.purchasing_written_by({ name: data.details.createdBy ?? '—' })}{data.details
+						.submittedBy
+						? m.purchasing_submitted_by({ name: data.details.submittedBy })
 						: ''}
 				</p>
 			</Card.Content>
@@ -198,10 +223,10 @@
 	{/if}
 
 	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">What is asked for</h2>
+		<h2 class="text-xl font-semibold">{m.purchasing_what_asked()}</h2>
 		{#if isDraft}
 			<LookupSection
-				config={{ entity: 'Line', plural: 'Lines', fields }}
+				config={{ entity: m.purchasing_entity_line(), plural: m.purchasing_lines(), fields }}
 				rows={data.lines.rows}
 				addForm={data.lines.addForm}
 				editForm={data.lines.editForm}
@@ -214,17 +239,16 @@
 		{:else if canDecide}
 			<form method="POST" action="?/approve" use:enhance={submit} class="flex flex-col gap-3">
 				<p class="text-sm text-muted-foreground">
-					Lower a quantity to approve less; 0 refuses that line. Approving holds the stock at the
-					store when the business reserves stock.
+					{m.purchasing_approve_hint()}
 				</p>
 				<div class="overflow-x-auto rounded-md border">
 					<table class="w-full text-sm">
 						<thead class="bg-muted/50 text-left">
 							<tr>
-								<th class="px-3 py-2">Item</th>
-								<th class="px-3 py-2 text-right">Asked</th>
-								<th class="px-3 py-2 text-right">In the store now</th>
-								<th class="px-3 py-2 text-right">Approve</th>
+								<th class="px-3 py-2">{m.common_item()}</th>
+								<th class="px-3 py-2 text-right">{m.purchasing_col_asked()}</th>
+								<th class="px-3 py-2 text-right">{m.purchasing_col_in_store()}</th>
+								<th class="px-3 py-2 text-right">{m.purchasing_col_approve()}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -246,7 +270,7 @@
 												max={line.quantity}
 												step="any"
 												class="w-28 text-right"
-												aria-label="Approve how much {line.item}"
+												aria-label={m.purchasing_approve_how_much({ item: line.item })}
 											/>
 											<span class="text-muted-foreground">{line.unit}</span>
 										</div>
@@ -257,15 +281,17 @@
 					</table>
 				</div>
 				<label class="flex flex-col gap-1 text-sm">
-					Note (needed to reject)
-					<Textarea name="note" rows={2} placeholder="Why it was cut or refused" />
+					{m.purchasing_note_reject()}
+					<Textarea name="note" rows={2} placeholder={m.purchasing_note_reject_ph()} />
 				</label>
 				<div class="flex flex-wrap gap-2">
 					<Button type="submit" disabled={busy}>
-						{#if busy}<LoadingBtn name="Saving" />{:else}<Check /> Approve{/if}
+						{#if busy}<LoadingBtn name={m.common_saving()} />{:else}<Check />
+							{m.purchasing_approve()}{/if}
 					</Button>
 					<Button type="submit" formaction="?/reject" variant="destructive" disabled={busy}>
-						<X /> Reject
+						<X />
+						{m.purchasing_reject()}
 					</Button>
 				</div>
 			</form>
@@ -274,10 +300,10 @@
 				<table class="w-full text-sm">
 					<thead class="bg-muted/50 text-left">
 						<tr>
-							<th class="px-3 py-2">Item</th>
-							<th class="px-3 py-2 text-right">Asked</th>
-							<th class="px-3 py-2 text-right">Approved</th>
-							<th class="px-3 py-2 text-right">In the store now</th>
+							<th class="px-3 py-2">{m.common_item()}</th>
+							<th class="px-3 py-2 text-right">{m.purchasing_col_asked()}</th>
+							<th class="px-3 py-2 text-right">{m.purchasing_col_approved()}</th>
+							<th class="px-3 py-2 text-right">{m.purchasing_col_in_store()}</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -307,17 +333,19 @@
 
 	{#if data.issues.length}
 		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">Issued</h2>
+			<h2 class="text-xl font-semibold">{m.purchasing_issued_heading()}</h2>
 			<ul class="flex flex-col divide-y rounded-md border">
 				{#each data.issues as doc (doc.id)}
 					<li class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
 						<a
 							class="font-medium underline-offset-4 hover:underline"
 							href={resolve('/dashboard/stock/documents/[id]', { id: String(doc.id) })}
-							>{doc.number ?? `Draft issue #${doc.id}`}</a
+							>{doc.number ?? m.purchasing_draft_issue({ id: doc.id })}</a
 						>
 						<span class="text-muted-foreground">{day(doc.docDate)}</span>
-						<Badge variant={doc.status === 'posted' ? 'default' : 'secondary'}>{doc.status}</Badge>
+						<Badge variant={doc.status === 'posted' ? 'default' : 'secondary'}
+							>{DOCUMENT_STATUS_LABELS[doc.status]}</Badge
+						>
 					</li>
 				{/each}
 			</ul>

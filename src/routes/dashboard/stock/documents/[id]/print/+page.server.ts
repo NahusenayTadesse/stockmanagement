@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
@@ -81,7 +82,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		.leftJoin(paymentMethod, eq(paymentMethod.id, transactions.paymentMethodId))
 		.where(and(eq(stockDocument.id, Number(params.id)), eq(stockDocument.orgId, orgId)));
 
-	if (!doc) error(404, 'Document not found');
+	if (!doc) error(404, m.stock_doc_not_found());
 
 	const lines = await db
 		.select({

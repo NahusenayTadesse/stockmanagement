@@ -1,6 +1,7 @@
 /**
  * Stock document headers and lines: what a draft may contain. Posting is `./post`.
  */
+import { m } from '$lib/paraglide/messages.js';
 import { error } from '@sveltejs/kit';
 import { and, eq, isNull } from 'drizzle-orm';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
@@ -33,7 +34,7 @@ export async function orgDocument(orgId: number, id: number) {
 		.from(stockDocument)
 		.where(and(eq(stockDocument.id, id), eq(stockDocument.orgId, orgId)))
 		.limit(1);
-	if (!doc) error(404, 'Document not found');
+	if (!doc) error(404, m.stock_doc_not_found());
 	return doc;
 }
 
@@ -71,7 +72,7 @@ export async function headerValues(
 ) {
 	// Returns are started from the sale or receipt they return, never from the blank form.
 	if ((h.type === 'sales_return' || h.type === 'purchase_return') && !options.allowReturn) {
-		throw new WriteRefused('type', 'Start a return from the sale or receipt being returned.');
+		throw new WriteRefused('type', m.stock_err_start_return());
 	}
 	const needsFrom = h.type !== 'receipt' && h.type !== 'sales_return';
 	const needsTo = h.type === 'receipt' || h.type === 'transfer' || h.type === 'sales_return';
@@ -81,14 +82,14 @@ export async function headerValues(
 		if (!id) {
 			throw new WriteRefused(
 				field,
-				field === 'toLocationId' ? 'Choose where the stock goes.' : 'Choose where the stock is.'
+				field === 'toLocationId' ? m.stock_err_choose_to() : m.stock_err_choose_from()
 			);
 		}
 		const [row] = await db
 			.select()
 			.from(location)
 			.where(and(eq(location.id, id), eq(location.orgId, orgId), isNull(location.deletedAt)));
-		if (!row) throw new WriteRefused(field, 'Choose a location from the list.');
+		if (!row) throw new WriteRefused(field, m.stock_err_location_list());
 		return row;
 	};
 
@@ -96,7 +97,7 @@ export async function headerValues(
 	let supplierId: number | null = null;
 	if (h.type === 'receipt') {
 		if (!h.supplierId) {
-			throw new WriteRefused('supplierId', 'Choose the supplier, or add a new one.');
+			throw new WriteRefused('supplierId', m.stock_err_supplier_or_new());
 		}
 		const [found] = await db
 			.select({ id: supplier.id })
@@ -109,7 +110,7 @@ export async function headerValues(
 					isNull(supplier.deletedAt)
 				)
 			);
-		if (!found) throw new WriteRefused('supplierId', 'Choose a supplier from the list.');
+		if (!found) throw new WriteRefused('supplierId', m.stock_err_supplier_list());
 		supplierId = found.id;
 	}
 
@@ -117,34 +118,31 @@ export async function headerValues(
 	let customerId: number | null = null;
 	if (h.type === 'issue' && h.customerId) {
 		const found = await checkCustomer(orgId, h.customerId);
-		if (!found) throw new WriteRefused('customerId', 'Choose a customer from the list.');
+		if (!found) throw new WriteRefused('customerId', m.stock_err_customer_list());
 		customerId = found.id;
 	}
 
 	const from = await pick(h.fromLocationId, 'fromLocationId', needsFrom);
 	const to = await pick(h.toLocationId, 'toLocationId', needsTo);
 	if (from && to && from.id === to.id) {
-		throw new WriteRefused('toLocationId', 'A transfer needs two different locations.');
+		throw new WriteRefused('toLocationId', m.stock_err_two_locations());
 	}
 	if (from?.kind === 'transit' || to?.kind === 'transit') {
 		throw new WriteRefused(
 			from?.kind === 'transit' ? 'fromLocationId' : 'toLocationId',
-			'Stock in transit moves only by being received.'
+			m.stock_err_transit_only()
 		);
 	}
 	const scope = options.scope ?? null;
 	const own = from ?? to;
 	if (scope && own && !scope.includes(own.branchId)) {
-		throw new WriteRefused(
-			from ? 'fromLocationId' : 'toLocationId',
-			'Choose a location in your branch.'
-		);
+		throw new WriteRefused(from ? 'fromLocationId' : 'toLocationId', m.stock_err_your_branch());
 	}
 
 	// Another currency: only on receipts, and then with the rate it was bought at.
 	const currency = h.type === 'receipt' && h.currency && h.currency !== 'ETB' ? h.currency : null;
 	if (currency && !h.exchangeRate) {
-		throw new WriteRefused('exchangeRate', `Enter the rate: birr per one ${currency}.`);
+		throw new WriteRefused('exchangeRate', m.stock_err_rate({ currency }));
 	}
 	const crossBranch = h.type === 'transfer' && from && to && from.branchId !== to.branchId;
 
@@ -204,17 +202,19 @@ export async function lineValues(
 		.select()
 		.from(item)
 		.where(and(eq(item.id, Number(values.itemId)), eq(item.orgId, orgId), isNull(item.deletedAt)));
-	if (!it) throw new WriteRefused('itemId', 'Choose an item from the list.');
+	if (!it) throw new WriteRefused('itemId', m.stock_err_item_list());
 	// Services and kits have no stock: they can be sold (a kit's components leave the shelf), and
 	// nothing else.
 	if (!it.stockTracked && doc.type !== 'issue') {
 		throw new WriteRefused(
 			'itemId',
-			`${it.name} is not stocked, so it cannot be ${doc.type === 'receipt' ? 'received' : 'moved'}.`
+			doc.type === 'receipt'
+				? m.stock_err_not_stocked_receive({ item: it.name })
+				: m.stock_err_not_stocked_move({ item: it.name })
 		);
 	}
 	if (!it.stockTracked && !it.sellable) {
-		throw new WriteRefused('itemId', `${it.name} is not for sale.`);
+		throw new WriteRefused('itemId', m.stock_err_not_for_sale({ item: it.name }));
 	}
 
 	// A line delivering an order line keeps that line's item and unit, or "received" stops meaning
@@ -231,13 +231,13 @@ export async function lineValues(
 				)
 			);
 		if (!ordered || ordered.itemId !== it.id) {
-			throw new WriteRefused('itemId', 'This line delivers an order line; its item cannot change.');
+			throw new WriteRefused('itemId', m.stock_err_order_line_item());
 		}
 		values.uomId = ordered.uomId;
 	}
 
 	if (Number(values.quantity) < 0 && doc.type !== 'adjustment') {
-		throw new WriteRefused('quantity', 'The quantity must be positive.');
+		throw new WriteRefused('quantity', m.stock_err_positive());
 	}
 
 	if (!values.uomId) values.uomId = it.baseUomId;
@@ -255,10 +255,7 @@ export async function lineValues(
 				)
 			);
 		if (!conv) {
-			throw new WriteRefused(
-				'uomId',
-				`${it.name} has no conversion for this unit. Add it on the item's page first.`
-			);
+			throw new WriteRefused('uomId', m.stock_err_no_conversion_unit({ item: it.name }));
 		}
 		factor = conv.factor;
 	}
@@ -279,7 +276,7 @@ export async function lineValues(
 			.select({ itemId: lot.itemId })
 			.from(lot)
 			.where(and(eq(lot.id, Number(values.lotId)), eq(lot.orgId, orgId)));
-		if (!l || l.itemId !== it.id) throw new WriteRefused('lotId', 'That lot is not of this item.');
+		if (!l || l.itemId !== it.id) throw new WriteRefused('lotId', m.stock_err_lot_not_item());
 	}
 
 	// Bought in another currency: the price as invoiced, and its cost in birr at the receipt's rate.

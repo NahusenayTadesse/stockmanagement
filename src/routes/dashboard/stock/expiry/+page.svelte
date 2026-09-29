@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Mail from '@lucide/svelte/icons/mail';
@@ -31,10 +32,14 @@
 	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
 	const when = (r: Row) =>
 		r.days < 0
-			? `expired ${-r.days} day${r.days === -1 ? '' : 's'} ago`
+			? r.days === -1
+				? m.stock_expired_days_ago_one()
+				: m.stock_expired_days_ago({ days: -r.days })
 			: r.days === 0
-				? 'expires today'
-				: `in ${r.days} day${r.days === 1 ? '' : 's'}`;
+				? m.stock_expires_today()
+				: r.days === 1
+					? m.stock_in_days_one()
+					: m.stock_in_days({ days: r.days });
 
 	const submitting = () => {
 		busy = true;
@@ -46,21 +51,21 @@
 </script>
 
 <svelte:head>
-	<title>Expiry follow-up</title>
+	<title>{m.stock_expiry_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div class="flex flex-wrap items-start justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Expiry follow-up</h1>
+			<h1 class="text-2xl font-semibold">{m.stock_expiry_title()}</h1>
 			<p class="text-muted-foreground">
-				Lots that have expired or will within their category's warning period, where they are, and
-				what they are worth at cost. Expired stock is never sold or issued; move it to quarantine or
-				write it off.
+				{m.stock_expiry_intro()}
 			</p>
 		</div>
 		<form method="POST" action="?/emailMe" use:enhance={submitting}>
-			<Button type="submit" variant="outline" disabled={busy}><Mail /> Email me this list</Button>
+			<Button type="submit" variant="outline" disabled={busy}
+				><Mail /> {m.stock_email_me_list()}</Button
+			>
 		</form>
 	</div>
 
@@ -70,34 +75,39 @@
 			class="rounded-lg border p-4 text-left {band === 'expired' ? 'ring-2 ring-destructive' : ''}"
 			onclick={() => (band = band === 'expired' ? 'all' : 'expired')}
 		>
-			<p class="text-sm text-muted-foreground">Expired, not in quarantine</p>
+			<p class="text-sm text-muted-foreground">{m.stock_expired_not_quarantine()}</p>
 			<p class="text-2xl font-semibold text-destructive">{expiredOut.length}</p>
-			<p class="text-sm text-muted-foreground">{formatETB(sum(expiredOut))} at cost</p>
+			<p class="text-sm text-muted-foreground">
+				{m.stock_at_cost({ amount: formatETB(sum(expiredOut)) })}
+			</p>
 		</button>
 		<button
 			type="button"
 			class="rounded-lg border p-4 text-left {band === 'soon' ? 'ring-2 ring-amber-500' : ''}"
 			onclick={() => (band = band === 'soon' ? 'all' : 'soon')}
 		>
-			<p class="text-sm text-muted-foreground">Expire within 30 days</p>
+			<p class="text-sm text-muted-foreground">{m.stock_expire_30()}</p>
 			<p class="text-2xl font-semibold text-amber-600">{soon.length}</p>
-			<p class="text-sm text-muted-foreground">{formatETB(sum(soon))} at cost</p>
+			<p class="text-sm text-muted-foreground">
+				{m.stock_at_cost({ amount: formatETB(sum(soon)) })}
+			</p>
 		</button>
 		<button
 			type="button"
 			class="rounded-lg border p-4 text-left {band === 'later' ? 'ring-2 ring-primary' : ''}"
 			onclick={() => (band = band === 'later' ? 'all' : 'later')}
 		>
-			<p class="text-sm text-muted-foreground">Later, within the warning period</p>
+			<p class="text-sm text-muted-foreground">{m.stock_later_warning()}</p>
 			<p class="text-2xl font-semibold">{later.length}</p>
-			<p class="text-sm text-muted-foreground">{formatETB(sum(later))} at cost</p>
+			<p class="text-sm text-muted-foreground">
+				{m.stock_at_cost({ amount: formatETB(sum(later)) })}
+			</p>
 		</button>
 	</div>
 
 	{#if !shown.length}
 		<p class="rounded-md border p-6 text-center text-muted-foreground">
-			Nothing here. Lots appear on this page once they come within their category's expiry warning
-			period.
+			{m.stock_expiry_nothing()}
 		</p>
 	{:else}
 		<form method="POST" action="?/draft" use:enhance={submitting} class="flex flex-col gap-3">
@@ -110,7 +120,7 @@
 									<input
 										type="checkbox"
 										class="size-4"
-										aria-label="Tick all"
+										aria-label={m.stock_tick_all()}
 										checked={allTicked}
 										onchange={(e) => {
 											for (const r of shown) picked[key(r)] = e.currentTarget.checked;
@@ -118,12 +128,12 @@
 									/>
 								{/if}
 							</th>
-							<th class="px-3 py-2">Item</th>
-							<th class="px-3 py-2">Lot</th>
-							<th class="px-3 py-2">Expiry</th>
-							<th class="px-3 py-2">Where</th>
-							<th class="px-3 py-2 text-right">Quantity</th>
-							<th class="px-3 py-2 text-right">Value</th>
+							<th class="px-3 py-2">{m.common_item()}</th>
+							<th class="px-3 py-2">{m.stock_col_lot()}</th>
+							<th class="px-3 py-2">{m.stock_col_expiry()}</th>
+							<th class="px-3 py-2">{m.stock_digest_where()}</th>
+							<th class="px-3 py-2 text-right">{m.common_quantity()}</th>
+							<th class="px-3 py-2 text-right">{m.stock_col_value()}</th>
 							<th class="px-3 py-2"></th>
 						</tr>
 					</thead>
@@ -143,7 +153,11 @@
 											name="pick"
 											value={key(r)}
 											bind:checked={picked[key(r)]}
-											aria-label="Pick {r.item} lot {r.lotNumber} at {r.location}"
+											aria-label={m.stock_pick_aria({
+												item: r.item,
+												lot: r.lotNumber,
+												location: r.location
+											})}
 											class="size-4"
 										/>
 									{/if}
@@ -170,9 +184,13 @@
 								</td>
 								<td class="px-3 py-2">
 									{r.location}
-									{#if r.locationKind === 'quarantine'}<Badge variant="outline">quarantine</Badge
+									{#if r.locationKind === 'quarantine'}<Badge variant="outline"
+											>{m.stock_quarantine()}</Badge
 										>{/if}
-									{#if r.lotStatus !== 'available'}<Badge variant="secondary">{r.lotStatus}</Badge
+									{#if r.lotStatus !== 'available'}<Badge variant="secondary"
+											>{r.lotStatus === 'recalled'
+												? m.stock_lot_state_recalled()
+												: m.stock_lot_state_quarantine()}</Badge
 										>{/if}
 									<p class="text-xs text-muted-foreground">{r.branch}</p>
 								</td>
@@ -183,7 +201,7 @@
 										<a
 											class="text-xs text-primary underline-offset-4 hover:underline"
 											href={resolve('/dashboard/stock/documents/[id]', { id: String(r.draftId) })}
-											>Draft #{r.draftId}</a
+											>{m.stock_draft_number({ id: r.draftId })}</a
 										>
 									{/if}
 								</td>
@@ -198,8 +216,7 @@
 					class="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-md border bg-background p-3 shadow-sm"
 				>
 					<p class="text-sm text-muted-foreground">
-						{chosen.length} ticked · {formatETB(sum(chosen))} at cost. The whole quantity at each place
-						is drafted.
+						{m.stock_ticked_summary({ count: chosen.length, value: formatETB(sum(chosen)) })}
 					</p>
 					<div class="ml-auto flex flex-wrap gap-2">
 						<Button
@@ -209,7 +226,8 @@
 							variant="outline"
 							disabled={busy || !chosen.length}
 						>
-							<ShieldAlert /> Draft move to quarantine
+							<ShieldAlert />
+							{m.stock_draft_quarantine()}
 						</Button>
 						<Button
 							type="submit"
@@ -218,7 +236,8 @@
 							variant="destructive"
 							disabled={busy || !chosen.length}
 						>
-							<Trash2 /> Draft write-off
+							<Trash2 />
+							{m.stock_draft_writeoff()}
 						</Button>
 					</div>
 				</div>

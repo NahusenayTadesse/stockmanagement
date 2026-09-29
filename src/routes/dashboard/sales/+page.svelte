@@ -11,36 +11,54 @@
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
+	import { DOCUMENT_STATUS_LABELS, EINVOICE_STATUS_LABELS } from '$lib/format';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 	type Row = (typeof data.sales)[number];
 	const f = $derived(data.filters);
 
 	const columns: ColumnDef<Row>[] = [
-		{ accessorKey: 'docDate', header: 'Date', cell: (i) => ethiopianDate(i.getValue()) },
+		{ accessorKey: 'docDate', header: m.common_date(), cell: (i) => ethiopianDate(i.getValue()) },
 		{
 			accessorKey: 'number',
-			header: 'Number',
+			header: m.sales_number(),
 			cell: ({ row }) =>
 				renderComponent(DataTableLinks, {
 					id: row.original.id,
-					name: row.original.number ?? `Draft #${row.original.id}`,
+					name: row.original.number ?? m.sales_draft_number({ id: row.original.id }),
 					entity: 'document'
 				})
 		},
-		{ accessorKey: 'kind', header: 'Kind' },
-		{ accessorKey: 'buyer', header: 'Customer' },
-		{ accessorKey: 'channel', header: 'Where' },
-		{ accessorKey: 'total', header: 'Total', cell: (i) => formatETB(Number(i.getValue())) },
-		{ accessorKey: 'paid', header: 'Paid', cell: (i) => formatETB(Number(i.getValue())) },
+		{ accessorKey: 'kind', header: m.sales_kind() },
+		{ accessorKey: 'buyer', header: m.sales_customer() },
+		{ accessorKey: 'channel', header: m.sales_where() },
+		{
+			accessorKey: 'total',
+			header: m.common_total(),
+			cell: (i) => formatETB(Number(i.getValue()))
+		},
+		{ accessorKey: 'paid', header: m.sales_paid(), cell: (i) => formatETB(Number(i.getValue())) },
 		{
 			accessorKey: 'balance',
-			header: 'On account',
+			header: m.sales_on_account(),
 			cell: (i) => (Number(i.getValue()) ? formatETB(Number(i.getValue())) : '—')
 		},
-		{ accessorKey: 'fsNumber', header: 'FS No.', cell: (i) => i.getValue() ?? '—' },
-		{ accessorKey: 'einvoiceStatus', header: 'E-invoice', cell: (i) => i.getValue() ?? '—' },
-		{ accessorKey: 'status', header: 'Status' },
+		{ accessorKey: 'fsNumber', header: m.sales_fs_no(), cell: (i) => i.getValue() ?? '—' },
+		{
+			accessorKey: 'einvoiceStatus',
+			header: m.sales_einvoice(),
+			cell: (i) => {
+				const v = i.getValue() as string | null;
+				return v ? (EINVOICE_STATUS_LABELS[v] ?? v) : '—';
+			}
+		},
+		{
+			accessorKey: 'status',
+			header: m.common_status(),
+			cell: (i) =>
+				DOCUMENT_STATUS_LABELS[i.getValue() as keyof typeof DOCUMENT_STATUS_LABELS] ?? i.getValue()
+		},
 		{
 			id: 'invoice',
 			header: '',
@@ -48,7 +66,7 @@
 				row.original.status === 'posted'
 					? renderComponent(DataTableLinks, {
 							id: `${row.original.id}/invoice`,
-							name: 'Invoice',
+							name: m.sales_invoice(),
 							entity: 'sale',
 							target: '_blank'
 						})
@@ -58,23 +76,20 @@
 </script>
 
 <svelte:head>
-	<title>Sales</title>
+	<title>{m.sales_register_title()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-4">
 	<div class="flex flex-wrap items-start justify-between gap-2">
 		<div>
-			<h1 class="text-2xl font-semibold">Sales & invoices</h1>
-			<p class="text-muted-foreground">
-				Every sale with prices — from the till, a proforma or the office — and every customer
-				return, VAT and TOT included.
-			</p>
+			<h1 class="text-2xl font-semibold">{m.sales_register_heading()}</h1>
+			<p class="text-muted-foreground">{m.sales_register_intro()}</p>
 		</div>
 		<div class="flex gap-2">
 			<Button href={resolve('/dashboard/sales/quotes')} variant="outline"
-				><FileText /> Proformas</Button
+				><FileText /> {m.nav_proformas()}</Button
 			>
-			<Button href={resolve('/dashboard/pos')}><Calculator /> Till</Button>
+			<Button href={resolve('/dashboard/pos')}><Calculator /> {m.sales_channel_till()}</Button>
 		</div>
 	</div>
 
@@ -89,18 +104,24 @@
 		<form method="GET" class="flex items-end gap-2">
 			<Input name="from" type="date" value={f.from} class="h-8" />
 			<Input name="to" type="date" value={f.to} class="h-8" />
-			<Button type="submit" size="sm" variant="outline">Show</Button>
+			<Button type="submit" size="sm" variant="outline">{m.sales_show()}</Button>
 		</form>
 	</div>
 
 	<div class="grid gap-4 sm:grid-cols-4">
 		<StatCard
-			stat={{ key: 'n', label: 'Sales', value: data.totals.count, format: 'count', group: 's' }}
+			stat={{
+				key: 'n',
+				label: m.sales_sales(),
+				value: data.totals.count,
+				format: 'count',
+				group: 's'
+			}}
 		/>
 		<StatCard
 			stat={{
 				key: 'sold',
-				label: 'Sold (less returns)',
+				label: m.sales_sold_less_returns(),
 				value: data.totals.sold,
 				format: 'money',
 				group: 's'
@@ -109,7 +130,7 @@
 		<StatCard
 			stat={{
 				key: 'got',
-				label: 'Collected on them',
+				label: m.sales_collected(),
 				value: data.totals.collected,
 				format: 'money',
 				group: 's',
@@ -119,7 +140,7 @@
 		<StatCard
 			stat={{
 				key: 'acct',
-				label: 'Left on account',
+				label: m.sales_left_on_account(),
 				value: data.totals.onAccount,
 				format: 'money',
 				group: 's',
@@ -131,7 +152,7 @@
 	<DataTable
 		data={data.sales}
 		{columns}
-		fileName="Sales {f.from} to {f.to}"
+		fileName={m.sales_file_range({ from: f.from, to: f.to })}
 		facetKeys={['kind', 'channel', 'status']}
 	/>
 </div>

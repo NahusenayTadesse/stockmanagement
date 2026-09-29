@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 	const doc = $derived(data.doc);
@@ -11,28 +12,34 @@
 </script>
 
 <svelte:head>
-	<title>Receipt {doc.number}</title>
+	<title>{m.sales_receipt_title({ number: doc.number ?? '' })}</title>
 </svelte:head>
 
 <main class="receipt">
 	<header>
 		<strong class="big">{data.org.name}</strong>
-		{#if data.org.tin}<div>TIN {data.org.tin}</div>{/if}
+		{#if data.org.tin}<div>{m.sales_tin({ tin: data.org.tin })}</div>{/if}
 		<div>{data.branch.name}{data.branch.address ? `, ${data.branch.address}` : ''}</div>
 		{#if data.branch.phone ?? data.org.phone}<div>
-				Tel {data.branch.phone ?? data.org.phone}
+				{m.sales_tel({ phone: data.branch.phone ?? data.org.phone ?? '' })}
 			</div>{/if}
 	</header>
 
 	<div class="rule"></div>
 	<div class="row">
-		<span>{doc.type === 'sales_return' ? 'Refund' : 'Receipt'}</span><span>{doc.number}</span>
+		<span>{doc.type === 'sales_return' ? m.sales_refund() : m.sales_receipt_word()}</span><span
+			>{doc.number}</span
+		>
 	</div>
 	<div class="row">
 		<span>{ethiopianDateTime(doc.postedAt ?? doc.createdAt)}</span><span>{data.seller ?? ''}</span>
 	</div>
 	{#if data.buyer}
-		<div>Customer: {data.buyer.name}{data.buyer.tin ? `, TIN ${data.buyer.tin}` : ''}</div>
+		<div>
+			{m.sales_customer_colon({ name: data.buyer.name })}{data.buyer.tin
+				? `, ${m.sales_tin({ tin: data.buyer.tin })}`
+				: ''}
+		</div>
 	{/if}
 	<div class="rule"></div>
 
@@ -43,7 +50,7 @@
 			<span>{formatETB(l.net)}</span>
 		</div>
 		{#if l.listPrice && l.unitPrice !== null && l.listPrice > l.unitPrice}
-			<div class="small">&nbsp;&nbsp;was {formatETB(l.listPrice)}</div>
+			<div class="small">&nbsp;&nbsp;{m.sales_was({ price: formatETB(l.listPrice) })}</div>
 		{/if}
 		{#if l.serials}<div class="small">&nbsp;&nbsp;S/N {l.serials.split('\n').join(', ')}</div>{/if}
 	{/each}
@@ -51,31 +58,35 @@
 	<div class="rule"></div>
 	{#if data.totals}
 		{#if data.totals.vat || data.totals.tot}
-			<div class="row"><span>Before tax</span><span>{formatETB(data.totals.net)}</span></div>
+			<div class="row">
+				<span>{m.sales_pos_before_tax()}</span><span>{formatETB(data.totals.net)}</span>
+			</div>
 		{/if}
 		{#if data.totals.vat}<div class="row">
-				<span>VAT</span><span>{formatETB(data.totals.vat)}</span>
+				<span>{m.sales_vat()}</span><span>{formatETB(data.totals.vat)}</span>
 			</div>{/if}
 		{#if data.totals.tot}<div class="row">
-				<span>TOT</span><span>{formatETB(data.totals.tot)}</span>
+				<span>{m.sales_tot()}</span><span>{formatETB(data.totals.tot)}</span>
 			</div>{/if}
-		<div class="row big"><span>TOTAL</span><span>{formatETB(data.totals.gross)}</span></div>
+		<div class="row big">
+			<span>{m.sales_total_caps()}</span><span>{formatETB(data.totals.gross)}</span>
+		</div>
 	{/if}
 	{#each data.payments as p (p.id)}
 		<div class="row">
-			<span>{p.method ?? 'Paid'}{p.reference ? ` ${p.reference}` : ''}</span><span
+			<span>{p.method ?? m.sales_paid()}{p.reference ? ` ${p.reference}` : ''}</span><span
 				>{formatETB(p.amount)}</span
 			>
 		</div>
 	{/each}
 	{#if data.tendered}<div class="row">
-			<span>Tendered</span><span>{formatETB(data.tendered)}</span>
+			<span>{m.sales_tendered()}</span><span>{formatETB(data.tendered)}</span>
 		</div>{/if}
 	{#if data.change}<div class="row">
-			<span>Change</span><span>{formatETB(data.change)}</span>
+			<span>{m.sales_change()}</span><span>{formatETB(data.change)}</span>
 		</div>{/if}
 	{#if data.balance > 0}<div class="row">
-			<span>On account</span><span>{formatETB(data.balance)}</span>
+			<span>{m.sales_on_account()}</span><span>{formatETB(data.balance)}</span>
 		</div>{/if}
 
 	{#if doc.fiscalReceiptNumber || doc.einvoiceIrn}
@@ -88,11 +99,11 @@
 			</div>
 		{/if}
 		{#if doc.einvoiceIrn}<div class="small">IRN {doc.einvoiceIrn}</div>{/if}
-		{#if data.qr}<img src={data.qr} alt="E-invoice QR code" class="qr" />{/if}
+		{#if data.qr}<img src={data.qr} alt={m.sales_einvoice_qr()} class="qr" />{/if}
 	{/if}
 	{#if !doc.fiscalReceiptNumber}
 		<div class="rule"></div>
-		<div class="small center">Not a fiscal receipt. Ask for the fiscal receipt.</div>
+		<div class="small center">{m.sales_not_fiscal()}</div>
 	{/if}
 	<div class="center">Thank you · እናመሰግናለን</div>
 </main>

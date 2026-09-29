@@ -1,7 +1,7 @@
 /**
  * Rules for managing people and roles inside one business, shared by the Users and Roles screens.
  */
-import { and, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	account,
@@ -14,17 +14,31 @@ import {
 } from '$lib/server/db/schema';
 import { auth } from '$lib/server/auth';
 import type { Tx } from '$lib/server/stock/post';
+import { m } from '$lib/paraglide/messages.js';
 
-/** The permission checklist: every permission, worded. */
-export const permissionOptions = () =>
-	db
+/**
+ * A permission as a person reads it, in their language: its `admin_perm_*` message when there is
+ * one, else what the database says (its description, else its name). The database keeps the
+ * English wording from `DESCRIPTIONS`; translations live with the other messages.
+ */
+export function permissionWords(name: string, stored?: string | null): string {
+	const key = `admin_perm_${name.replace(/\./g, '_')}`;
+	const message = (m as unknown as Record<string, (() => string) | undefined>)[key];
+	return message ? message() : (stored ?? name);
+}
+
+/** The permission checklist: every permission, worded in the viewer's language. */
+export async function permissionOptions() {
+	const rows = await db
 		.select({
 			value: permissions.id,
-			name: sql<string>`COALESCE(${permissions.description}, ${permissions.name})`,
+			stored: permissions.description,
 			description: permissions.name
 		})
 		.from(permissions)
 		.orderBy(permissions.name);
+	return rows.map(({ stored, ...r }) => ({ ...r, name: permissionWords(r.description, stored) }));
+}
 
 /**
  * Whether the viewer may hand out these permissions. You can only grant what you hold yourself;

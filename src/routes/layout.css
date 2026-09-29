@@ -1,1 +1,17 @@
 @import '@nahu/admin-kit/styles/theme.css';
+
+/*
+ * Amharic. Ge'ez script needs an Ethiopic font, and the Latin one the theme uses has none, so the
+ * browser falls back to whatever it finds. Name the good ones first: Noto Sans Ethiopic (Android,
+ * most Linux), Nyala (Windows), Kefa (macOS/iOS), Abyssinica SIL. Latin text in an Amharic page
+ * (SKUs, numbers, ETB) still takes the theme's font, which comes first.
+ */
+:root:lang(am) {
+	font-family:
+		var(--font-sans, ui-sans-serif, system-ui, sans-serif), 'Noto Sans Ethiopic', 'Nyala', 'Kefa',
+		'Abyssinica SIL', sans-serif;
+}
+:lang(am) body {
+	/* Ge'ez glyphs sit taller than Latin; a little more room keeps lines from touching. */
+	line-height: 1.6;
+}

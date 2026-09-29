@@ -15,7 +15,8 @@ import {
 import { customerEdit, receivePayment } from '$lib/schemas/customers';
 import { customerStatement } from '$lib/server/credit';
 import { checkTransaction } from '$lib/server/transactions';
-import { remindCustomer, resultNote, sendSms, smsLog, smsPaymentReceived } from '$lib/server/sms';
+import { remindCustomer, sendSms, smsLog, smsPaymentReceived } from '$lib/server/sms';
+import { smsNote } from '$lib/server/afterSale';
 import { canText, textAction, typedNumber } from '$lib/server/smsActions';
 import { methodOptions, priceListOptions } from '$lib/server/options';
 import { sendMail } from '$lib/server/mail';
@@ -24,6 +25,7 @@ import { formatETB } from '@nahu/admin-kit/global';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { fail } from '@sveltejs/kit';
 import { setFlash } from 'sveltekit-flash-message/server';
+import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -60,7 +62,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		credit: { ...position, recent: lines.slice(-8).reverse() },
 		form,
 		paymentForm,
-		methods: [{ value: 0, name: '— Not said —' }, ...methods],
+		methods: [{ value: 0, name: m.sales_not_said_option() }, ...methods],
 		priceLists: await priceListOptions(orgId),
 		canManage: hasPermission(locals, 'customers.manage'),
 		canReceive,
@@ -76,17 +78,13 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(customerEdit));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 
 		const before = await orgCustomer(orgId, Number(event.params.id));
 		const after = { ...customerValues(form.data), isActive: form.data.status };
 		if (await duplicateCustomer(orgId, after.name, after.phone, before.id)) {
-			setError(form, 'name', 'Another customer already has this name and phone.');
-			return message(
-				form,
-				{ type: 'error', text: 'That customer is already on the list.' },
-				{ status: 409 }
-			);
+			setError(form, 'name', m.sales_another_same_name());
+			return message(form, { type: 'error', text: m.sales_already_on_list() }, { status: 409 });
 		}
 
 		await db.transaction(async (tx) => {
@@ -102,7 +100,7 @@ export const actions: Actions = {
 				after
 			});
 		});
-		return message(form, { type: 'success', text: 'Customer saved' });
+		return message(form, { type: 'success', text: m.sales_customer_saved() });
 	},
 
 	/** Money in from the customer, against what they owe. Applied to their oldest sales first. */
@@ -112,7 +110,7 @@ export const actions: Actions = {
 		const c = await orgCustomer(orgId, Number(event.params.id));
 		const form = await superValidate(event.request, zod4(receivePayment));
 		if (!form.valid)
-			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
 
 		let transactionId: number;
 		try {
@@ -133,26 +131,26 @@ export const actions: Actions = {
 		}
 		// A text confirming it, when the business sends them.
 		const sms = await smsPaymentReceived(orgId, transactionId, event.locals.user?.id);
-		const note = sms && resultNote(sms, c.phone ?? '');
+		const note = sms && smsNote(sms, c.phone ?? '');
 		return message(form, {
 			type: 'success',
-			text: `${formatETB(form.data.amount)} received from ${c.name}${note ? ` · ${note}` : ''}`
+			text: `${m.sales_received_from({ amount: formatETB(form.data.amount), name: c.name })}${note ? ` · ${note}` : ''}`
 		});
 	},
 
 	/** A text of what they owe and how much of it is late. */
 	smsRemind: (event) =>
-		textAction(event, 'Reminder', async (orgId, form) => {
+		textAction(event, m.sales_sms_what_reminder(), async (orgId, form) => {
 			const c = await orgCustomer(orgId, Number(event.params.id));
 			return remindCustomer(orgId, c.id, { userId: event.locals.user?.id, to: typedNumber(form) });
 		}),
 
 	/** A message written to the customer. */
 	smsText: (event) =>
-		textAction(event, 'Message', async (orgId, form) => {
+		textAction(event, m.sales_sms_what_message(), async (orgId, form) => {
 			const c = await orgCustomer(orgId, Number(event.params.id));
 			const text = String(form.get('text') ?? '').trim();
-			if (!text) return { ok: false, status: 'skipped', error: 'Write the message.' };
+			if (!text) return { ok: false, status: 'skipped', error: m.sales_write_message() };
 			return sendSms(orgId, {
 				to: typedNumber(form) ?? c.phone,
 				text: text.slice(0, 300),
@@ -169,7 +167,10 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const c = await orgCustomer(orgId, Number(event.params.id));
 		if (!c.email) {
-			setFlash({ type: 'error', message: `${c.name} has no email address.` }, event.cookies);
+			setFlash(
+				{ type: 'error', message: m.sales_no_email_address({ name: c.name }) },
+				event.cookies
+			);
 			return fail(400);
 		}
 		const [org] = await db
@@ -180,33 +181,44 @@ export const actions: Actions = {
 		const sent = await sendMail(
 			c.email,
 			{
-				subject: `Your account with ${org.name}: ${formatETB(Math.max(0, s.balance))} due`,
-				heading: 'Account statement',
+				subject: m.sales_statement_subject({
+					org: org.name,
+					amount: formatETB(Math.max(0, s.balance))
+				}),
+				heading: m.sales_account_statement(),
 				body: [
-					`Dear ${c.name},`,
+					m.sales_dear({ name: c.name }),
 					s.balance > 0
-						? `You owe ${formatETB(s.balance)}${s.overdue > 0 ? `, of which ${formatETB(s.overdue)} is overdue` : ''}. The purchases not yet paid are below.`
-						: 'Your account is fully paid. Thank you.'
+						? m.sales_you_owe({
+								amount: formatETB(s.balance),
+								overdue:
+									s.overdue > 0 ? m.sales_of_which_overdue({ amount: formatETB(s.overdue) }) : ''
+							})
+						: m.sales_account_paid()
 				],
 				table: s.open.length
 					? {
-							head: ['Purchase', 'Date', 'Due', 'Still owed'],
+							head: [m.sales_purchase(), m.common_date(), m.sales_due(), m.sales_still_owed()],
 							rows: s.open.map((o) => [
 								o.number ?? `#${o.id}`,
 								o.docDate,
-								o.dueDate + (o.daysOverdue > 0 ? ` (${o.daysOverdue} days late)` : ''),
+								o.dueDate +
+									(o.daysOverdue > 0 ? m.sales_days_late_paren({ days: o.daysOverdue }) : ''),
 								formatETB(o.remaining)
 							])
 						}
 					: undefined,
-				footnote: `${org.name}${org.phone ? `, ${org.phone}` : ''}. Please quote the purchase numbers when you pay.`
+				footnote: m.sales_quote_numbers({
+					org: org.name,
+					phone: org.phone ? `, ${org.phone}` : ''
+				})
 			},
 			org.name
 		);
 		setFlash(
 			sent
-				? { type: 'success', message: `Statement sent to ${c.email}` }
-				: { type: 'error', message: 'The email could not be sent. Print the statement instead.' },
+				? { type: 'success', message: m.sales_statement_sent({ email: c.email }) }
+				: { type: 'error', message: m.sales_statement_mail_failed() },
 			event.cookies
 		);
 		return sent ? { sent: true } : fail(502);

@@ -1,3 +1,4 @@
+import { m } from '$lib/paraglide/messages.js';
 import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
@@ -6,22 +7,30 @@ import { qty } from '$lib/format';
 
 /** How an item is tracked, in a few words. */
 function tracking(row: LookupRow): string {
-	if (row.isKit) return 'Kit / recipe';
-	if (!row.stockTracked) return 'Service';
+	if (row.isKit) return m.stock_t_kit();
+	if (!row.stockTracked) return m.stock_t_service();
 	const parts = [
-		row.trackSerials && 'Serial',
-		row.trackExpiry ? 'Lot + expiry' : row.trackLots && 'Lot',
-		row.leasable && 'Rentable',
-		row.controlledSubstance && 'Controlled'
+		row.trackSerials && m.stock_t_serial(),
+		row.trackExpiry ? m.stock_t_lot_expiry() : row.trackLots && m.stock_t_lot(),
+		row.leasable && m.stock_t_rentable(),
+		row.controlledSubstance && m.stock_t_controlled()
 	].filter(Boolean);
-	return parts.length ? parts.join(' · ') : 'Quantity';
+	return parts.length ? parts.join(' · ') : m.stock_t_quantity();
 }
 
 export const extraColumns: ColumnDef<LookupRow>[] = [
-	{ accessorKey: 'tracking', header: 'Tracking', cell: ({ row }) => tracking(row.original) },
+	{
+		accessorKey: 'tracking',
+		get header() {
+			return m.stock_tracking();
+		},
+		cell: ({ row }) => tracking(row.original)
+	},
 	{
 		accessorKey: 'onHand',
-		header: 'On hand',
+		get header() {
+			return m.stock_on_hand();
+		},
 		cell: ({ row }) =>
 			renderComponent(DataTableLinks, {
 				id: row.original.id,

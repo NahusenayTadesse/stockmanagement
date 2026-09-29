@@ -22,6 +22,7 @@ import {
 } from '$lib/server/db/schema';
 import { postDocument, StockError, type Tx } from '$lib/server/stock/post';
 import { documentTotals } from '$lib/server/tax';
+import { m } from '$lib/paraglide/messages.js';
 import { discountPercent, priceListOf, priceTable } from '$lib/server/pricing';
 
 type Reader = Pick<typeof db, 'select'>;
@@ -45,7 +46,7 @@ export async function openShift(
 	input: { orgId: number; userId: string; locationId: number; openingFloat: number }
 ) {
 	if (await currentShift(input.orgId, input.userId, tx)) {
-		throw new StockError('You already have a shift open. Close it first.');
+		throw new StockError(m.sales_err_shift_already_open());
 	}
 	const [loc] = await tx
 		.select({ id: location.id, branchId: location.branchId })
@@ -57,8 +58,8 @@ export async function openShift(
 				isNull(location.deletedAt)
 			)
 		);
-	if (!loc) throw new StockError('Choose the location this till sells from.');
-	if (!(input.openingFloat >= 0)) throw new StockError('The opening float cannot be negative.');
+	if (!loc) throw new StockError(m.sales_err_choose_till_location());
+	if (!(input.openingFloat >= 0)) throw new StockError(m.sales_err_float_negative());
 	const [row] = await tx
 		.insert(posShift)
 		.values({
@@ -83,12 +84,12 @@ export async function shiftSummary(orgId: number, shiftId: number, reader: Reade
 		.innerJoin(user, eq(user.id, posShift.userId))
 		.innerJoin(location, eq(location.id, posShift.locationId))
 		.where(and(eq(posShift.id, shiftId), eq(posShift.orgId, orgId)));
-	if (!shift) throw new StockError('That shift does not exist.');
+	if (!shift) throw new StockError(m.sales_err_no_shift());
 
 	const [byMethod, [sales]] = await Promise.all([
 		reader
 			.select({
-				method: sql<string>`COALESCE(${paymentMethod.name}, 'Not said')`,
+				method: sql<string>`COALESCE(${paymentMethod.name}, ${m.sales_not_said()})`,
 				kind: paymentMethod.kind,
 				moneyIn: sql<number>`SUM(CASE WHEN ${transactions.direction} = 'in' THEN ${transactions.amount} ELSE 0 END)`,
 				moneyOut: sql<number>`SUM(CASE WHEN ${transactions.direction} = 'out' THEN ${transactions.amount} ELSE 0 END)`,
@@ -117,23 +118,23 @@ export async function shiftSummary(orgId: number, shiftId: number, reader: Reade
 			)
 	]);
 
-	const methods = byMethod.map((m) => ({
-		method: m.method,
-		kind: m.kind,
-		moneyIn: cents(Number(m.moneyIn)),
-		moneyOut: cents(Number(m.moneyOut)),
-		count: Number(m.count)
+	const methods = byMethod.map((row) => ({
+		method: row.method,
+		kind: row.kind,
+		moneyIn: cents(Number(row.moneyIn)),
+		moneyOut: cents(Number(row.moneyOut)),
+		count: Number(row.count)
 	}));
-	const cash = methods.filter((m) => m.kind === 'cash');
+	const cash = methods.filter((x) => x.kind === 'cash');
 	const expectedCash = cents(
-		shift.shift.openingFloat + cash.reduce((s, m) => s + m.moneyIn - m.moneyOut, 0)
+		shift.shift.openingFloat + cash.reduce((s, x) => s + x.moneyIn - x.moneyOut, 0)
 	);
 	return {
 		shift: shift.shift,
 		cashier: shift.cashier,
 		location: shift.location,
 		sales: Number(sales.count),
-		taken: cents(methods.reduce((s, m) => s + m.moneyIn, 0)),
+		taken: cents(methods.reduce((s, x) => s + x.moneyIn, 0)),
 		methods,
 		expectedCash
 	};
@@ -144,8 +145,8 @@ export async function closeShift(
 	input: { orgId: number; shiftId: number; userId: string; countedCash: number; note?: string }
 ) {
 	const summary = await shiftSummary(input.orgId, input.shiftId, tx);
-	if (summary.shift.status !== 'open') throw new StockError('This shift is already closed.');
-	if (!(input.countedCash >= 0)) throw new StockError('Enter the cash counted in the drawer.');
+	if (summary.shift.status !== 'open') throw new StockError(m.sales_err_shift_closed());
+	if (!(input.countedCash >= 0)) throw new StockError(m.sales_err_counted_cash());
 	await tx
 		.update(posShift)
 		.set({
@@ -204,11 +205,11 @@ export async function checkout(
 		.select()
 		.from(posShift)
 		.where(and(eq(posShift.id, input.shiftId), eq(posShift.orgId, input.orgId)));
-	if (!shift || shift.status !== 'open') throw new StockError('Open a shift before selling.');
-	if (shift.userId !== input.userId) throw new StockError('This shift belongs to someone else.');
+	if (!shift || shift.status !== 'open') throw new StockError(m.sales_err_open_shift_first());
+	if (shift.userId !== input.userId) throw new StockError(m.sales_err_shift_not_yours());
 
 	const lines = input.lines.filter((l) => l.quantity > 0);
-	if (!lines.length) throw new StockError('The cart is empty.');
+	if (!lines.length) throw new StockError(m.sales_err_cart_empty());
 
 	let buyerName: string | null = null;
 	if (input.customerId) {
@@ -223,7 +224,7 @@ export async function checkout(
 					isNull(customer.deletedAt)
 				)
 			);
-		if (!c) throw new StockError('Choose a customer from the list.');
+		if (!c) throw new StockError(m.sales_err_choose_customer());
 		buyerName = c.name;
 	}
 
@@ -249,16 +250,17 @@ export async function checkout(
 	for (const l of lines) {
 		const it = items.find((i) => i.id === l.itemId);
 		// Services and kits sell too: a service moves no stock, a kit takes its components.
-		if (!it) throw new StockError('One of the items cannot be sold here.');
-		if (!it.sellable || !it.isActive) throw new StockError(`${it.name} is not for sale.`);
+		if (!it) throw new StockError(m.sales_err_item_not_here());
+		if (!it.sellable || !it.isActive)
+			throw new StockError(m.sales_err_not_for_sale({ name: it.name }));
 		if (l.uomId !== it.baseUomId && !units.some((u) => u.itemId === it.id && u.uomId === l.uomId)) {
-			throw new StockError(`${it.name} is not sold in that unit.`);
+			throw new StockError(m.sales_err_not_in_unit({ name: it.name }));
 		}
-		if (!(l.unitPrice >= 0)) throw new StockError(`Give ${it.name} a price.`);
+		if (!(l.unitPrice >= 0)) throw new StockError(m.sales_err_give_price({ name: it.name }));
 		const list = prices.get(`${it.id}:${l.uomId}`) ?? null;
 		const off = discountPercent(list, l.unitPrice);
 		if (list === null && !input.allowDiscount && l.unitPrice === 0) {
-			throw new StockError(`${it.name} has no price. Set one, or ask a manager.`);
+			throw new StockError(m.sales_err_no_price_manager({ name: it.name }));
 		}
 		if (
 			off > 0 &&
@@ -267,7 +269,7 @@ export async function checkout(
 			off > input.maxDiscountPercent + 0.001
 		) {
 			throw new StockError(
-				`${off}% off ${it.name} is more than the ${input.maxDiscountPercent}% you may give. Ask a manager.`
+				m.sales_err_discount_limit({ off, name: it.name, limit: input.maxDiscountPercent })
 			);
 		}
 	}
@@ -314,9 +316,9 @@ export async function checkout(
 	const payments = input.payments
 		.filter((p) => p.amount > 0)
 		.map((p) => {
-			const m = methods.find((x) => x.id === p.methodId);
-			if (!m) throw new StockError('Choose a payment method from the list.');
-			return { ...p, amount: cents(p.amount), method: m };
+			const method = methods.find((x) => x.id === p.methodId);
+			if (!method) throw new StockError(m.sales_err_choose_method());
+			return { ...p, amount: cents(p.amount), method };
 		});
 
 	let paid = cents(payments.reduce((s, p) => s + p.amount, 0));
@@ -326,17 +328,13 @@ export async function checkout(
 		change = cents(paid - due);
 		const cash = payments.find((p) => p.method.kind === 'cash' && p.amount >= change);
 		if (!cash) {
-			throw new StockError(
-				'The payments come to more than the sale, and only cash gives change. Lower a payment.'
-			);
+			throw new StockError(m.sales_err_only_cash_change());
 		}
 		cash.amount = cents(cash.amount - change);
 		paid = due;
 	}
 	if (paid < due - 0.004 && !input.customerId) {
-		throw new StockError(
-			`Collect ${(due - paid).toFixed(2)} more, or choose a customer to put the rest on credit.`
-		);
+		throw new StockError(m.sales_err_collect_more({ amount: (due - paid).toFixed(2) }));
 	}
 
 	const ids: number[] = [];
@@ -355,9 +353,7 @@ export async function checkout(
 					)
 				);
 			if (dup) {
-				throw new StockError(
-					`Reference ${reference} is already recorded (transaction #${dup.id}). The same payment cannot be used twice.`
-				);
+				throw new StockError(m.sales_err_reference_used({ reference, id: dup.id }));
 			}
 		}
 		const [row] = await tx

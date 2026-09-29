@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
 	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
 	import ExpiryCell from '@nahu/admin-kit/components/Table/expiry-cell.svelte';
@@ -6,7 +7,7 @@
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
 	import { formatEthiopianDate } from '@nahu/admin-kit/global';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
-	import { DOCUMENT_LABELS, qty } from '$lib/format';
+	import { DOCUMENT_LABELS, DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
 
 	let { data } = $props();
 
@@ -17,7 +18,7 @@
 			? [
 					{
 						key: 'in',
-						label: 'Money in this month',
+						label: m.admin_home_money_in(),
 						value: data.money.moneyIn,
 						format: 'money',
 						group: 'money',
@@ -25,7 +26,7 @@
 					},
 					{
 						key: 'out',
-						label: 'Money out this month',
+						label: m.admin_home_money_out(),
 						value: data.money.moneyOut,
 						format: 'money',
 						group: 'money',
@@ -33,7 +34,7 @@
 					},
 					{
 						key: 'net',
-						label: 'Net this month',
+						label: m.admin_home_net(),
 						value: data.money.net,
 						format: 'money',
 						group: 'money',
@@ -41,11 +42,11 @@
 					},
 					{
 						key: 'unverified',
-						label: 'Not yet verified',
+						label: m.admin_home_unverified(),
 						value: data.money.unverified,
 						format: 'count',
 						group: 'money',
-						hint: 'Transactions this month waiting for a check',
+						hint: m.admin_home_unverified_hint(),
 						tone: data.money.unverified ? 'warning' : 'neutral'
 					}
 				]
@@ -57,16 +58,16 @@
 			? [
 					{
 						key: 'owed',
-						label: 'Customers owe you',
+						label: m.admin_home_owed(),
 						value: data.credit.owed,
 						format: 'money',
 						group: 'credit',
-						hint: `${data.credit.debtors} customer${data.credit.debtors === 1 ? '' : 's'} on credit`,
+						hint: m.admin_home_debtors({ count: data.credit.debtors }),
 						tone: 'warning'
 					},
 					{
 						key: 'overdue',
-						label: 'Overdue credit',
+						label: m.admin_home_overdue(),
 						value: data.credit.overdue,
 						format: 'money',
 						group: 'credit',
@@ -74,7 +75,7 @@
 					},
 					{
 						key: 'overLimit',
-						label: 'Over their credit limit',
+						label: m.admin_home_over_limit(),
 						value: data.credit.overLimit,
 						format: 'count',
 						group: 'credit',
@@ -89,11 +90,11 @@
 			? [
 					{
 						key: 'approvals',
-						label: 'Waiting for approval',
+						label: m.admin_home_approvals(),
 						value: data.attention.approvals,
 						format: 'count' as const,
 						group: 'attention',
-						hint: 'Adjustments, counts and orders over your limits',
+						hint: m.admin_home_approvals_hint(),
 						tone: 'warning' as const
 					}
 				]
@@ -102,11 +103,11 @@
 			? [
 					{
 						key: 'transit',
-						label: 'Transfers in transit',
+						label: m.admin_home_in_transit(),
 						value: data.attention.inTransit,
 						format: 'count' as const,
 						group: 'attention',
-						hint: 'Sent to another branch, not yet received',
+						hint: m.admin_home_in_transit_hint(),
 						tone: 'neutral' as const
 					}
 				]
@@ -118,42 +119,42 @@
 			? [
 					{
 						key: 'value',
-						label: 'Stock value',
+						label: m.admin_home_stock_value(),
 						value: stats.stockValue,
 						format: 'money',
 						group: 'stock',
-						hint: 'At average cost',
+						hint: m.admin_home_stock_value_hint(),
 						tone: 'neutral'
 					},
 					{
 						key: 'items',
-						label: 'Items',
+						label: m.common_items(),
 						value: stats.itemCount,
 						format: 'count',
 						group: 'stock',
-						hint: 'In the catalogue'
+						hint: m.admin_home_items_hint()
 					},
 					{
 						key: 'expiring',
-						label: 'Lots expiring soon',
+						label: m.admin_home_expiring(),
 						value: stats.expiringSoonCount,
 						format: 'count',
 						group: 'stock',
-						hint: 'Inside their warning window',
+						hint: m.admin_home_expiring_hint(),
 						tone: stats.expiringSoonCount ? 'warning' : 'neutral'
 					},
 					{
 						key: 'expired',
-						label: 'Expired lots with stock',
+						label: m.admin_home_expired(),
 						value: stats.expiredCount,
 						format: 'count',
 						group: 'stock',
-						hint: 'Cannot be issued; quarantine or write off',
+						hint: m.admin_home_expired_hint(),
 						tone: stats.expiredCount ? 'negative' : 'neutral'
 					},
 					{
 						key: 'low',
-						label: 'At or below reorder level',
+						label: m.admin_home_low(),
 						value: stats.lowStock.length,
 						format: 'count',
 						group: 'stock',
@@ -161,11 +162,11 @@
 					},
 					{
 						key: 'drafts',
-						label: 'Draft documents',
+						label: m.admin_home_drafts(),
 						value: stats.draftCount,
 						format: 'count',
 						group: 'stock',
-						hint: 'Waiting to be posted'
+						hint: m.admin_home_drafts_hint()
 					}
 				]
 			: []
@@ -173,7 +174,7 @@
 </script>
 
 <svelte:head>
-	<title>Dashboard</title>
+	<title>{m.common_dashboard()}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
@@ -215,8 +216,7 @@
 
 	{#if !stats}
 		<p class="text-muted-foreground">
-			Welcome, {data.user.name}. Your role does not include viewing stock; use the menu for what it
-			does include.
+			{m.admin_home_no_stock_role({ name: data.user.name })}
 		</p>
 	{:else}
 		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -228,12 +228,12 @@
 		<div class="grid gap-6 xl:grid-cols-2">
 			<Card.Root>
 				<Card.Header>
-					<Card.Title>Expiry</Card.Title>
-					<Card.Description>Lots with stock that have expired or will soon.</Card.Description>
+					<Card.Title>{m.admin_home_expiry()}</Card.Title>
+					<Card.Description>{m.admin_home_expiry_desc()}</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					{#if stats.expiring.length === 0}
-						<p class="text-muted-foreground">Nothing is close to expiring.</p>
+						<p class="text-muted-foreground">{m.admin_home_nothing_expiring()}</p>
 					{:else}
 						<ul class="divide-y">
 							{#each stats.expiring as row (row.lotId)}
@@ -246,7 +246,7 @@
 											{row.item}
 										</a>
 										<p class="text-sm text-muted-foreground">
-											Lot {row.lotNumber} · {qty(row.onHand, row.unit)}
+											{m.admin_home_lot({ lot: row.lotNumber })} · {qty(row.onHand, row.unit)}
 										</p>
 									</div>
 									<ExpiryCell expiresOn={row.expiryDate} warningDays={row.warningDays} />
@@ -259,12 +259,12 @@
 
 			<Card.Root>
 				<Card.Header>
-					<Card.Title>Reorder</Card.Title>
-					<Card.Description>Items at or below their reorder level.</Card.Description>
+					<Card.Title>{m.admin_home_reorder()}</Card.Title>
+					<Card.Description>{m.admin_home_reorder_desc()}</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					{#if stats.lowStock.length === 0}
-						<p class="text-muted-foreground">Nothing needs reordering.</p>
+						<p class="text-muted-foreground">{m.admin_home_nothing_reorder()}</p>
 					{:else}
 						<ul class="divide-y">
 							{#each stats.lowStock as row (row.id)}
@@ -277,7 +277,9 @@
 									</a>
 									<span class="text-sm">
 										{qty(row.onHand, row.unit)}
-										<span class="text-muted-foreground">/ reorder at {qty(row.reorderLevel)}</span>
+										<span class="text-muted-foreground"
+											>{m.admin_home_reorder_at({ level: qty(row.reorderLevel) })}</span
+										>
 									</span>
 								</li>
 							{/each}
@@ -289,15 +291,15 @@
 
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Latest documents</Card.Title>
+				<Card.Title>{m.admin_home_latest()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				{#if stats.recent.length === 0}
 					<p class="text-muted-foreground">
-						No documents yet. Start with a <a
-							class="underline"
-							href={resolve('/dashboard/stock/documents')}>goods receipt</a
-						>.
+						{m.admin_home_no_docs_before()}
+						<a class="underline" href={resolve('/dashboard/stock/documents')}
+							>{m.admin_home_no_docs_link()}</a
+						>{m.admin_home_no_docs_after()}
 					</p>
 				{:else}
 					<ul class="divide-y">
@@ -307,13 +309,14 @@
 									class="font-medium hover:underline"
 									href={resolve('/dashboard/stock/documents/[id]', { id: String(doc.id) })}
 								>
-									{doc.number ?? `Draft ${DOCUMENT_LABELS[doc.type].toLowerCase()}`}
+									{doc.number ??
+										m.admin_home_draft_doc({ type: DOCUMENT_LABELS[doc.type].toLowerCase() })}
 								</a>
 								<span class="flex items-center gap-2 text-sm text-muted-foreground">
 									{doc.party ?? ''}
 									{formatEthiopianDate(new Date(doc.docDate))}
 									<Badge variant={doc.status === 'posted' ? 'default' : 'secondary'}>
-										{doc.status}
+										{DOCUMENT_STATUS_LABELS[doc.status]}
 									</Badge>
 								</span>
 							</li>

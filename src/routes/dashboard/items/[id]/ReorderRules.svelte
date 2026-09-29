@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
@@ -34,10 +35,12 @@
 		<table class="w-full text-sm">
 			<thead class="bg-muted/50 text-left">
 				<tr>
-					<th class="px-3 py-2">Location</th>
-					<th class="px-3 py-2 text-right">Minimum</th>
-					<th class="px-3 py-2 text-right">Maximum</th>
-					{#if !readonly}<th class="w-10 px-3 py-2"><span class="sr-only">Remove</span></th>{/if}
+					<th class="px-3 py-2">{m.common_location()}</th>
+					<th class="px-3 py-2 text-right">{m.stock_minimum()}</th>
+					<th class="px-3 py-2 text-right">{m.stock_maximum()}</th>
+					{#if !readonly}<th class="w-10 px-3 py-2"
+							><span class="sr-only">{m.stock_remove()}</span></th
+						>{/if}
 				</tr>
 			</thead>
 			<tbody>
@@ -46,7 +49,7 @@
 						<td class="px-3 py-2">{r.branch} · {r.location}</td>
 						<td class="px-3 py-2 text-right">{qty(r.minQuantity, unit ?? '')}</td>
 						<td class="px-3 py-2 text-right">
-							{r.maxQuantity === null ? 'Twice the minimum' : qty(r.maxQuantity, unit ?? '')}
+							{r.maxQuantity === null ? m.stock_twice_minimum() : qty(r.maxQuantity, unit ?? '')}
 						</td>
 						{#if !readonly}
 							<td class="px-3 py-2">
@@ -56,7 +59,8 @@
 										type="submit"
 										variant="ghost"
 										size="icon"
-										aria-label="Remove the levels at {r.location}"><Trash2 /></Button
+										aria-label={m.stock_remove_levels_at({ location: r.location })}
+										><Trash2 /></Button
 									>
 								</form>
 							</td>
@@ -68,8 +72,7 @@
 	</div>
 {:else}
 	<p class="text-muted-foreground">
-		No levels per location. The reorder screen uses the item's reorder level for the whole business,
-		and its rate of use.
+		{m.stock_no_levels()}
 	</p>
 {/if}
 
@@ -81,7 +84,7 @@
 		class="flex flex-wrap items-end gap-2 rounded-md border p-3"
 	>
 		<label class="flex flex-col gap-1 text-sm">
-			Location
+			{m.common_location()}
 			<select name="locationId" class="h-9 rounded-md border bg-background px-2" required>
 				{#each locations as l (l.value)}
 					<option value={l.value}>{l.name}</option>
@@ -89,13 +92,13 @@
 			</select>
 		</label>
 		<label class="flex flex-col gap-1 text-sm">
-			Minimum ({unit ?? 'base units'})
+			{m.stock_minimum_unit({ unit: unit ?? m.stock_base_units() })}
 			<Input name="minQuantity" type="number" min="0" step="any" required class="w-32" />
 		</label>
 		<label class="flex flex-col gap-1 text-sm">
-			Maximum (optional)
+			{m.stock_maximum_optional()}
 			<Input name="maxQuantity" type="number" min="0" step="any" class="w-32" />
 		</label>
-		<Button type="submit" variant="outline">Save levels</Button>
+		<Button type="submit" variant="outline">{m.stock_save_levels()}</Button>
 	</form>
 {/if}

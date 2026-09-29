@@ -3,6 +3,7 @@
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { fileUrl } from '@nahu/admin-kit/files';
 	import { qty } from '$lib/format';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -12,7 +13,7 @@
 </script>
 
 <svelte:head>
-	<title>{order.number ?? 'Draft'} · Purchase Order</title>
+	<title>{order.number ?? m.purchasing_print_draft()} · {m.purchasing_print_title()}</title>
 </svelte:head>
 
 <PrintSheet
@@ -25,36 +26,39 @@
 >
 	<section class="flex items-start justify-between gap-6">
 		<div class="flex flex-col gap-1">
-			<h1 class="text-xl font-bold">Purchase Order</h1>
-			<p>No. <strong>{order.number ?? `DRAFT ${order.id} — not placed`}</strong></p>
+			<h1 class="text-xl font-bold">{m.purchasing_print_title()}</h1>
+			<p>
+				{m.purchasing_print_no()}
+				<strong>{order.number ?? m.purchasing_print_not_placed({ id: order.id })}</strong>
+			</p>
 			{#if data.org.tin}<p class="text-sm">TIN {data.org.tin}</p>{/if}
 		</div>
 		{#if data.org.logo}
 			<img
 				src={fileUrl(data.org.logo)}
-				alt="{data.org.name} logo"
+				alt={m.purchasing_logo_alt({ name: data.org.name })}
 				class="h-20 max-w-48 object-contain"
 			/>
 		{/if}
 	</section>
 
 	<dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-		<dt class="font-semibold">To</dt>
+		<dt class="font-semibold">{m.purchasing_print_to()}</dt>
 		<dd>
 			{data.details.supplier}, {data.details.supplierPhone}{data.supplier.tin
 				? `, TIN ${data.supplier.tin}`
 				: ''}{data.supplier.address ? `, ${data.supplier.address}` : ''}
 		</dd>
-		<dt class="font-semibold">Order date</dt>
+		<dt class="font-semibold">{m.purchasing_f_order_date()}</dt>
 		<dd>{day(order.orderDate)}</dd>
 		{#if order.expectedDate}
-			<dt class="font-semibold">Deliver by</dt>
+			<dt class="font-semibold">{m.purchasing_print_deliver_by()}</dt>
 			<dd>{day(order.expectedDate)}</dd>
 		{/if}
-		<dt class="font-semibold">Deliver to</dt>
+		<dt class="font-semibold">{m.purchasing_f_deliver_to()}</dt>
 		<dd>{data.details.location}, {data.details.branch}</dd>
 		{#if order.reference}
-			<dt class="font-semibold">Your reference</dt>
+			<dt class="font-semibold">{m.purchasing_print_your_reference()}</dt>
 			<dd>{order.reference}</dd>
 		{/if}
 	</dl>
@@ -63,10 +67,10 @@
 		<thead>
 			<tr class="border-b-2 text-left">
 				<th class="py-1 pr-2">#</th>
-				<th class="py-1 pr-2">Item</th>
-				<th class="py-1 pr-2 text-right">Quantity</th>
-				<th class="py-1 pr-2 text-right">Unit price</th>
-				<th class="py-1 text-right">Amount</th>
+				<th class="py-1 pr-2">{m.common_item()}</th>
+				<th class="py-1 pr-2 text-right">{m.common_quantity()}</th>
+				<th class="py-1 pr-2 text-right">{m.purchasing_mail_col_unit_price()}</th>
+				<th class="py-1 text-right">{m.purchasing_col_amount()}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -88,17 +92,19 @@
 		</tbody>
 		<tfoot>
 			<tr class="font-semibold">
-				<td colspan="4" class="py-1 pr-2 text-right">Total</td>
+				<td colspan="4" class="py-1 pr-2 text-right">{m.common_total()}</td>
 				<td class="py-1 text-right">{formatETB(total)}</td>
 			</tr>
 		</tfoot>
 	</table>
 
-	{#if order.note}<p class="text-sm whitespace-pre-line">Note: {order.note}</p>{/if}
-	<p class="text-sm">Please quote this order number on your delivery note and invoice.</p>
+	{#if order.note}<p class="text-sm whitespace-pre-line">
+			{m.purchasing_print_note({ note: order.note })}
+		</p>{/if}
+	<p class="text-sm">{m.purchasing_print_quote_number()}</p>
 
 	<div class="mt-12 grid grid-cols-2 gap-6 text-sm">
-		<div class="border-t pt-1">Ordered by</div>
-		<div class="border-t pt-1">Approved by</div>
+		<div class="border-t pt-1">{m.purchasing_print_ordered_by()}</div>
+		<div class="border-t pt-1">{m.purchasing_print_approved_by()}</div>
 	</div>
 </PrintSheet>

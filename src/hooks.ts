@@ -1,4 +1,7 @@
 import type { Reroute } from '@sveltejs/kit';
-import { deLocalizeUrl } from '$lib/paraglide/runtime';
 
-export const reroute: Reroute = (request) => deLocalizeUrl(request.url).pathname;
+/**
+ * No locale in the URL: the language is a cookie (see the paraglide strategy in vite.config.ts),
+ * so paths are left as they are.
+ */
+export const reroute: Reroute = (request) => request.url.pathname;
