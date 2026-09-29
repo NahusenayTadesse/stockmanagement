@@ -23,6 +23,8 @@ export const access = createAccess({
 		{ prefix: '/dashboard/stock', permission: 'stock.view' },
 		{ prefix: '/dashboard/suppliers', permission: 'suppliers.view' },
 		{ prefix: '/dashboard/customers', permission: 'customers.view' },
+		{ prefix: '/dashboard/pos', permission: 'pos.use' },
+		{ prefix: '/dashboard/sales', permission: 'sales.view' },
 		{ prefix: '/dashboard/purchasing', permission: 'purchasing.view' },
 		{ prefix: '/dashboard/reports', permission: 'reports.view' },
 		{ prefix: '/dashboard/transactions', permission: 'transactions.view' }

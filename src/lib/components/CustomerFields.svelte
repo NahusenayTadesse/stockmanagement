@@ -7,7 +7,8 @@
 		form,
 		errors,
 		idPrefix = '',
-		full = true
+		full = true,
+		priceLists = []
 	}: {
 		form: SuperForm<Record<string, unknown>>['form'];
 		errors: SuperForm<Record<string, unknown>>['errors'];
@@ -15,6 +16,8 @@
 		idPrefix?: string;
 		/** `false` for quick add: the name and a phone, enough to find them again. */
 		full?: boolean;
+		/** The business's price lists, when it has any. */
+		priceLists?: { value: number; name: string }[];
 	} = $props();
 </script>
 
@@ -74,6 +77,18 @@
 		label="Days to pay"
 		description="A credit sale is overdue this many days after the sale."
 	/>
+	{#if priceLists.length}
+		<InputComp
+			{form}
+			{errors}
+			id="{idPrefix}priceListId"
+			name="priceListId"
+			type="select"
+			label="Prices"
+			items={[{ value: 0, name: 'List prices' }, ...priceLists]}
+			description="The till and proformas price their purchases from this list."
+		/>
+	{/if}
 	<InputComp
 		{form}
 		{errors}

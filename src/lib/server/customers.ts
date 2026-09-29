@@ -91,8 +91,10 @@ export function customerValues(data: {
 	creditLimit?: number | null;
 	creditDays?: number;
 	withholdsTax?: boolean;
+	priceListId?: number;
 }) {
 	return {
+		priceListId: data.priceListId || null,
 		withholdsTax: data.withholdsTax ?? false,
 		creditLimit: data.creditLimit ?? null,
 		creditDays: data.creditDays ?? 30,

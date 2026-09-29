@@ -154,6 +154,15 @@
 					<InputComp
 						{form}
 						{errors}
+						name="maxDiscountPercent"
+						type="number"
+						step="0.1"
+						label="Largest discount a seller may give (%, optional)"
+						description="At the till and on proformas. Bigger discounts need the 'give discounts above the limit' permission. Empty: no limit."
+					/>
+					<InputComp
+						{form}
+						{errors}
 						name="einvoiceMode"
 						type="select"
 						label="E-invoicing (Ministry of Revenues)"

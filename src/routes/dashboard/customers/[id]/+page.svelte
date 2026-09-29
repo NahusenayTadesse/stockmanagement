@@ -168,7 +168,7 @@
 						class="flex flex-col gap-4"
 					>
 						<Errors allErrors={$allErrors} />
-						<CustomerFields {form} {errors} />
+						<CustomerFields {form} {errors} priceLists={data.priceLists} />
 						<InputComp
 							{form}
 							{errors}

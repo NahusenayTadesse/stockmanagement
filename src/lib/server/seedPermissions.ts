@@ -33,7 +33,10 @@ const CODE_ONLY_PERMISSIONS = [
 	'suppliers.manage',
 	'customers.manage',
 	'customers.credit',
-	'purchasing.manage'
+	'purchasing.manage',
+	'sales.manage',
+	'sales.discount',
+	'pos.manage'
 ] as const;
 
 /** Wording for the permission checklist on the role and user screens. */
@@ -45,6 +48,11 @@ export const DESCRIPTIONS: Record<string, string> = {
 	'customers.view': 'See customers, what they took and what they paid',
 	'customers.manage': 'Add customers and change their details, including credit limits',
 	'customers.credit': 'Post a sale that takes a customer over their credit limit',
+	'pos.use': 'Sell at the till (POS): open a shift, ring up sales, take payments',
+	'pos.manage': "See every till shift, and close someone else's",
+	'sales.view': 'See sales, invoices and proformas',
+	'sales.manage': 'Write proformas, send them, and turn them into sales',
+	'sales.discount': 'Give discounts above the limit, and change prices freely',
 	'purchasing.view': 'See purchase orders and what needs reordering',
 	'purchasing.manage': 'Draft purchase orders, send them to suppliers, close and cancel them',
 	'reports.view': 'Read the stock, purchase, wastage and money reports, and export them',
@@ -100,6 +108,11 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'customers.view',
 				'customers.manage',
 				'customers.credit',
+				'pos.use',
+				'pos.manage',
+				'sales.view',
+				'sales.manage',
+				'sales.discount',
 				'purchasing.view',
 				'purchasing.manage',
 				'reports.view'
@@ -116,6 +129,8 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'suppliers.view',
 				'customers.view',
 				'customers.manage',
+				'pos.use',
+				'sales.view',
 				'purchasing.view',
 				'reports.view'
 			]
@@ -147,6 +162,8 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'suppliers.manage',
 				'customers.view',
 				'customers.manage',
+				'sales.view',
+				'sales.manage',
 				'purchasing.view'
 			]
 		},
@@ -158,6 +175,7 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'stock.view',
 				'suppliers.view',
 				'customers.view',
+				'sales.view',
 				'purchasing.view',
 				'reports.view'
 			]

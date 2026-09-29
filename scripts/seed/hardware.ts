@@ -10,6 +10,10 @@ import {
 	addCustomers,
 	returnGoods,
 	fiscalHistory,
+	addPriceList,
+	assignPriceList,
+	tillShift,
+	proforma,
 	addItems,
 	addLocations,
 	addSuppliers,
@@ -1234,6 +1238,124 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 		biz,
 		{ of: creditGenet, date: day(-2), by: 'manager', note: 'Wrong shade; unopened' },
 		{ 'PNT-EMW-4': 4 }
+	);
+
+	// ── Selling: contractor prices, the till, proformas ─────────────────────────────────────
+	await addUser(tx, biz, {
+		key: 'cashier',
+		name: 'Hiwot Desta',
+		email: 'hiwot@hardware.example.com',
+		role: 'Cashier',
+		branch: 'BOL'
+	});
+	const contractors = await addPriceList(
+		tx,
+		biz,
+		'Contractors',
+		[
+			{ sku: 'CEM-OPC-50', price: 1380 },
+			{ sku: 'CEM-PPC-50', price: 1240 },
+			{ sku: 'CIS-G32', price: 740 },
+			{ sku: 'RB-12', unit: 'Bundle', price: 10_900 },
+			{ sku: 'RB-16', unit: 'Bundle', price: 39_000 }
+		],
+		biz.users.get('owner')!
+	);
+	await assignPriceList(tx, biz, contractors, ['Sisay Construction PLC', 'Tsehay Real Estate']);
+
+	// Yesterday's counter at the warehouse: the drawer came up 20 birr short.
+	await tillShift(
+		tx,
+		biz,
+		{ by: 'cashier', location: 'Bole Warehouse', float: 2000, date: day(-1), countedOff: -20 },
+		[
+			{
+				lines: [
+					{ sku: 'HMR-500', qty: 2 },
+					{ sku: 'TAPE-5', qty: 3 }
+				],
+				pay: [{ method: 'Cash', rest: true }]
+			},
+			{
+				lines: [
+					{ sku: 'PVC-050', qty: 10 },
+					{ sku: 'SW-1G', qty: 20 }
+				],
+				pay: [
+					{ method: 'Telebirr', amount: 1000, reference: 'CI0BOLTILL01' },
+					{ method: 'Cash', rest: true }
+				]
+			},
+			{
+				// A contractor at contractor prices: part by transfer, the rest on account.
+				customer: 'Sisay Construction PLC',
+				lines: [{ sku: 'CEM-OPC-50', qty: 20 }],
+				pay: [{ method: 'Bank transfer — CBE', amount: 20_000, reference: 'FT25271SSC0200' }]
+			},
+			{
+				lines: [
+					{ sku: 'NAIL-10', qty: 5 },
+					{ sku: 'CBL-2.5', qty: 30 }
+				],
+				pay: [{ method: 'Cash', rest: true }]
+			}
+		]
+	);
+	// Today's shift, still open.
+	await tillShift(
+		tx,
+		biz,
+		{ by: 'cashier', location: 'Bole Warehouse', float: 1500, date: day(0), open: true },
+		[{ lines: [{ sku: 'WB-65', qty: 1 }], pay: [{ method: 'Cash', rest: true }] }]
+	);
+
+	await proforma(
+		tx,
+		biz,
+		{
+			customer: 'Tsehay Real Estate',
+			date: day(-4),
+			location: 'Bole Warehouse',
+			by: 'manager',
+			reference: 'Site 5 material request',
+			terms: 'Delivery to site within 3 days of order. Prices valid 30 days.',
+			status: 'sent'
+		},
+		[
+			{ sku: 'CEM-OPC-50', qty: 300 },
+			{ sku: 'CIS-G32', qty: 80 },
+			{ sku: 'PNT-EMW-4', qty: 10 }
+		]
+	);
+	await proforma(
+		tx,
+		biz,
+		{
+			buyerName: 'Bole sub-city finance office',
+			buyerTin: '0000045678',
+			date: day(-1),
+			location: 'Bole Warehouse',
+			by: 'clerk',
+			reference: 'RFQ 2019/017',
+			terms: 'Delivery within 5 working days of the purchase order. Prices valid 30 days.'
+		},
+		[
+			{ sku: 'WB-65', qty: 5 },
+			{ sku: 'HMR-500', qty: 10 },
+			{ sku: 'TAPE-5', qty: 10 }
+		]
+	);
+	await proforma(
+		tx,
+		biz,
+		{
+			customer: 'Genet Finishing Works',
+			date: day(-3),
+			location: 'Bole Warehouse',
+			by: 'manager',
+			status: 'converted'
+		},
+		[{ sku: 'PNT-OIL-BLK', qty: 4 }]
 	);
 
 	// ── Fiscal receipts and e-invoices ───────────────────────────────────────────────────────

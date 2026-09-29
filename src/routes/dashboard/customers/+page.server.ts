@@ -6,6 +6,7 @@ import { customer } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { customerList, customerValues, duplicateCustomer } from '$lib/server/customers';
 import { creditSummary } from '$lib/server/credit';
+import { priceListOptions } from '$lib/server/options';
 import { customerSchema } from '$lib/schemas/customers';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -29,6 +30,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			};
 		}),
 		form,
+		priceLists: await priceListOptions(orgId),
 		canManage: hasPermission(locals, 'customers.manage')
 	};
 };

@@ -8,12 +8,15 @@ import {
 	mysqlTable,
 	timestamp,
 	uniqueIndex,
-	varchar
+	varchar,
+	type AnyMySqlColumn
 } from 'drizzle-orm/mysql-core';
 import { user } from './auth';
 import { branch } from './locations';
 import { supplier } from './suppliers';
 import { customer } from './customers';
+import { stockDocument } from './stock';
+import { posShift } from './sales';
 import { deletionFields, lesserFields, orgRef, secureFields } from './fields';
 import {
 	PAYMENT_KINDS,
@@ -81,6 +84,17 @@ export const transactions = mysqlTable(
 		withheld: decimal('withheld', { precision: 14, scale: 2, mode: 'number' }).notNull().default(0),
 		/** The withholding receipt: issued by us, or handed to us by the customer. */
 		withholdingReceipt: varchar('withholding_receipt', { length: 60 }),
+		/**
+		 * The sale (or other document) this is one of several payments for — a sale paid half in cash
+		 * and half by Telebirr. Optional; a single payment is linked from the document instead.
+		 */
+		documentId: int('document_id').references((): AnyMySqlColumn => stockDocument.id, {
+			onDelete: 'set null'
+		}),
+		/** The till shift it was taken in, for the drawer count. Optional. */
+		shiftId: int('shift_id').references((): AnyMySqlColumn => posShift.id, {
+			onDelete: 'set null'
+		}),
 		status: mysqlEnum('status', TRANSACTION_STATUSES).notNull().default('recorded'),
 		verifiedBy: varchar('verified_by', { length: 255 }).references(() => user.id, {
 			onDelete: 'set null'

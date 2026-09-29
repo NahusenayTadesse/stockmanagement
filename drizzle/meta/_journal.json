@@ -78,6 +78,13 @@
       "when": 1790668980439,
       "tag": "0010_fiscal_device_deleted_by",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1790670495364,
+      "tag": "0011_pos_quotes_price_lists",
+      "breakpoints": true
     }
   ]
 }

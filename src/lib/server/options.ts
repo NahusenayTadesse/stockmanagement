@@ -15,6 +15,7 @@ import {
 	location,
 	lot,
 	paymentMethod,
+	priceList,
 	roles,
 	supplier,
 	uom
@@ -46,6 +47,16 @@ export const categoryOptions = (orgId: number) =>
 		.from(category)
 		.where(and(eq(category.orgId, orgId), eq(category.status, true), isNull(category.deletedAt)))
 		.orderBy(asc(category.name));
+
+/** Active price lists. */
+export const priceListOptions = (orgId: number) =>
+	db
+		.select({ value: priceList.id, name: priceList.name })
+		.from(priceList)
+		.where(
+			and(eq(priceList.orgId, orgId), eq(priceList.isActive, true), isNull(priceList.deletedAt))
+		)
+		.orderBy(asc(priceList.name));
 
 export const unitOptions = (orgId: number) =>
 	db

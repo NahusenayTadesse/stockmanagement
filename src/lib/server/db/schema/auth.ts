@@ -51,6 +51,11 @@ export const organization = mysqlTable('organization', {
 	 */
 	totRate: decimal('tot_rate', { precision: 5, scale: 2, mode: 'number' }),
 	/**
+	 * The largest discount (percent off the price) a seller may give without the right to give
+	 * more. Empty: no limit.
+	 */
+	maxDiscountPercent: decimal('max_discount_percent', { precision: 5, scale: 2, mode: 'number' }),
+	/**
 	 * Electronic invoicing with the Ministry of Revenues. Empty: off. `sandbox` issues local
 	 * reference numbers without calling anyone, for trying it out; `live` sends to the endpoint.
 	 */

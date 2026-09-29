@@ -81,9 +81,35 @@ export async function paymentSection(orgId: number, doc: Doc, locals: App.Locals
 				)
 		: [];
 
+	// A sale paid in parts (cash and Telebirr, say): the other payments filed under it.
+	const otherPayments = await db
+		.select({
+			id: transactions.id,
+			direction: transactions.direction,
+			amount: transactions.amount,
+			method: paymentMethod.name,
+			reference: transactions.reference,
+			status: transactions.status
+		})
+		.from(transactions)
+		.leftJoin(paymentMethod, eq(paymentMethod.id, transactions.paymentMethodId))
+		.where(
+			and(
+				eq(transactions.orgId, orgId),
+				eq(transactions.documentId, doc.id),
+				doc.transactionId ? ne(transactions.id, doc.transactionId) : undefined
+			)
+		);
+
 	// The forms and pickers only matter to someone who may record money.
 	if (!canManage || payment || doc.status === 'cancelled') {
-		return { payment: payment ?? null, paymentFiles: files, canManage, canPay: false as const };
+		return {
+			payment: payment ?? null,
+			paymentFiles: files,
+			otherPayments,
+			canManage,
+			canPay: false as const
+		};
 	}
 
 	const [methods, branches, suppliers, customers, linkable, totals] = await Promise.all([
@@ -136,6 +162,7 @@ export async function paymentSection(orgId: number, doc: Doc, locals: App.Locals
 	return {
 		payment: null,
 		paymentFiles: files,
+		otherPayments,
 		canManage,
 		canPay: true as const,
 		paymentForm,

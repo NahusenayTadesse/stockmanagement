@@ -10,4 +10,5 @@ export * from './stock';
 export * from './purchasing';
 export * from './counts';
 export * from './fiscal';
+export * from './sales';
 export * from './audit';

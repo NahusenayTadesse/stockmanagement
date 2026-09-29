@@ -22,6 +22,7 @@ import { supplier } from './suppliers';
 import { customer } from './customers';
 import { purchaseOrder, purchaseOrderLine } from './purchasing';
 import { fiscalDevice } from './fiscal';
+import { posShift, quote } from './sales';
 import { deletionFields, orgRef, secureFields } from './fields';
 import {
 	ADJUSTMENT_REASONS,
@@ -151,6 +152,11 @@ export const stockDocument = mysqlTable(
 		einvoiceError: varchar('einvoice_error', { length: 255 }),
 		/** The tax office's reply, as received, for the record. */
 		einvoiceResponse: text('einvoice_response'),
+		/** A sale made from a proforma, or rung up at a till during a shift. Optional. */
+		quoteId: int('quote_id').references((): AnyMySqlColumn => quote.id, { onDelete: 'set null' }),
+		shiftId: int('shift_id').references((): AnyMySqlColumn => posShift.id, {
+			onDelete: 'set null'
+		}),
 		/** Returns: the sale or delivery being returned. */
 		returnOfId: int('return_of_id').references((): AnyMySqlColumn => stockDocument.id, {
 			onDelete: 'restrict'
@@ -209,6 +215,8 @@ export const stockDocumentLine = mysqlTable(
 		 * to a named customer needs it on every line — it is what the customer owes.
 		 */
 		unitPrice: decimal('unit_price', { precision: 18, scale: 4, mode: 'number' }),
+		/** The price before a discount, when the line was discounted. Optional. */
+		listPrice: decimal('list_price', { precision: 18, scale: 4, mode: 'number' }),
 		/**
 		 * VAT on this line, in percent: fixed when the document is posted (sales and receipts) or
 		 * copied from the line returned. Empty on a draft, and on anything that is not bought or sold.

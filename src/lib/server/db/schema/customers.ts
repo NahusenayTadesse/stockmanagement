@@ -1,4 +1,13 @@
-import { boolean, decimal, index, int, mysqlTable, varchar } from 'drizzle-orm/mysql-core';
+import {
+	boolean,
+	decimal,
+	index,
+	int,
+	mysqlTable,
+	varchar,
+	type AnyMySqlColumn
+} from 'drizzle-orm/mysql-core';
+import { priceList } from './sales';
 import { orgRef, secureFields } from './fields';
 
 /**
@@ -32,6 +41,10 @@ export const customer = mysqlTable(
 		 * it pays and hands over a withholding receipt instead.
 		 */
 		withholdsTax: boolean('withholds_tax').notNull().default(false),
+		/** Their prices, when they buy at other than list price (wholesale, contract). Optional. */
+		priceListId: int('price_list_id').references((): AnyMySqlColumn => priceList.id, {
+			onDelete: 'set null'
+		}),
 		...secureFields
 	},
 	(table) => [

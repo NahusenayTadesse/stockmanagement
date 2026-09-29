@@ -94,6 +94,26 @@ The first request after a boot seeds the `permissions` table from the route rule
   has a non-null `supplier_id`: the receipt's coming in; going out, the serial unit's, else the
   lot's, else the item's main supplier. Each supplier's page shows deliveries, payments and what is
   still owed (received at cost − paid).
+- **Selling.** A sale is an ordinary posted issue with priced lines, however it is made — so
+  credit, VAT/TOT, returns, fiscal receipts and e-invoices apply to all of them.
+  - **Till** (`/dashboard/pos`, `src/lib/server/pos.ts`): open a shift with a float, scan a
+    barcode or type a name/code (Enter adds an exact barcode or SKU match; F2 search, F9 pay),
+    change units, quantities and prices, name a customer (their price list reprices the cart), hold
+    and recall carts. Payment can be split across methods; only cash gives change, taken off the
+    cash payment; anything unpaid needs a named customer and goes on their account (their credit
+    limit applies). Checkout prices, pays and posts in one transaction, then prints the fiscal
+    receipt / sends the e-invoice if set up, and offers the 80 mm receipt. Closing a shift counts
+    the drawer against float + cash in − cash out, and records the difference.
+  - **Price lists** (Admin panel → Price lists, `src/lib/server/pricing.ts`): a customer's list
+    price for the unit, else its base-unit price scaled to the pack, else the item's list price.
+    **Discount limit** (Business profile): a larger discount needs `sales.discount`.
+  - **Proformas** (`/dashboard/sales/quotes`, `src/lib/server/quotes.ts`): for a listed customer
+    or a one-off buyer (name, TIN); priced like the till; numbered (`PRF`) when sent; printable
+    and emailable; "Make it a sale" drafts the sale at the quoted prices, to check and post.
+  - **Sales & invoices** (`/dashboard/sales`): every priced sale and customer return with total,
+    paid, on account, FS No. and e-invoice status; each posted one prints an A4 tax invoice (or
+    sales invoice / credit note) with TINs, VAT or TOT, amount in words, payments, FS No., IRN
+    and QR code.
 - **Customers** (`/dashboard/customers`, `src/lib/server/customers.ts`) are optional everywhere.
   Only the name is required; names repeat, so the same name is refused only with the same phone
   (or both without one). An issue may name a customer, write who it went to in "Issued to", or

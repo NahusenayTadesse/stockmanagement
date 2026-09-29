@@ -18,6 +18,9 @@ import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 import Contact from '@lucide/svelte/icons/contact';
 import Clock from '@lucide/svelte/icons/clock';
+import ShoppingBag from '@lucide/svelte/icons/shopping-bag';
+import Calculator from '@lucide/svelte/icons/calculator';
+import Tags from '@lucide/svelte/icons/tags';
 import type { Component } from 'svelte';
 import type { IconProps } from '@lucide/svelte';
 import type { NavItem } from '@nahu/admin-kit/navigation';
@@ -26,6 +29,17 @@ import type { NavItem } from '@nahu/admin-kit/navigation';
 export const NAVIGATION: NavItem[] = [
 	{ title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
 	{ title: 'Items', url: '/dashboard/items', icon: Package },
+	{
+		title: 'Sales',
+		url: '/dashboard/sales',
+		icon: ShoppingBag,
+		items: [
+			{ title: 'Till (POS)', url: '/dashboard/pos', icon: Calculator },
+			{ title: 'Sales & invoices', url: '/dashboard/sales', icon: ShoppingBag },
+			{ title: 'Proformas', url: '/dashboard/sales/quotes', icon: FileText },
+			{ title: 'Till shifts', url: '/dashboard/pos/shifts', icon: Clock }
+		]
+	},
 	{
 		title: 'Stock',
 		url: '/dashboard/stock',
@@ -99,6 +113,7 @@ export const SETTINGS_SECTIONS: {
 		icon: Wallet,
 		items: [
 			{ title: 'Payment methods', url: '/dashboard/admin-panel/payment-methods', icon: Wallet },
+			{ title: 'Price lists', url: '/dashboard/admin-panel/price-lists', icon: Tags },
 			{ title: 'Fiscal devices', url: '/dashboard/admin-panel/fiscal-devices', icon: Receipt }
 		]
 	},
@@ -122,6 +137,9 @@ export const ENTITIES: Record<string, string> = {
 	transaction: '/dashboard/transactions',
 	supplier: '/dashboard/suppliers',
 	customer: '/dashboard/customers',
+	quote: '/dashboard/sales/quotes',
+	sale: '/dashboard/sales',
+	shift: '/dashboard/pos/shifts',
 	purchaseOrder: '/dashboard/purchasing',
 	count: '/dashboard/stock/counts'
 };

@@ -24,8 +24,14 @@ import {
 	numberSequence,
 	organization,
 	paymentMethod,
+	posCart,
+	posShift,
+	priceList,
+	priceListItem,
 	purchaseOrder,
 	purchaseOrderLine,
+	quote,
+	quoteLine,
 	rolePermissions,
 	roles,
 	serialUnit,
@@ -48,6 +54,10 @@ import { postDocument, type Tx } from '$lib/server/stock/post';
 import { markOrdered, receiptFromOrder } from '$lib/server/purchasing';
 import { createReturn } from '$lib/server/returns';
 import { submitEinvoice } from '$lib/server/einvoice';
+import { checkout, closeShift, openShift, shiftSummary } from '$lib/server/pos';
+import { priceTable } from '$lib/server/pricing';
+import { lineAmounts, saleTotRate, saleVatRate, taxSettings } from '$lib/server/tax';
+import { convertQuote, numberQuote } from '$lib/server/quotes';
 import { countLines, openCount, postCount, saveCounts } from '$lib/server/counts';
 import { documentTotals, suggestedWithholding } from '$lib/server/tax';
 import type { DocumentType } from '$lib/constants';
@@ -132,6 +142,10 @@ export async function removeBusiness(tx: Tx, ownerEmail: string) {
 			stockDocument,
 			purchaseOrderLine,
 			purchaseOrder,
+			quoteLine,
+			quote,
+			posCart,
+			priceListItem,
 			serialUnit,
 			lot,
 			barcode,
@@ -140,9 +154,11 @@ export async function removeBusiness(tx: Tx, ownerEmail: string) {
 			category,
 			transactionAttachment,
 			transactions,
+			posShift,
 			paymentMethod,
 			supplier,
-			customer
+			customer,
+			priceList
 		]) {
 			await tx.delete(table).where(eq(table.orgId, orgId));
 		}
@@ -1039,4 +1055,234 @@ export async function fiscalHistory(tx: Tx, biz: Business, devices: DeviceSpec[]
 		if (org?.mode) await submitEinvoice(biz.orgId, sale.id, tx);
 	}
 	return sales.length;
+}
+
+// ── Selling ───────────────────────────────────────────────────────────────────────────────────
+
+/** A price list and its prices (by SKU, per unit; no unit means the base unit). */
+export async function addPriceList(
+	tx: Tx,
+	biz: Business,
+	name: string,
+	prices: { sku: string; unit?: string; price: number }[],
+	createdBy: string
+) {
+	const [list] = await tx
+		.insert(priceList)
+		.values({ orgId: biz.orgId, name, createdBy })
+		.$returningId();
+	for (const p of prices) {
+		await tx.insert(priceListItem).values({
+			orgId: biz.orgId,
+			priceListId: list.id,
+			itemId: itemId(biz, p.sku),
+			uomId: p.unit ? unitId(biz, p.unit) : null,
+			price: p.price
+		});
+	}
+	return list.id;
+}
+
+function itemId(biz: Business, sku: string) {
+	const id = biz.items.get(sku);
+	if (!id) throw new Error(`${biz.name}: no item ${sku}`);
+	return id;
+}
+
+type CartSpec = { sku: string; qty: number; unit?: string; price?: number };
+
+/** Lines priced as the till would price them for this customer, and what they come to. */
+async function priced(tx: Tx, biz: Business, lines: CartSpec[], customerId: number | null) {
+	const [c] = customerId
+		? await tx
+				.select({ priceListId: customer.priceListId })
+				.from(customer)
+				.where(eq(customer.id, customerId))
+		: [];
+	const ids = lines.map((l) => itemId(biz, l.sku));
+	const table = await priceTable(biz.orgId, ids, c?.priceListId ?? null, tx);
+	const settings = await taxSettings(biz.orgId, tx);
+	const items = await tx.select().from(item).where(inArray(item.id, ids));
+	let gross = 0;
+	const out = lines.map((l) => {
+		const it = items.find((i) => i.id === itemId(biz, l.sku))!;
+		const uomId = l.unit ? unitId(biz, l.unit) : it.baseUomId;
+		const unitPrice = l.price ?? table.get(`${it.id}:${uomId}`) ?? 0;
+		gross += lineAmounts(
+			l.qty,
+			unitPrice,
+			saleVatRate(settings, it.taxCode),
+			saleTotRate(settings, it.totRate)
+		).gross;
+		return { itemId: it.id, uomId, quantity: l.qty, unitPrice };
+	});
+	return { lines: out, gross: Math.round(gross * 100) / 100 };
+}
+
+async function methodId(tx: Tx, biz: Business, name: string) {
+	const [m] = await tx
+		.select({ id: paymentMethod.id })
+		.from(paymentMethod)
+		.where(and(eq(paymentMethod.orgId, biz.orgId), eq(paymentMethod.name, name)));
+	if (!m) throw new Error(`${biz.name}: no payment method ${name}`);
+	return m.id;
+}
+
+export type TillSale = {
+	customer?: string;
+	lines: CartSpec[];
+	/**
+	 * How it was paid. `rest` pays whatever is left (cash rounds the tender up to the next 100, as
+	 * a customer hands over notes); leave the rest unpaid with a customer to put it on account.
+	 */
+	pay: { method: string; amount?: number; rest?: boolean; reference?: string }[];
+};
+
+/**
+ * A till shift, rung up through the till's own checkout: opened with a float, its sales, and —
+ * unless `open` — closed with the drawer counted `countedOff` birr from what it should hold.
+ */
+export async function tillShift(
+	tx: Tx,
+	biz: Business,
+	head: {
+		by: string;
+		location: string;
+		float: number;
+		date: string;
+		open?: boolean;
+		countedOff?: number;
+	},
+	sales: TillSale[]
+) {
+	const userId = biz.users.get(head.by)!;
+	const locationId = biz.locations.get(head.location);
+	if (!locationId) throw new Error(`${biz.name}: unknown location ${head.location}`);
+	const shiftId = await openShift(tx, {
+		orgId: biz.orgId,
+		userId,
+		locationId,
+		openingFloat: head.float
+	});
+	await tx
+		.update(posShift)
+		.set({ openedAt: new Date(`${head.date}T08:30:00+03:00`) })
+		.where(eq(posShift.id, shiftId));
+
+	for (const sale of sales) {
+		const buyerId = sale.customer ? customerId(biz, sale.customer) : null;
+		const { lines, gross } = await priced(tx, biz, sale.lines, buyerId);
+		let left = gross;
+		const payments = [];
+		for (const p of sale.pay) {
+			const id = await methodId(tx, biz, p.method);
+			let amount = p.amount ?? 0;
+			if (p.rest) amount = p.method === 'Cash' ? Math.ceil(left / 100) * 100 : left;
+			left = Math.max(0, Math.round((left - amount) * 100) / 100);
+			payments.push({ methodId: id, amount, reference: p.reference });
+		}
+		await checkout(tx, {
+			orgId: biz.orgId,
+			userId,
+			shiftId,
+			customerId: buyerId,
+			lines,
+			payments,
+			today: head.date,
+			// The seed stands in for a manager.
+			allowOverLimit: true,
+			allowDiscount: true,
+			maxDiscountPercent: null
+		});
+	}
+
+	if (!head.open) {
+		const [row] = await tx.select().from(posShift).where(eq(posShift.id, shiftId));
+		const { expectedCash } = await shiftSummary(biz.orgId, shiftId, tx);
+		await closeShift(tx, {
+			orgId: biz.orgId,
+			shiftId,
+			userId,
+			countedCash: expectedCash + (head.countedOff ?? 0),
+			note: head.countedOff ? 'Counted twice; the difference stands.' : undefined
+		});
+		await tx
+			.update(posShift)
+			.set({ closedAt: new Date(`${head.date}T18:30:00+03:00`) })
+			.where(eq(posShift.id, row.id));
+	}
+	return shiftId;
+}
+
+/** A proforma, priced as the editor prices it; optionally sent, or made into a draft sale. */
+export async function proforma(
+	tx: Tx,
+	biz: Business,
+	head: {
+		customer?: string;
+		buyerName?: string;
+		buyerTin?: string;
+		date: string;
+		validDays?: number;
+		location: string;
+		by: string;
+		reference?: string;
+		terms?: string;
+		status?: 'draft' | 'sent' | 'accepted' | 'converted';
+	},
+	lines: CartSpec[]
+) {
+	const userId = biz.users.get(head.by)!;
+	const locationId = biz.locations.get(head.location)!;
+	const [loc] = await tx
+		.select({ branchId: location.branchId })
+		.from(location)
+		.where(eq(location.id, locationId));
+	const customerId_ = head.customer ? customerId(biz, head.customer) : null;
+	const [q] = await tx
+		.insert(quote)
+		.values({
+			orgId: biz.orgId,
+			branchId: loc.branchId,
+			customerId: customerId_,
+			buyerName: head.buyerName ?? null,
+			buyerTin: head.buyerTin ?? null,
+			locationId,
+			quoteDate: head.date,
+			validUntil: addLocalDays(head.date, head.validDays ?? 30),
+			reference: head.reference ?? null,
+			terms: head.terms ?? null,
+			createdBy: userId
+		})
+		.$returningId();
+	const { lines: pricedLines } = await priced(tx, biz, lines, customerId_);
+	for (const l of pricedLines) {
+		await tx.insert(quoteLine).values({ orgId: biz.orgId, quoteId: q.id, ...l });
+	}
+	const status = head.status ?? 'draft';
+	if (status !== 'draft') {
+		await numberQuote(tx, biz.orgId, q.id);
+		if (status === 'converted') {
+			await convertQuote(tx, { orgId: biz.orgId, quoteId: q.id, date: head.date, userId });
+		} else {
+			await tx
+				.update(quote)
+				.set({ status, sentAt: new Date(`${head.date}T10:00:00+03:00`) })
+				.where(eq(quote.id, q.id));
+		}
+	}
+	return q.id;
+}
+
+/** Puts customers (by name) on a price list. */
+export async function assignPriceList(tx: Tx, biz: Business, listId: number, names: string[]) {
+	await tx
+		.update(customer)
+		.set({ priceListId: listId })
+		.where(
+			inArray(
+				customer.id,
+				names.map((n) => customerId(biz, n))
+			)
+		);
 }

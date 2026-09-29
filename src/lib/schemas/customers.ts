@@ -30,7 +30,9 @@ export const customerSchema = z.object({
 		.max(365, 'At most a year')
 		.default(30),
 	/** A withholding agent: keeps back tax from what it pays. */
-	withholdsTax: z.boolean().default(false)
+	withholdsTax: z.boolean().default(false),
+	/** 0 = list prices. */
+	priceListId: z.coerce.number().int().min(0).default(0)
 });
 
 /** A payment received from a customer, from their page. */

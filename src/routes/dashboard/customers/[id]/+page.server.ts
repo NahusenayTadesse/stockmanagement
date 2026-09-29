@@ -15,7 +15,7 @@ import {
 import { customerEdit, receivePayment } from '$lib/schemas/customers';
 import { customerStatement } from '$lib/server/credit';
 import { checkTransaction } from '$lib/server/transactions';
-import { methodOptions } from '$lib/server/options';
+import { methodOptions, priceListOptions } from '$lib/server/options';
 import { sendMail } from '$lib/server/mail';
 import { localToday } from '@nahu/admin-kit/time';
 import { formatETB } from '@nahu/admin-kit/global';
@@ -42,6 +42,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				creditLimit: c.creditLimit,
 				creditDays: c.creditDays,
 				withholdsTax: c.withholdsTax,
+				priceListId: c.priceListId ?? 0,
 				status: c.isActive
 			},
 			zod4(customerEdit),
@@ -58,6 +59,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		form,
 		paymentForm,
 		methods: [{ value: 0, name: '— Not said —' }, ...methods],
+		priceLists: await priceListOptions(orgId),
 		canManage: hasPermission(locals, 'customers.manage'),
 		canReceive
 	};

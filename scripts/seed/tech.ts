@@ -10,6 +10,7 @@ import {
 	addCategories,
 	addCustomers,
 	returnGoods,
+	tillShift,
 	addItems,
 	addLocations,
 	addSuppliers,
@@ -1115,6 +1116,23 @@ export async function seedTech(tx: Tx): Promise<Business> {
 		branch: 'PSA',
 		by: 'manager'
 	});
+
+	// ── The till ─────────────────────────────────────────────────────────────────────────────
+	await tillShift(
+		tx,
+		biz,
+		{ by: 'manager', location: 'Piassa Back Store', float: 1000, date: day(-1) },
+		[
+			{ lines: [{ sku: 'STO-USB32', qty: 2 }], pay: [{ method: 'Cash', rest: true }] },
+			{
+				lines: [
+					{ sku: 'ACC-MOUSE', qty: 1 },
+					{ sku: 'ACC-HDMI15', qty: 2 }
+				],
+				pay: [{ method: 'Telebirr', rest: true, reference: 'CI0PSATILL01' }]
+			}
+		]
+	);
 
 	// ── Returns ──────────────────────────────────────────────────────────────────────────────
 	// The quarantined black ink goes back to Horizon: the counterfeit notice was confirmed.

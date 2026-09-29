@@ -63,6 +63,24 @@
 					</form>
 				{/if}
 			</div>
+			{#if pay.otherPayments.length}
+				<ul class="flex flex-col gap-1 text-sm">
+					{#each pay.otherPayments as o (o.id)}
+						<li>
+							<a
+								class="font-medium hover:underline {o.status === 'void'
+									? 'text-muted-foreground line-through'
+									: ''}"
+								href={resolve('/dashboard/transactions/[id]', { id: String(o.id) })}
+								>{signed(o.direction, o.amount)}</a
+							>
+							<span class="text-muted-foreground"
+								>{o.method ? ` · ${o.method}` : ''}{o.reference ? ` · ${o.reference}` : ''}</span
+							>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 			{#if pay.paymentFiles.length}
 				<div class="flex flex-wrap gap-2">
 					{#each pay.paymentFiles as file (file.fileName)}

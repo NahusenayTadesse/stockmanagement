@@ -83,7 +83,7 @@
 						class="flex flex-col gap-4"
 					>
 						<Errors allErrors={$allErrors} />
-						<CustomerFields {form} {errors} />
+						<CustomerFields {form} {errors} priceLists={data.priceLists} />
 						<Button type="submit" form="add-customer">
 							{#if $delayed}<LoadingBtn name="Saving" />{:else}Add customer{/if}
 						</Button>
