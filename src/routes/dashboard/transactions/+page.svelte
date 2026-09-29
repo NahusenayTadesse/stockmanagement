@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
 	import { resolve } from '$app/paths';
 	import Plus from '@lucide/svelte/icons/plus';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
@@ -135,11 +136,11 @@
 			<form method="GET" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 				<div class="flex flex-col gap-1">
 					<Label for="from">{m.sales_from()}</Label>
-					<Input id="from" name="from" type="date" value={f.from} />
+					<DateInput id="from" name="from" value={f.from} />
 				</div>
 				<div class="flex flex-col gap-1">
 					<Label for="to">{m.sales_to_date()}</Label>
-					<Input id="to" name="to" type="date" value={f.to} />
+					<DateInput id="to" name="to" value={f.to} />
 				</div>
 				<div class="flex flex-col gap-1">
 					<Label for="direction">{m.sales_money()}</Label>

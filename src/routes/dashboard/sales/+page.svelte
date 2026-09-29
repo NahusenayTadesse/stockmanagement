@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
 	import { resolve } from '$app/paths';
 	import Calculator from '@lucide/svelte/icons/calculator';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -8,7 +9,6 @@
 	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
 	import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
-	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 	import { DOCUMENT_STATUS_LABELS, EINVOICE_STATUS_LABELS } from '$lib/format';
@@ -102,8 +102,8 @@
 			>
 		{/each}
 		<form method="GET" class="flex items-end gap-2">
-			<Input name="from" type="date" value={f.from} class="h-8" />
-			<Input name="to" type="date" value={f.to} class="h-8" />
+			<DateInput name="from" value={f.from} />
+			<DateInput name="to" value={f.to} />
 			<Button type="submit" size="sm" variant="outline">{m.sales_show()}</Button>
 		</form>
 	</div>

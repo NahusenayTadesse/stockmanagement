@@ -316,6 +316,14 @@ The first request after a boot seeds the `permissions` table from the route rule
     message units.
   - Amharic needs an Ethiopic font: `layout.css` names Noto Sans Ethiopic, Nyala, Kefa and
     Abyssinica SIL, which cover Android, Windows, macOS and most Linux.
+- **Dates: Ethiopian or Gregorian** (admin-kit 0.1.12). Every date input — forms and the filter
+  bars (`DateInput` from the kit) — opens on the Ethiopian calendar and switches to Gregorian
+  (E.C. / G.C.); the choice applies to every date input and the browser remembers it. A date is
+  clicked on a grid drawn in that calendar (Pagume included) or typed as day / month / year, with
+  the same day on the other calendar shown underneath. **Forms always post a Gregorian
+  `YYYY-MM-DD`** and the database keeps Gregorian dates; the server never receives an Ethiopian
+  one. Days that do not exist (ጳጉሜ 7, 31 September) are refused, not moved. Displayed dates in
+  tables and prints stay on the Ethiopian calendar as before.
 - **Mail** (`src/lib/server/mail.ts`): nodemailer over SMTP (`SMTP_*` in `.env`). It never
   throws; without SMTP settings nothing is sent and the app carries on. Password reset uses it:
   "Forgot your password?" → a one-hour, single-use link → `/reset-password`; every session of

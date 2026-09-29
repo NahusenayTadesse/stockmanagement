@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
 	import { resolve } from '$app/paths';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import ReportChart from '@nahu/admin-kit/components/reports/ReportChart.svelte';
@@ -7,7 +8,6 @@
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import * as Tabs from '@nahu/admin-kit/components/ui/tabs/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
-	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { PURPOSE_CHOICES } from '$lib/schemas/transactions';
@@ -247,11 +247,11 @@
 				<input type="hidden" name="tab" value={tab} />
 				<div class="flex flex-col gap-1">
 					<Label for="from">{m.reports_from()}</Label>
-					<Input id="from" name="from" type="date" value={f.from} />
+					<DateInput id="from" name="from" value={f.from} />
 				</div>
 				<div class="flex flex-col gap-1">
 					<Label for="to">{m.reports_to()}</Label>
-					<Input id="to" name="to" type="date" value={f.to} />
+					<DateInput id="to" name="to" value={f.to} />
 				</div>
 				{#if data.branches.length > 1}
 					<div class="flex flex-col gap-1">

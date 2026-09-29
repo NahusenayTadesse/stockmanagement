@@ -1,8 +1,8 @@
 <script lang="ts">
+	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
 	import type { Snippet } from 'svelte';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
-	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -39,11 +39,11 @@
 			{#if from !== null && to !== null}
 				<div class="flex flex-col gap-1">
 					<Label for="from">{m.reports_from()}</Label>
-					<Input id="from" name="from" type="date" value={from} />
+					<DateInput id="from" name="from" value={from} />
 				</div>
 				<div class="flex flex-col gap-1">
 					<Label for="to">{m.reports_to()}</Label>
-					<Input id="to" name="to" type="date" value={to} />
+					<DateInput id="to" name="to" value={to} />
 				</div>
 			{/if}
 			{#if branches.length > 1}
