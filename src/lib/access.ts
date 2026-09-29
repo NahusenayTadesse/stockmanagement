@@ -18,6 +18,7 @@ export const access = createAccess({
 		{ prefix: '/dashboard/admin-panel/roles', permission: 'roles.manage' },
 		{ prefix: '/dashboard/admin-panel/business', permission: 'business.manage' },
 		{ prefix: '/dashboard/admin-panel/import', permission: 'data.import' },
+		{ prefix: '/dashboard/admin-panel/sms', permission: 'business.manage' },
 		{ prefix: '/dashboard/admin-panel', permission: 'settings.manage' },
 		{ prefix: '/dashboard/items', permission: 'items.view' },
 		{ prefix: '/dashboard/lots', permission: 'stock.view' },

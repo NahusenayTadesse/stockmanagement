@@ -282,6 +282,19 @@ The first request after a boot seeds the `permissions` table from the route rule
   supplier; write-offs by reason; money in and out by purpose and method (only for roles that
   see transactions). Periods chart by day up to two months, by Ethiopian month beyond. Every
   table exports to CSV/PDF and every chart toggles to its numbers.
+- **SMS** (optional; Admin panel → SMS, `src/lib/server/sms.ts`). Texts go through GeezSMS
+  with the platform's token (`SMS_KEY`, the same account as dana). Each business turns SMS on
+  and chooses what goes out automatically: a receipt to a named customer after a sale (and, at
+  the till, to any number a walk-in gives), a payment confirmation with what is still owed, and
+  staff alerts to its alert numbers — approvals waiting, transfers on the way (the receiving
+  branch's own mobile too), requisitions submitted, and a morning digest sent by the same cron
+  call as the expiry email. With `sms.send`, people can also text a credit reminder to one
+  customer or to everyone overdue (Customers → Credit & ageing), a proforma, a purchase order to
+  its supplier, or a note. Numbers are normalised to `2519…`/`2517…` (landlines are refused and
+  logged as not sent), messages are signed with the business's name and cut to 335 characters on
+  a word. Nothing throws: every attempt, with the provider's answer and message units, is in the
+  SMS log (and the last 20 on each customer's page). `SMS_DRY_RUN=true` logs without sending —
+  the local `.env` has it on, because the demo customers' numbers look real; remove it to send.
 - **Mail** (`src/lib/server/mail.ts`): nodemailer over SMTP (`SMTP_*` in `.env`). It never
   throws; without SMTP settings nothing is sent and the app carries on. Password reset uses it:
   "Forgot your password?" → a one-hour, single-use link → `/reset-password`; every session of

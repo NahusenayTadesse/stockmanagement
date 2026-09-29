@@ -40,7 +40,8 @@ const CODE_ONLY_PERMISSIONS = [
 	'branches.all',
 	'requisitions.request',
 	'requisitions.approve',
-	'approvals.decide'
+	'approvals.decide',
+	'sms.send'
 ] as const;
 
 /** Wording for the permission checklist on the role and user screens. */
@@ -80,7 +81,8 @@ export const DESCRIPTIONS: Record<string, string> = {
 	'approvals.view': 'See what is waiting for approval, and what was decided',
 	'approvals.decide':
 		'Approve or reject large adjustments, write-offs, count differences and purchase orders',
-	'data.import': 'Import items, suppliers, customers and opening stock from a spreadsheet'
+	'data.import': 'Import items, suppliers, customers and opening stock from a spreadsheet',
+	'sms.send': 'Text customers and suppliers: credit reminders, proformas, purchase orders and notes'
 };
 
 /** Every permission the system recognises, in a stable order. */
@@ -136,7 +138,8 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'requisitions.approve',
 				'approvals.view',
 				'approvals.decide',
-				'data.import'
+				'data.import',
+				'sms.send'
 			]
 		},
 		{
@@ -190,7 +193,8 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'purchasing.view',
 				'requisitions.view',
 				'requisitions.request',
-				'approvals.view'
+				'approvals.view',
+				'sms.send'
 			]
 		},
 		{

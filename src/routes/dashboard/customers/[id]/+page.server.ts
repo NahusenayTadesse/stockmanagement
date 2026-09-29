@@ -15,6 +15,8 @@ import {
 import { customerEdit, receivePayment } from '$lib/schemas/customers';
 import { customerStatement } from '$lib/server/credit';
 import { checkTransaction } from '$lib/server/transactions';
+import { remindCustomer, resultNote, sendSms, smsLog, smsPaymentReceived } from '$lib/server/sms';
+import { canText, textAction, typedNumber } from '$lib/server/smsActions';
 import { methodOptions, priceListOptions } from '$lib/server/options';
 import { sendMail } from '$lib/server/mail';
 import { localToday } from '@nahu/admin-kit/time';
@@ -61,7 +63,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		methods: [{ value: 0, name: '— Not said —' }, ...methods],
 		priceLists: await priceListOptions(orgId),
 		canManage: hasPermission(locals, 'customers.manage'),
-		canReceive
+		canReceive,
+		canText: await canText(locals),
+		texts: await smsLog(orgId, { customerId: c.id })
 	};
 };
 
@@ -110,12 +114,16 @@ export const actions: Actions = {
 		if (!form.valid)
 			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
 
+		let transactionId: number;
 		try {
 			const values = await checkTransaction(
 				{ ...form.data, direction: 'in', purpose: 'sale', customerId: c.id, party: c.name },
 				orgId
 			);
-			await db.insert(transactions).values({ ...values, orgId, createdBy: event.locals.user?.id });
+			[{ id: transactionId }] = await db
+				.insert(transactions)
+				.values({ ...values, orgId, createdBy: event.locals.user?.id })
+				.$returningId();
 		} catch (err) {
 			if (err instanceof WriteRefused) {
 				if (err.field) setError(form, err.field as 'reference', err.message);
@@ -123,11 +131,37 @@ export const actions: Actions = {
 			}
 			throw err;
 		}
+		// A text confirming it, when the business sends them.
+		const sms = await smsPaymentReceived(orgId, transactionId, event.locals.user?.id);
+		const note = sms && resultNote(sms, c.phone ?? '');
 		return message(form, {
 			type: 'success',
-			text: `${formatETB(form.data.amount)} received from ${c.name}`
+			text: `${formatETB(form.data.amount)} received from ${c.name}${note ? ` · ${note}` : ''}`
 		});
 	},
+
+	/** A text of what they owe and how much of it is late. */
+	smsRemind: (event) =>
+		textAction(event, 'Reminder', async (orgId, form) => {
+			const c = await orgCustomer(orgId, Number(event.params.id));
+			return remindCustomer(orgId, c.id, { userId: event.locals.user?.id, to: typedNumber(form) });
+		}),
+
+	/** A message written to the customer. */
+	smsText: (event) =>
+		textAction(event, 'Message', async (orgId, form) => {
+			const c = await orgCustomer(orgId, Number(event.params.id));
+			const text = String(form.get('text') ?? '').trim();
+			if (!text) return { ok: false, status: 'skipped', error: 'Write the message.' };
+			return sendSms(orgId, {
+				to: typedNumber(form) ?? c.phone,
+				text: text.slice(0, 300),
+				kind: 'custom',
+				customerId: c.id,
+				link: `/dashboard/customers/${c.id}`,
+				userId: event.locals.user?.id
+			});
+		}),
 
 	/** The statement, by email, to a customer who left an address. */
 	emailStatement: async (event) => {

@@ -27,6 +27,8 @@ import { sendMail } from '$lib/server/mail';
 import { StockError } from '$lib/server/stock/post';
 import { quoteHeader, quoteLineAdd, quoteLineEdit } from '$lib/schemas/quotes';
 import { releaseQuote, reservationsOfQuote, reserveQuote } from '$lib/server/reservations';
+import { smsQuote } from '$lib/server/sms';
+import { canText, textAction, typedNumber } from '$lib/server/smsActions';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 /**
@@ -152,6 +154,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		quote: q,
 		buyer: buyer ?? null,
 		sale: sale ?? null,
+		canText: await canText(locals),
 		lines: { ...section, rows },
 		totals: priced.totals,
 		items,
@@ -248,6 +251,15 @@ const lineActions = Object.fromEntries(
 );
 
 export const actions: Actions = {
+	/** The proforma's summary — what, how much, until when — by SMS. */
+	sms: (event) =>
+		textAction(event, 'Proforma', (orgId, form) =>
+			smsQuote(orgId, Number(event.params.id), {
+				to: typedNumber(form),
+				userId: event.locals.user?.id
+			})
+		),
+
 	...lineActions,
 
 	editHeader: async (event) => {

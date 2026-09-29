@@ -25,6 +25,7 @@ import {
 	submitRequisition
 } from '$lib/server/requisitions';
 import { StockError } from '$lib/server/stock/post';
+import { smsRequisitionSubmitted } from '$lib/server/sms';
 import {
 	requisitionHeader,
 	requisitionLineAdd,
@@ -214,6 +215,8 @@ export const actions: Actions = {
 					userId: event.locals.user?.id
 				})
 			);
+			// The alert numbers hear of it, when the business sends alerts.
+			await smsRequisitionSubmitted(req.orgId, req.id);
 			return `Submitted as ${number} — someone who may approve requisitions decides next`;
 		});
 	},

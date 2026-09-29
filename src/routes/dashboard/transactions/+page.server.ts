@@ -1,3 +1,4 @@
+import { smsPaymentReceived } from '$lib/server/sms';
 import { message, setError, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect } from 'sveltekit-flash-message/server';
@@ -89,6 +90,7 @@ export const actions: Actions = {
 					: 'Could not record the transaction.';
 			return message(form, { type: 'error', text }, { status: 500 });
 		}
+		await smsPaymentReceived(orgId, id, event.locals.user?.id);
 
 		redirect(
 			`/dashboard/transactions/${id}`,

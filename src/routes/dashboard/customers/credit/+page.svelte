@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
+	import MessageSquare from '@lucide/svelte/icons/message-square';
+	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import ReportChart from '@nahu/admin-kit/components/reports/ReportChart.svelte';
 	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
@@ -53,6 +56,8 @@
 		labels: data.buckets.map((b) => b.label),
 		series: [{ label: 'Owed', data: data.buckets.map((b) => data.totals[b.key]) }]
 	});
+	let reminding = $state(false);
+	const overdueCount = $derived(data.rows.filter((r) => r.overdue > 0 && r.isActive).length);
 </script>
 
 <svelte:head>
@@ -60,12 +65,33 @@
 </svelte:head>
 
 <div class="flex flex-col gap-6">
-	<div>
-		<h1 class="text-2xl font-semibold">Credit & ageing</h1>
-		<p class="text-muted-foreground">
-			What customers owe (ዱቤ) as of {formatEthiopianDate(new Date(`${data.today}T12:00:00+03:00`))},
-			and how long it has been owed. A sale is due its customer's days to pay after the sale.
-		</p>
+	<div class="flex flex-wrap items-start justify-between gap-4">
+		<div>
+			<h1 class="text-2xl font-semibold">Credit & ageing</h1>
+			<p class="text-muted-foreground">
+				What customers owe (ዱቤ) as of {formatEthiopianDate(
+					new Date(`${data.today}T12:00:00+03:00`)
+				)}, and how long it has been owed. A sale is due its customer's days to pay after the sale.
+			</p>
+		</div>
+		{#if data.canText && overdueCount}
+			<form
+				method="POST"
+				action="?/remindAll"
+				use:enhance={() => {
+					reminding = true;
+					return async ({ update }) => {
+						await update();
+						reminding = false;
+					};
+				}}
+			>
+				<Button type="submit" variant="outline" disabled={reminding}>
+					<MessageSquare />
+					{reminding ? 'Sending…' : `Text reminders to ${overdueCount} overdue`}
+				</Button>
+			</form>
+		{/if}
 	</div>
 
 	<div class="grid gap-4 sm:grid-cols-3">

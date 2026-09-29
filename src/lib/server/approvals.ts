@@ -25,6 +25,7 @@ import { postDocument, StockError, type Tx } from '$lib/server/stock/post';
 import type { ApprovalRequired } from '$lib/server/stock/errors';
 import { countLines, postCount } from '$lib/server/counts';
 import { markOrdered, orderLines } from '$lib/server/purchasing';
+import { smsApprovalWaiting } from '$lib/server/sms';
 
 export type Subject =
 	| { kind: 'adjustment'; documentId: number }
@@ -106,6 +107,9 @@ export async function requestApproval(
 			requestedBy: input.userId ?? null
 		})
 		.$returningId();
+	// The approvers' phones hear of it, when the business sends alerts. After the commit when the
+	// caller wrote with the database itself; a seed inside its own transaction sends nothing.
+	if (writer === db) await smsApprovalWaiting(input.orgId, row.id);
 	return row.id;
 }
 

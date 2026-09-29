@@ -12,4 +12,5 @@ export * from './counts';
 export * from './fiscal';
 export * from './sales';
 export * from './control';
+export * from './sms';
 export * from './audit';

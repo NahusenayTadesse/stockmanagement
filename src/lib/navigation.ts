@@ -31,6 +31,7 @@ import ChartPie from '@lucide/svelte/icons/chart-pie';
 import PackageX from '@lucide/svelte/icons/package-x';
 import ChartLine from '@lucide/svelte/icons/chart-line';
 import ScanSearch from '@lucide/svelte/icons/scan-search';
+import MessageSquare from '@lucide/svelte/icons/message-square';
 import type { Component } from 'svelte';
 import type { IconProps } from '@lucide/svelte';
 import type { NavItem } from '@nahu/admin-kit/navigation';
@@ -120,7 +121,10 @@ export const SETTINGS_SECTIONS: {
 		title: 'Business',
 		description: 'Your business name, TIN, contact details and logo.',
 		icon: Store,
-		items: [{ title: 'Business profile', url: '/dashboard/admin-panel/business', icon: Store }]
+		items: [
+			{ title: 'Business profile', url: '/dashboard/admin-panel/business', icon: Store },
+			{ title: 'SMS', url: '/dashboard/admin-panel/sms', icon: MessageSquare }
+		]
 	},
 	{
 		title: 'Where stock is kept',

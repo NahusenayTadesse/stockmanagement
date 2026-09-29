@@ -56,6 +56,7 @@ import { branchScope, inScope, locationBranches, requireBranch } from '$lib/serv
 import { createReturn, ReturnError, returnable } from '$lib/server/returns';
 import { documentTotals } from '$lib/server/tax';
 import { afterSale } from '$lib/server/afterSale';
+import { smsTransferDispatched } from '$lib/server/sms';
 import { deviceFor, printFiscal, recordManualFiscal } from '$lib/server/fiscal';
 import { submitEinvoice } from '$lib/server/einvoice';
 import QRCode from 'qrcode';
@@ -524,7 +525,11 @@ export const actions: Actions = {
 				})
 			);
 			// Fiscal receipt and e-invoice, when set up: after the commit, never undoing it.
-			const { notes, failed } = await afterSale(orgId, documentId);
+			const { notes, failed } = await afterSale(orgId, documentId, {
+				userId: event.locals.user?.id
+			});
+			// A transfer on its way: the receiving branch (and the alert numbers) are told.
+			if (status === 'in_transit') await smsTransferDispatched(orgId, documentId);
 			setFlash(
 				{
 					type: failed || warnings.length ? 'error' : 'success',

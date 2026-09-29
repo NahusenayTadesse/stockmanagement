@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Ban from '@lucide/svelte/icons/ban';
@@ -112,6 +113,13 @@
 						<Button type="submit" form="quote-header">Save</Button>
 					</form>
 				</DialogComp>
+				{#if data.canText && data.lines.rows.length}
+					<SmsDialog
+						action="?/sms"
+						phone={data.buyer?.phone ?? q.buyerPhone}
+						preview="The proforma number, the first items, the total and how long it is valid."
+					/>
+				{/if}
 				{#if data.buyer?.email}
 					<form method="POST" action="?/email" use:enhance>
 						<Button type="submit" variant="outline" disabled={!data.lines.rows.length}

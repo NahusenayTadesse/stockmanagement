@@ -39,6 +39,8 @@
 	let cart = $state<Line[]>([]);
 	let customerId = $state(0);
 	let note = $state('');
+	/** A walk-in who wants the receipt by SMS gives a number. */
+	let smsTo = $state('');
 	let nextKey = 1;
 
 	const customer = $derived(data.customers?.find((c) => c.value === customerId) ?? null);
@@ -205,6 +207,7 @@
 		JSON.stringify({
 			customerId: customerId || null,
 			note: note || null,
+			smsTo: smsTo.trim() || null,
 			lines: cart.map((l) => {
 				const it = byId.get(l.itemId)!;
 				const serials = it.trackSerials ? serialList(l) : [];
@@ -224,6 +227,7 @@
 		cart = [];
 		customerId = 0;
 		note = '';
+		smsTo = '';
 		result = null;
 		payOpen = false;
 		searchBox?.focus();
@@ -625,6 +629,15 @@
 								})}><Plus /> Split</Button
 						>
 					</div>
+
+					{#if data.smsReceipts}
+						<Input
+							bind:value={smsTo}
+							type="tel"
+							placeholder="Text the receipt to (optional mobile number)"
+							class="h-9"
+						/>
+					{/if}
 
 					<dl class="grid grid-cols-2 gap-1 text-sm">
 						<dt>Paid</dt>

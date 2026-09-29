@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Ban from '@lucide/svelte/icons/ban';
@@ -172,6 +173,14 @@
 					target="_blank"
 					variant="outline"><Printer /> Print</Button
 				>
+				{#if data.canManage && data.canText}
+					<SmsDialog
+						action="?/sms"
+						title="Text to supplier"
+						phone={data.details.supplierPhone}
+						preview="The order number, the items and quantities, where to deliver and by when."
+					/>
+				{/if}
 				{#if data.canManage}
 					<form method="POST" action="?/email" use:enhance={submit}>
 						<Button

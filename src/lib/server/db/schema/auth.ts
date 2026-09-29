@@ -86,6 +86,19 @@ export const organization = mysqlTable('organization', {
 	approveCountsOver: decimal('approve_counts_over', { precision: 14, scale: 2, mode: 'number' }),
 	/** Purchase orders worth this much or more wait for a second person before they go out. */
 	approveOrdersOver: decimal('approve_orders_over', { precision: 14, scale: 2, mode: 'number' }),
+	// ── SMS (GeezSMS; the account is the platform's, `SMS_KEY`). Off until turned on. ──
+	smsEnabled: boolean('sms_enabled').default(false).notNull(),
+	/** Text named customers a receipt when a sale to them is posted. */
+	smsSales: boolean('sms_sales').default(false).notNull(),
+	/** Text customers when a payment from them is recorded, with what they still owe. */
+	smsPayments: boolean('sms_payments').default(false).notNull(),
+	/**
+	 * Staff mobiles for alerts (approvals waiting, transfers on the way, requisitions, the daily
+	 * digest), comma-separated. Empty: no staff alerts.
+	 */
+	smsAlertPhones: varchar('sms_alert_phones', { length: 255 }),
+	/** How messages are signed at the start. Empty: the business name. */
+	smsSignature: varchar('sms_signature', { length: 40 }),
 	withholdingThreshold: decimal('withholding_threshold', {
 		precision: 14,
 		scale: 2,

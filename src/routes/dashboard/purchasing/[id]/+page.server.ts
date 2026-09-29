@@ -33,6 +33,8 @@ import { approvalState, closePendingFor, requestApproval } from '$lib/server/app
 import { branchScope, inScope, requireBranch } from '$lib/server/scope';
 import { orderHeader, orderLineAdd, orderLineEdit } from '$lib/schemas/purchasing';
 import { supplierSchema } from '$lib/schemas/suppliers';
+import { smsOrder } from '$lib/server/sms';
+import { canText, textAction, typedNumber } from '$lib/server/smsActions';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const lines = childCrud({
@@ -97,6 +99,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	return {
 		order,
 		details,
+		canText: await canText(locals),
 		createdBy: people?.createdBy ?? null,
 		lines: { ...lineSection, rows },
 		items,
@@ -145,6 +148,17 @@ async function attempt(event: RequestEvent, run: () => Promise<string>) {
 }
 
 export const actions: Actions = {
+	/** The order, short enough for a text, to the supplier's phone. */
+	sms: async (event) => {
+		requirePermission(event.locals, 'purchasing.manage');
+		return textAction(event, 'Order', (orgId, form) =>
+			smsOrder(orgId, Number(event.params.id), {
+				to: typedNumber(form),
+				userId: event.locals.user?.id
+			})
+		);
+	},
+
 	...childActions({ Line: lines }, draftOwner),
 
 	editHeader: async (event) => {

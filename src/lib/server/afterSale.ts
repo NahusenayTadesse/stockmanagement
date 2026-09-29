@@ -2,17 +2,20 @@
  * What happens to a sale once it is posted and committed: the fiscal receipt, when the branch's
  * device prints on posting, and the e-invoice, when the business has e-invoicing on. Both are
  * optional and both run after the commit — a failure is kept on the sale for a retry and never
- * undoes it. Returns a line for the person who posted.
+ * undoes it. Then the SMS receipt, when the business texts receipts (or the cashier typed a
+ * number for it). Returns a line for the person who posted.
  */
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { organization, stockDocument, stockDocumentLine } from '$lib/server/db/schema';
 import { deviceFor, printFiscal } from '$lib/server/fiscal';
 import { submitEinvoice } from '$lib/server/einvoice';
+import { resultNote, smsSaleReceipt } from '$lib/server/sms';
 
 export async function afterSale(
 	orgId: number,
-	documentId: number
+	documentId: number,
+	options: { smsTo?: string | null; userId?: string | null } = {}
 ): Promise<{ notes: string[]; failed: boolean }> {
 	const [doc] = await db
 		.select({ type: stockDocument.type, branchId: stockDocument.branchId })
@@ -54,5 +57,12 @@ export async function afterSale(
 		failed ||= !r.ok;
 		notes.push(r.ok ? `e-invoice IRN ${r.irn}` : `e-invoice not sent: ${r.error}`);
 	}
+	// Last, so the text can carry the FS No.
+	const sms = await smsSaleReceipt(orgId, documentId, {
+		to: options.smsTo,
+		userId: options.userId
+	});
+	const note = sms && resultNote(sms, options.smsTo || 'the customer');
+	if (note) notes.push(note);
 	return { notes, failed };
 }

@@ -2,6 +2,7 @@
  * The money side of a stock document: the transaction a delivery was paid with, or a sale was
  * paid by. Loaded into, and posted from, the document's own page.
  */
+import { resultNote, smsPaymentReceived } from '$lib/server/sms';
 import { fail, type RequestEvent } from '@sveltejs/kit';
 import { and, eq, isNull, ne } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
@@ -204,9 +205,10 @@ export const paymentActions = {
 			);
 		}
 
+		let transactionId: number;
 		try {
 			const values = await checkTransaction(form.data, orgId);
-			await db.transaction(async (tx) => {
+			transactionId = await db.transaction(async (tx) => {
 				const [row] = await tx
 					.insert(transactions)
 					.values({ ...values, orgId, createdBy: event.locals.user?.id })
@@ -223,6 +225,7 @@ export const paymentActions = {
 					.update(stockDocument)
 					.set({ transactionId: row.id, updatedBy: event.locals.user?.id })
 					.where(eq(stockDocument.id, doc.id));
+				return row.id;
 			});
 		} catch (err) {
 			if (err instanceof WriteRefused) {
@@ -236,7 +239,10 @@ export const paymentActions = {
 				{ status: 500 }
 			);
 		}
-		return message(form, { type: 'success', text: 'Payment recorded' });
+		// Money from a named customer: a text confirming it, when the business sends them.
+		const sms = await smsPaymentReceived(orgId, transactionId, event.locals.user?.id);
+		const note = sms && resultNote(sms, 'the customer');
+		return message(form, { type: 'success', text: `Payment recorded${note ? ` · ${note}` : ''}` });
 	},
 
 	/** Links a transaction that already exists — one payment can cover several deliveries. */

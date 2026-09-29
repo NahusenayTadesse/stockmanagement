@@ -26,6 +26,7 @@ import { checkout, currentShift, heldCarts, holdCart, openShift, takeCart } from
 import { afterSale } from '$lib/server/afterSale';
 import { StockError } from '$lib/server/stock/post';
 import { checkoutPayload } from '$lib/schemas/pos';
+import { smsSettings } from '$lib/server/sms';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -198,7 +199,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		},
 		maxDiscountPercent: org.maxDiscountPercent,
 		canDiscount: hasPermission(locals, 'sales.discount'),
-		canCredit: hasPermission(locals, 'customers.credit')
+		canCredit: hasPermission(locals, 'customers.credit'),
+		// The business sends texts: the till offers to text the receipt.
+		smsReceipts: Boolean((await smsSettings(orgIdOf(locals)))?.enabled)
 	};
 };
 
@@ -263,7 +266,10 @@ export const actions: Actions = {
 			if (err instanceof StockError) return fail(409, { error: err.message });
 			throw err;
 		}
-		const { notes, failed } = await afterSale(orgId, sale.documentId);
+		const { notes, failed } = await afterSale(orgId, sale.documentId, {
+			smsTo: payload.smsTo,
+			userId
+		});
 		return { sale: { ...sale, notes, notesFailed: failed } };
 	},
 

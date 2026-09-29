@@ -4,6 +4,8 @@ import { z } from 'zod/v4';
 export const checkoutPayload = z.object({
 	customerId: z.number().int().positive().nullable().default(null),
 	note: z.string().trim().max(255).nullable().default(null),
+	/** Text the receipt to this number (a walk-in who asked for it). Empty: none. */
+	smsTo: z.string().trim().max(30).nullable().default(null),
 	lines: z
 		.array(
 			z.object({

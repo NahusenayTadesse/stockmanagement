@@ -98,3 +98,6 @@ export const LANDED_COST_KINDS = [
 ] as const;
 /** How a landed cost is shared out over a receipt's lines. */
 export const LANDED_COST_METHODS = ['value', 'quantity', 'weight'] as const;
+
+/** What happened to a text message. `dry_run`: logged but not sent (`SMS_DRY_RUN=true`). */
+export const SMS_STATUSES = ['sent', 'failed', 'skipped', 'dry_run'] as const;

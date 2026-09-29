@@ -17,6 +17,7 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import CustomerFields from '$lib/components/CustomerFields.svelte';
+	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { customerEdit, receivePayment } from '$lib/schemas/customers';
 
 	let { data } = $props();
@@ -157,6 +158,19 @@
 						{emailing ? 'Sending…' : 'Email statement'}
 					</Button>
 				</form>
+			{/if}
+			{#if data.canText}
+				{#if credit.balance > 0}
+					<SmsDialog
+						action="?/smsRemind"
+						title="Text reminder"
+						phone={c.phone}
+						preview="Their balance of {formatETB(credit.balance)}{credit.overdue > 0
+							? `, ${formatETB(credit.overdue)} of it overdue`
+							: ''}, and a request to pay."
+					/>
+				{/if}
+				<SmsDialog action="?/smsText" title="Send SMS" phone={c.phone} withText />
 			{/if}
 			{#if data.canManage}
 				<DialogComp bind:open title="Edit customer" variant="outline" IconComp={Pencil}>
@@ -390,4 +404,33 @@
 			</table>
 		</Card.Content>
 	</Card.Root>
+
+	{#if data.texts.length}
+		<Card.Root>
+			<Card.Header>
+				<Card.Title>Text messages</Card.Title>
+				<Card.Description>The last 20 sent to this customer.</Card.Description>
+			</Card.Header>
+			<Card.Content>
+				<ul class="flex flex-col divide-y text-sm">
+					{#each data.texts as t (t.id)}
+						<li class="flex flex-col gap-1 py-2">
+							<span class="text-xs text-muted-foreground">
+								{new Date(t.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' })} ·
+								{t.phone}
+								· {t.kind} ·
+								<span
+									class={t.status === 'failed' || t.status === 'skipped' ? 'text-destructive' : ''}
+									>{t.status === 'dry_run' ? 'test mode, not sent' : t.status}{t.error
+										? `: ${t.error}`
+										: ''}</span
+								>
+							</span>
+							<span>{t.body}</span>
+						</li>
+					{/each}
+				</ul>
+			</Card.Content>
+		</Card.Root>
+	{/if}
 </div>

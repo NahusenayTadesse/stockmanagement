@@ -3,10 +3,12 @@ import { timingSafeEqual } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import { localToday } from '@nahu/admin-kit/time';
 import { sendExpiryDigests } from '$lib/server/expiry';
+import { sendSmsDigests } from '$lib/server/sms';
 import type { RequestHandler } from './$types';
 
 /**
- * The daily expiry digest, for a scheduler to call once a morning:
+ * The daily expiry digest by email, and the SMS digest (expiry, overdue credit, approvals
+ * waiting) to businesses that send texts. For a scheduler to call once a morning:
  *
  *   curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://…/api/cron/expiry-digest
  *
@@ -22,6 +24,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 		error(401, 'Unauthorized');
 	}
 
-	const sent = await sendExpiryDigests(localToday(), env.ORIGIN || url.origin);
-	return json({ sent });
+	const today = localToday();
+	const sent = await sendExpiryDigests(today, env.ORIGIN || url.origin);
+	// The same morning, a short text to each business's alert numbers (when it sends SMS).
+	const sms = await sendSmsDigests(today);
+	return json({ sent, sms });
 };
