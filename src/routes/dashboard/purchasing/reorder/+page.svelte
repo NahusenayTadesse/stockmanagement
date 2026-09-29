@@ -2,9 +2,16 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
+	import type { ColumnDef } from '@tanstack/table-core';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
+	import { renderSnippet } from '@nahu/admin-kit/components/ui/data-table/index.js';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { qty } from '$lib/format';
+	import FilterBar from '$lib/components/filters/FilterBar.svelte';
+	import FilterSelect from '$lib/components/filters/FilterSelect.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
@@ -41,44 +48,167 @@
 		data.locationId ??
 			(data.locations.find((l) => l.kind === 'storage') ?? data.locations[0])?.value
 	);
+
+	/** The plan's locations, as the filter offers them. */
+	const planOptions = $derived(
+		data.locations.map((l) => ({
+			value: l.value,
+			name: m.purchasing_reorder_location_opt({ name: l.name })
+		}))
+	);
+
+	// One sheet per supplier: every row on screen, since each carries inputs the form submits.
+	const columns: ColumnDef<Row>[] = [
+		{
+			id: 'pick',
+			header: () => renderSnippet(srOnly, { text: m.purchasing_col_order_qty() }),
+			cell: ({ row }) => renderSnippet(pickCell, row.original)
+		},
+		{
+			accessorKey: 'name',
+			header: m.common_item(),
+			cell: ({ row }) => renderSnippet(itemCell, row.original)
+		},
+		{
+			accessorKey: 'onHand',
+			header: m.purchasing_col_on_hand(),
+			cell: ({ row }) => renderSnippet(onHandCell, row.original)
+		},
+		{
+			accessorKey: 'held',
+			meta: { align: 'right' },
+			header: m.purchasing_col_held(),
+			cell: ({ row }) => (row.original.held ? qty(row.original.held, row.original.unit) : '—')
+		},
+		{
+			id: 'minMax',
+			header: m.purchasing_col_min_max(),
+			cell: ({ row }) => {
+				const r = row.original;
+				const min = r.reorderLevel === null ? '—' : qty(r.reorderLevel, r.unit);
+				return r.max !== null ? `${min} / ${qty(r.max, r.unit)}` : min;
+			}
+		},
+		{
+			accessorKey: 'usagePerDay',
+			header: m.purchasing_col_use_day(),
+			cell: ({ row }) => row.original.usagePerDay || '—'
+		},
+		{
+			accessorKey: 'daysLeft',
+			header: m.purchasing_col_days_left(),
+			cell: ({ row }) => renderSnippet(daysLeftCell, row.original)
+		},
+		{
+			accessorKey: 'leadTimeDays',
+			header: m.purchasing_col_lead_time(),
+			cell: ({ row }) => renderSnippet(leadTimeCell, row.original)
+		},
+		{
+			accessorKey: 'onOrder',
+			meta: { align: 'right' },
+			header: m.purchasing_col_on_order(),
+			cell: ({ row }) => (row.original.onOrder ? qty(row.original.onOrder, row.original.unit) : '—')
+		},
+		{
+			id: 'quantity',
+			header: m.purchasing_col_order_qty(),
+			cell: ({ row }) => renderSnippet(quantityCell, row.original)
+		},
+		{
+			id: 'cost',
+			header: m.purchasing_col_est_cost(),
+			cell: ({ row }) => renderSnippet(costCell, row.original)
+		}
+	];
 </script>
 
-<svelte:head>
-	<title>{m.purchasing_reorder_title()}</title>
-</svelte:head>
+{#snippet srOnly({ text }: { text: string })}<span class="sr-only">{text}</span>{/snippet}
+
+{#snippet pickCell(r: Row)}
+	<input
+		type="checkbox"
+		name="pick"
+		value={r.id}
+		checked={isPicked(r)}
+		onchange={(e) => (ticks[r.id] = e.currentTarget.checked)}
+		disabled={!r.supplierId || !data.canManage}
+		aria-label={m.purchasing_order_item({ name: r.name })}
+		class="size-4"
+	/>
+{/snippet}
+
+{#snippet itemCell(r: Row)}
+	<a
+		class="font-medium underline-offset-4 hover:underline"
+		href={resolve('/dashboard/items/[id]', { id: String(r.id) })}>{r.name}</a
+	>
+	<p class="text-xs text-muted-foreground">
+		{r.sku}{#if r.runsOut}
+			· <span class="text-amber-600">{m.purchasing_runs_out()}</span>{/if}
+	</p>
+{/snippet}
+
+{#snippet onHandCell(r: Row)}
+	<span class={r.onHand <= 0 ? 'font-medium text-destructive' : ''}>{qty(r.onHand, r.unit)}</span>
+{/snippet}
+
+{#snippet daysLeftCell(r: Row)}
+	<span
+		class={r.daysLeft !== null && r.daysLeft < r.leadTimeDays ? 'font-medium text-destructive' : ''}
+		>{r.daysLeft ?? '—'}</span
+	>
+{/snippet}
+
+{#snippet leadTimeCell(r: Row)}
+	<span title={r.leadTimeAssumed ? m.purchasing_lead_assumed() : undefined}
+		>{m.purchasing_days_short({ n: r.leadTimeDays })}{r.leadTimeAssumed ? '*' : ''}</span
+	>
+{/snippet}
+
+{#snippet quantityCell(r: Row)}
+	<input
+		name="qty_{r.id}"
+		type="number"
+		min="0"
+		step="any"
+		inputmode="decimal"
+		value={quantityOf(r)}
+		oninput={(e) => (edits[r.id] = Number(e.currentTarget.value))}
+		disabled={!r.supplierId || !data.canManage}
+		aria-label={m.purchasing_quantity_of({ name: r.name })}
+		class="h-9 w-24 rounded-md border bg-background px-2 text-right"
+	/>
+	<span class="ml-1 text-xs text-muted-foreground">{r.unit}</span>
+{/snippet}
+
+{#snippet costCell(r: Row)}
+	<span class="text-muted-foreground">{r.avgCost ? formatETB(quantityOf(r) * r.avgCost) : '—'}</span
+	>
+{/snippet}
 
 <div class="flex flex-col gap-4">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.purchasing_reorder_heading()}</h1>
-		<p class="text-muted-foreground">
-			{m.purchasing_reorder_intro()}
-		</p>
-	</div>
+	<PageHeader
+		title={m.purchasing_reorder_heading()}
+		tabTitle={m.purchasing_reorder_title()}
+		description={m.purchasing_reorder_intro()}
+	/>
 
-	<form method="GET" class="flex max-w-md flex-col gap-1 text-sm">
-		<label for="plan-location">{m.purchasing_reorder_plan_for()}</label>
-		<select
-			id="plan-location"
+	<FilterBar submitLabel={m.purchasing_reorder_show()}>
+		<FilterSelect
 			name="location"
-			class="h-9 rounded-md border bg-background px-2"
-			onchange={(e) => e.currentTarget.form?.requestSubmit()}
-		>
-			<option value="0" selected={!data.locationId}>{m.purchasing_reorder_whole()}</option>
-			{#each data.locations as l (l.value)}
-				<option value={l.value} selected={l.value === data.locationId}
-					>{m.purchasing_reorder_location_opt({ name: l.name })}</option
-				>
-			{/each}
-		</select>
-		<noscript
-			><Button type="submit" variant="outline">{m.purchasing_reorder_show()}</Button></noscript
-		>
-	</form>
+			label={m.purchasing_reorder_plan_for()}
+			value={data.locationId ?? 0}
+			options={planOptions}
+			anyLabel={m.purchasing_reorder_whole()}
+			anyValue={0}
+		/>
+	</FilterBar>
 
 	{#if !data.items.length}
-		<p class="rounded-md border p-6 text-center text-muted-foreground">
+		<Notice tone="info">
 			{data.locationId ? m.purchasing_reorder_nothing_here() : m.purchasing_reorder_nothing()}
-		</p>
+		</Notice>
 	{:else}
 		<form
 			method="POST"
@@ -108,98 +238,7 @@
 							>
 						{/if}
 					</h2>
-					<div class="overflow-x-auto rounded-md border">
-						<table class="w-full text-sm">
-							<thead class="bg-muted/50 text-left">
-								<tr>
-									<th class="w-10 px-3 py-2"
-										><span class="sr-only">{m.purchasing_col_order_qty()}</span></th
-									>
-									<th class="px-3 py-2">{m.common_item()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_on_hand()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_held()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_min_max()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_use_day()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_days_left()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_lead_time()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_on_order()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_order_qty()}</th>
-									<th class="px-3 py-2 text-right">{m.purchasing_col_est_cost()}</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each g.rows as r (r.id)}
-									<tr class="border-t">
-										<td class="px-3 py-2">
-											<input
-												type="checkbox"
-												name="pick"
-												value={r.id}
-												checked={isPicked(r)}
-												onchange={(e) => (ticks[r.id] = e.currentTarget.checked)}
-												disabled={!g.supplierId || !data.canManage}
-												aria-label={m.purchasing_order_item({ name: r.name })}
-												class="size-4"
-											/>
-										</td>
-										<td class="px-3 py-2">
-											<a
-												class="font-medium underline-offset-4 hover:underline"
-												href={resolve('/dashboard/items/[id]', { id: String(r.id) })}>{r.name}</a
-											>
-											<p class="text-xs text-muted-foreground">
-												{r.sku}{#if r.runsOut}
-													· <span class="text-amber-600">{m.purchasing_runs_out()}</span>{/if}
-											</p>
-										</td>
-										<td
-											class="px-3 py-2 text-right {r.onHand <= 0
-												? 'font-medium text-destructive'
-												: ''}">{qty(r.onHand, r.unit)}</td
-										>
-										<td class="px-3 py-2 text-right">{r.held ? qty(r.held, r.unit) : '—'}</td>
-										<td class="px-3 py-2 text-right">
-											{r.reorderLevel === null ? '—' : qty(r.reorderLevel, r.unit)}
-											{#if r.max !== null}/ {qty(r.max, r.unit)}{/if}
-										</td>
-										<td class="px-3 py-2 text-right">{r.usagePerDay || '—'}</td>
-										<td
-											class="px-3 py-2 text-right {r.daysLeft !== null &&
-											r.daysLeft < r.leadTimeDays
-												? 'font-medium text-destructive'
-												: ''}">{r.daysLeft ?? '—'}</td
-										>
-										<td
-											class="px-3 py-2 text-right"
-											title={r.leadTimeAssumed ? m.purchasing_lead_assumed() : undefined}
-											>{m.purchasing_days_short({ n: r.leadTimeDays })}{r.leadTimeAssumed
-												? '*'
-												: ''}</td
-										>
-										<td class="px-3 py-2 text-right">{r.onOrder ? qty(r.onOrder, r.unit) : '—'}</td>
-										<td class="px-3 py-2 text-right">
-											<input
-												name="qty_{r.id}"
-												type="number"
-												min="0"
-												step="any"
-												inputmode="decimal"
-												value={quantityOf(r)}
-												oninput={(e) => (edits[r.id] = Number(e.currentTarget.value))}
-												disabled={!g.supplierId || !data.canManage}
-												aria-label={m.purchasing_quantity_of({ name: r.name })}
-												class="h-9 w-24 rounded-md border bg-background px-2 text-right"
-											/>
-											<span class="ml-1 text-xs text-muted-foreground">{r.unit}</span>
-										</td>
-										<td class="px-3 py-2 text-right text-muted-foreground">
-											{r.avgCost ? formatETB(quantityOf(r) * r.avgCost) : '—'}
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
+					<DataTable variant="sheet" data={g.rows} {columns} fileName={g.supplier ?? ''} />
 				</section>
 			{/each}
 

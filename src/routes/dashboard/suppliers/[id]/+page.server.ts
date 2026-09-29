@@ -9,6 +9,7 @@ import { supplier } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { orgSupplier, supplierDetail, supplierValues } from '$lib/server/suppliers';
 import { supplierEdit } from '$lib/schemas/suppliers';
+import { invalidForm } from '$lib/server/actions';
 import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -43,8 +44,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'suppliers.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(supplierEdit));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 
 		const before = await orgSupplier(orgId, Number(event.params.id));
 		const after = { ...supplierValues(form.data), isActive: form.data.status };

@@ -365,5 +365,6 @@
 	"purchasing_note_reject_required": "Note (required to reject: say what to put right)",
 	"purchasing_you_asked": "You asked for this, so someone else decides it.",
 	"purchasing_withdraw": "Withdraw",
-	"purchasing_decided": "Decided"
+	"purchasing_decided": "Decided",
+	"purchasing_of_lines": "of {count} lines"
 }

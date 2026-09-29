@@ -21,6 +21,7 @@ import {
 import { unseal } from '$lib/server/secrets';
 import { DatecsConnection, CMD, printReceipt } from './datecs';
 import { bridgePrint, bridgeStatus, bridgeZReport } from './bridge';
+import { cents } from '$lib/money';
 
 type Device = typeof fiscalDevice.$inferSelect;
 
@@ -128,13 +129,11 @@ export async function receiptFor(orgId: number, documentId: number, device: Devi
 	const receiptLines = lines.map((l) => ({
 		name: l.name,
 		quantity: l.quantity,
-		unitPrice:
-			Math.round(l.unitPrice! * (1 + ((l.vatRate ?? 0) + (l.totRate ?? 0)) / 100) * 100) / 100,
+		unitPrice: cents(l.unitPrice! * (1 + ((l.vatRate ?? 0) + (l.totRate ?? 0)) / 100)),
 		taxGroup: groupOf(l),
 		taxRate: (l.vatRate ?? 0) + (l.totRate ?? 0)
 	}));
-	const total =
-		Math.round(receiptLines.reduce((s, l) => s + l.unitPrice * l.quantity, 0) * 100) / 100;
+	const total = cents(receiptLines.reduce((s, l) => s + l.unitPrice * l.quantity, 0));
 
 	const methodName = (doc.method ?? '').toLowerCase();
 	const method = !d.transactionId

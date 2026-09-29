@@ -4,7 +4,7 @@
  * the business first.
  */
 import { m } from '$lib/paraglide/messages.js';
-import { error } from '@sveltejs/kit';
+
 import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
@@ -18,6 +18,8 @@ import {
 } from '$lib/server/db/schema';
 import { customerOptions } from '$lib/server/options';
 import type { Tx } from '$lib/server/stock/post';
+import { cents } from '$lib/money';
+import { orgRowOr404 } from '$lib/server/org';
 
 type Reader = Pick<typeof db, 'select'> | Tx;
 
@@ -67,18 +69,13 @@ export async function customerList(orgId: number, reader: Reader = db) {
 	return rows.map((r) => ({
 		...r,
 		purchases: Number(r.purchases),
-		taken: Math.round(Number(r.taken) * 100) / 100,
-		paid: Math.round(Number(r.paid) * 100) / 100
+		taken: cents(Number(r.taken)),
+		paid: cents(Number(r.paid))
 	}));
 }
 
 export async function orgCustomer(orgId: number, id: number) {
-	const [row] = await db
-		.select()
-		.from(customer)
-		.where(and(eq(customer.id, id), eq(customer.orgId, orgId), isNull(customer.deletedAt)));
-	if (!row) error(404, m.sales_customer_not_found());
-	return row;
+	return orgRowOr404(customer, orgId, id, m.sales_customer_not_found);
 }
 
 /** Form values as columns: empty optional fields become nulls. */
@@ -214,9 +211,9 @@ export async function customerDetail(orgId: number, customerId: number) {
 	]);
 
 	const live = payments.filter((p) => p.status !== 'void');
-	const sum = (list: typeof live) => Math.round(list.reduce((s, p) => s + p.amount, 0) * 100) / 100;
+	const sum = (list: typeof live) => cents(list.reduce((s, p) => s + p.amount, 0));
 	return {
-		purchases: purchases.map((p) => ({ ...p, value: Math.round(Number(p.value) * 100) / 100 })),
+		purchases: purchases.map((p) => ({ ...p, value: cents(Number(p.value)) })),
 		payments,
 		totals: {
 			taken:

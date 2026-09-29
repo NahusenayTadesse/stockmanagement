@@ -676,5 +676,6 @@
 	"stock_einvoice_st_submitted": "ተልኳል",
 	"stock_einvoice_st_rejected": "ውድቅ ተደርጓል",
 	"stock_einvoice_st_failed": "አልተሳካም",
-	"stock_einvoice_st_cancelled": "ተሰርዟል"
+	"stock_einvoice_st_cancelled": "ተሰርዟል",
+	"stock_counted_of": "ከ{total} ውስጥ"
 }

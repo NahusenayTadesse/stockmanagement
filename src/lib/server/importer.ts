@@ -32,8 +32,9 @@ import {
 	uom
 } from '$lib/server/db/schema';
 import { postDocument, StockError, type Tx } from '$lib/server/stock/post';
-import { parseSerials, round4 } from '$lib/server/stock/math';
+import { parseSerials } from '$lib/server/stock/math';
 import { m } from '$lib/paraglide/messages.js';
+import { round4 } from '$lib/money';
 
 type Reader = Pick<typeof db, 'select'>;
 

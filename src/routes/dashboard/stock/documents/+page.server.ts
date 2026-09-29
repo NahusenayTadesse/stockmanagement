@@ -1,10 +1,9 @@
 import { m } from '$lib/paraglide/messages.js';
 import { alias } from 'drizzle-orm/mysql-core';
 import { desc, eq, sql, and, isNull } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect } from 'sveltekit-flash-message/server';
-import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
@@ -24,6 +23,7 @@ import { locationOptions, supplierOptions } from '$lib/server/options';
 import { supplierSchema } from '$lib/schemas/suppliers';
 import { customerPicker, headerValues } from '$lib/server/stock/documents';
 import { documentHeader } from '$lib/schemas/stock';
+import { attemptForm, invalidForm } from '$lib/server/actions';
 import type { Actions, PageServerLoad } from './$types';
 
 const fromLoc = alias(location, 'from_loc');
@@ -102,12 +102,10 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'stock.draft');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(documentHeader));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 
-		let id: number;
-		try {
+		let id = 0;
+		const answer = await attemptForm(form, async () => {
 			const values = await headerValues(orgId, form.data, {
 				scope: await branchScope(event.locals)
 			});
@@ -116,14 +114,9 @@ export const actions: Actions = {
 				.values({ ...values, orgId, createdBy: event.locals.user?.id })
 				.$returningId();
 			id = created.id;
-		} catch (err) {
-			if (err instanceof WriteRefused) {
-				if (err.field)
-					setError(form, err.field as 'toLocationId' | 'supplierId' | 'customerId', err.message);
-				return message(form, { type: 'error', text: err.message }, { status: 400 });
-			}
-			throw err;
-		}
+			return m.stock_draft_created();
+		});
+		if (!id) return answer;
 
 		redirect(
 			`/dashboard/stock/documents/${id}`,

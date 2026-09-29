@@ -1,8 +1,8 @@
-import { error, fail } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { and, eq, sql, TransactionRollbackError } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
-import { redirect, setFlash } from 'sveltekit-flash-message/server';
+import { redirect } from 'sveltekit-flash-message/server';
 import { isDuplicateKey } from '@nahu/admin-kit/server/dbErrors';
 import { notDeleted } from '@nahu/admin-kit/server/softDelete';
 import { requireSuperAdmin } from '@nahu/admin-kit/server/permissions';
@@ -31,6 +31,7 @@ import {
 import { editUserSchema, resetPasswordSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
+import { invalidForm, refuseAction, refuseForm } from '$lib/server/actions';
 
 /** The user, if they belong to the viewer's business; with their role. */
 async function member(orgId: number, id: string) {
@@ -131,9 +132,7 @@ export const actions: Actions = {
 		const { locals, params } = event;
 		const orgId = orgIdOf(locals);
 		const form = await superValidate(event.request, zod4(editUserSchema));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 
 		const person = await member(orgId, params.id);
 		if (!person) error(404, m.admin_users_not_found());
@@ -144,10 +143,7 @@ export const actions: Actions = {
 			field: 'role' | 'status' | 'permissionsList._errors' | 'branchId' | 'branchIds._errors',
 			text: string,
 			code: 400 | 403 | 409 = 400
-		) => {
-			setError(form, field, text);
-			return message(form, { type: 'error', text }, { status: code });
-		};
+		) => refuseForm(form, text, { field, status: code });
 
 		const target = await orgRole(orgId, role);
 		if (!target) return refuse('role', m.admin_users_choose_role());
@@ -217,15 +213,14 @@ export const actions: Actions = {
 				return refuse('branchIds._errors', m.admin_users_choose_branches());
 			}
 			if (isDuplicateKey(err)) {
-				setError(form, 'email', m.admin_users_email_taken_other());
-				return message(
-					form,
-					{ type: 'error', text: m.admin_users_email_in_use() },
-					{ status: 409 }
-				);
+				return refuseForm(form, m.admin_users_email_in_use(), {
+					field: 'email',
+					fieldText: m.admin_users_email_taken_other(),
+					status: 409
+				});
 			}
 			console.error('user update failed', err);
-			return message(form, { type: 'error', text: m.admin_users_save_failed() }, { status: 500 });
+			return refuseForm(form, m.admin_users_save_failed(), { status: 500 });
 		}
 
 		return message(form, { type: 'success', text: m.admin_users_saved() });
@@ -237,21 +232,13 @@ export const actions: Actions = {
 		const orgId = orgIdOf(locals);
 		const form = await superValidate(event.request, zod4(resetPasswordSchema));
 		if (!form.valid) {
-			return message(
-				form,
-				{ type: 'error', text: m.admin_users_check_password() },
-				{ status: 400 }
-			);
+			return refuseForm(form, m.admin_users_check_password());
 		}
 
 		const person = await member(orgId, params.id);
 		if (!person) error(404, m.admin_users_not_found());
 		if (person.isOwner && !locals.isSuperAdmin) {
-			return message(
-				form,
-				{ type: 'error', text: m.admin_users_only_owner_reset_owner() },
-				{ status: 403 }
-			);
+			return refuseForm(form, m.admin_users_only_owner_reset_owner(), { status: 403 });
 		}
 
 		await setPassword(person.id, form.data.password);
@@ -262,20 +249,18 @@ export const actions: Actions = {
 	},
 
 	/** Soft delete. Super admin only; never yourself, never the last owner. */
-	delete: async ({ params, locals, cookies }) => {
+	delete: async (event) => {
+		const { params, locals, cookies } = event;
 		requireSuperAdmin(locals);
 		const orgId = orgIdOf(locals);
 
-		if (params.id === locals.user?.id) {
-			setFlash({ type: 'error', message: m.admin_users_cannot_delete_self() }, cookies);
-			return fail(409);
-		}
+		if (params.id === locals.user?.id)
+			return refuseAction(event, m.admin_users_cannot_delete_self());
 
 		const person = await member(orgId, params.id);
 		if (!person) error(404, m.admin_users_not_found());
 		if (person.isOwner && (await activeOwnerCount(orgId, person.id)) === 0) {
-			setFlash({ type: 'error', message: m.admin_users_only_active_owner_short() }, cookies);
-			return fail(409);
+			return refuseAction(event, m.admin_users_only_active_owner_short());
 		}
 
 		await db.transaction(async (tx) => {

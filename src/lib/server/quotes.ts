@@ -5,7 +5,7 @@
  *
  * Plain database code.
  */
-import { error } from '@sveltejs/kit';
+
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
@@ -22,17 +22,13 @@ import { issueNumber, StockError, type Tx } from '$lib/server/stock/post';
 import { lineAmounts, saleTotRate, saleVatRate, taxSettings } from '$lib/server/tax';
 import { qualified } from '$lib/server/db/sql';
 import { m } from '$lib/paraglide/messages.js';
+import { cents } from '$lib/money';
+import { orgRowOr404 } from '$lib/server/org';
 
 type Conn = typeof db | Tx;
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 export async function orgQuote(orgId: number, id: number, reader: Conn = db) {
-	const [row] = await reader
-		.select()
-		.from(quote)
-		.where(and(eq(quote.id, id), eq(quote.orgId, orgId), isNull(quote.deletedAt)));
-	if (!row) error(404, m.sales_quote_not_found());
-	return row;
+	return orgRowOr404(quote, orgId, id, m.sales_quote_not_found, reader);
 }
 
 /** The lines with what they come to, taxed as a sale would be today. */

@@ -1,4 +1,3 @@
-import { fail } from '@sveltejs/kit';
 import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect } from 'sveltekit-flash-message/server';
@@ -6,6 +5,7 @@ import { auth } from '$lib/server/auth';
 import { forgotSchema } from '$lib/schemas/auth';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
+import { invalidForm } from '$lib/server/actions';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (locals.user) redirect(302, '/dashboard');
@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
 	default: async (event) => {
 		const form = await superValidate(event.request, zod4(forgotSchema));
-		if (!form.valid) return fail(400, { form });
+		if (!form.valid) return invalidForm(form);
 
 		try {
 			await auth.api.requestPasswordReset({

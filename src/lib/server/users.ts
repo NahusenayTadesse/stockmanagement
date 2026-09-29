@@ -15,6 +15,7 @@ import {
 import { auth } from '$lib/server/auth';
 import type { Tx } from '$lib/server/stock/post';
 import { m } from '$lib/paraglide/messages.js';
+import { orgRow } from '$lib/server/org';
 
 /**
  * A permission as a person reads it, in their language: its `admin_perm_*` message when there is
@@ -82,12 +83,7 @@ export async function activeOwnerCount(orgId: number, excludingUserId?: string) 
 
 /** A role of this business, or undefined. */
 export async function orgRole(orgId: number, roleId: number) {
-	const [row] = await db
-		.select()
-		.from(roles)
-		.where(and(eq(roles.id, roleId), eq(roles.orgId, orgId), isNull(roles.deletedAt)))
-		.limit(1);
-	return row;
+	return orgRow(roles, orgId, roleId);
 }
 
 /** Ends every session a user holds, so a change to what they may do bites on their next click. */

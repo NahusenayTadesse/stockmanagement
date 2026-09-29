@@ -1,73 +1,63 @@
 <script lang="ts">
-	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
 	import type { Snippet } from 'svelte';
-	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
-	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
-	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
+	import FilterBar from '$lib/components/filters/FilterBar.svelte';
+	import FilterSelect from '$lib/components/filters/FilterSelect.svelte';
+	import DateRangeFields from '$lib/components/filters/DateRangeFields.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
 	/**
-	 * The filters of an analysis report, sent as a GET form so every view has its own link: the
-	 * period (when the report has one), the branch and location, and whatever else the report asks.
+	 * The filters of a report, sent as a GET form so every view has its own link: the period (when
+	 * the report has one), the branch (when there is more than one) and the location (when the
+	 * report is by location), and whatever else the report asks (`children`).
 	 */
 	let {
 		branches,
-		locations,
 		branchId,
-		locationId,
+		locations = undefined,
+		locationId = 0,
 		from = null,
 		to = null,
 		allLocationsLabel = undefined,
-		children
+		children = undefined,
+		after = undefined
 	}: {
 		branches: { value: number; name: string }[];
-		locations: { value: number; name: string }[];
 		branchId: number;
-		locationId: number;
+		/** Leave out for a report that is not by location. */
+		locations?: { value: number; name: string }[];
+		locationId?: number;
 		from?: string | null;
 		to?: string | null;
 		allLocationsLabel?: string;
 		children?: Snippet;
+		/** Under the fields: period presets. */
+		after?: Snippet;
 	} = $props();
-
-	const select = 'h-9 rounded-md border bg-background px-2 text-sm';
 </script>
 
-<Card.Root>
-	<Card.Content class="pt-6">
-		<form method="GET" class="flex flex-wrap items-end gap-3">
-			{#if from !== null && to !== null}
-				<div class="flex flex-col gap-1">
-					<Label for="from">{m.reports_from()}</Label>
-					<DateInput id="from" name="from" value={from} />
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="to">{m.reports_to()}</Label>
-					<DateInput id="to" name="to" value={to} />
-				</div>
-			{/if}
-			{#if branches.length > 1}
-				<div class="flex flex-col gap-1">
-					<Label for="branch">{m.common_branch()}</Label>
-					<select id="branch" name="branch" class={select} value={branchId}>
-						<option value={0}>{m.reports_all_branches()}</option>
-						{#each branches as b (b.value)}
-							<option value={b.value}>{b.name}</option>
-						{/each}
-					</select>
-				</div>
-			{/if}
-			<div class="flex flex-col gap-1">
-				<Label for="location">{m.common_location()}</Label>
-				<select id="location" name="location" class={select} value={locationId}>
-					<option value={0}>{allLocationsLabel ?? m.reports_all_locations()}</option>
-					{#each locations as l (l.value)}
-						<option value={l.value}>{l.name}</option>
-					{/each}
-				</select>
-			</div>
-			{@render children?.()}
-			<Button type="submit">{m.reports_show()}</Button>
-		</form>
-	</Card.Content>
-</Card.Root>
+<FilterBar submitLabel={m.reports_show()} {after}>
+	{#if from !== null && to !== null}
+		<DateRangeFields {from} {to} fromLabel={m.reports_from()} toLabel={m.reports_to()} />
+	{/if}
+	{#if branches.length > 1}
+		<FilterSelect
+			name="branch"
+			label={m.common_branch()}
+			value={branchId}
+			options={branches}
+			anyLabel={m.reports_all_branches()}
+			anyValue={0}
+		/>
+	{/if}
+	{#if locations}
+		<FilterSelect
+			name="location"
+			label={m.common_location()}
+			value={locationId}
+			options={locations}
+			anyLabel={allLocationsLabel ?? m.reports_all_locations()}
+			anyValue={0}
+		/>
+	{/if}
+	{@render children?.()}
+</FilterBar>

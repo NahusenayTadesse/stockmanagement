@@ -1,11 +1,44 @@
 <script lang="ts">
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import { column, indexColumn, joined, stackedCell, RIGHT } from '$lib/table';
 	import { m } from '$lib/paraglide/messages.js';
 	import PrintSheet from '@nahu/admin-kit/components/PrintSheet.svelte';
 	import { fileUrl } from '@nahu/admin-kit/files';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
-	import { qty } from '$lib/format';
+	import { ethiopianDay, qty } from '$lib/format';
 
 	let { data } = $props();
+
+	type Line = (typeof data.lines)[number];
+	const columns = $derived<ColumnDef<Line>[]>([
+		indexColumn<Line>(),
+		column<Line>('item', m.common_item, ({ row: { original: l } }) =>
+			stackedCell(l.item, joined(l.sku, l.unit))
+		),
+		column<Line>(
+			'lotNumber',
+			m.stock_lot_expiry,
+			({ row: { original: l } }) => joined(l.lotNumber, l.expiryDate),
+			{ class: 'text-xs' }
+		),
+		...(data.showExpected
+			? [
+					column<Line>(
+						'expected',
+						m.stock_expected,
+						({ row: { original: l } }) => qty(l.expected),
+						RIGHT
+					)
+				]
+			: []),
+		// Left blank, wide enough to write the count in.
+		{
+			id: 'counted',
+			header: m.stock_counted(),
+			cell: () => '______________',
+			meta: { align: 'right', class: 'w-32' }
+		}
+	]);
 </script>
 
 <svelte:head>
@@ -21,8 +54,7 @@
 			<h1 class="text-xl font-bold">{m.stock_count_sheet_heading({ id: data.count.id })}</h1>
 			<p>
 				{data.location}{data.category ? ` · ${data.category}` : ''} ·
-				{formatEthiopianDate(new Date(`${data.count.countDate}T12:00:00+03:00`))} ({data.count
-					.countDate})
+				{ethiopianDay(data.count.countDate)} ({data.count.countDate})
 			</p>
 			{#if data.count.blind}<p class="text-sm">
 					{m.stock_blind_instruction()}
@@ -35,32 +67,8 @@
 			/>{/if}
 	</section>
 
-	<table class="w-full border-collapse text-sm">
-		<thead>
-			<tr class="border-b-2 text-left">
-				<th class="py-1 pr-2">#</th>
-				<th class="py-1 pr-2">{m.common_item()}</th>
-				<th class="py-1 pr-2">{m.stock_lot_expiry()}</th>
-				{#if data.showExpected}<th class="py-1 pr-2 text-right">{m.stock_expected()}</th>{/if}
-				<th class="w-32 py-1 text-right">{m.stock_counted()}</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each data.lines as line, i (line.id)}
-				<tr class="border-b">
-					<td class="py-2 pr-2">{i + 1}</td>
-					<td class="py-2 pr-2"
-						>{line.item}<br /><span class="text-xs">{line.sku} · {line.unit}</span></td
-					>
-					<td class="py-2 pr-2 text-xs"
-						>{line.lotNumber ?? ''}{line.expiryDate ? ` · ${line.expiryDate}` : ''}</td
-					>
-					{#if data.showExpected}<td class="py-2 pr-2 text-right">{qty(line.expected)}</td>{/if}
-					<td class="py-2 text-right">______________</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+	<!-- Taller rows: room to write. -->
+	<DataTable variant="print" data={data.lines} {columns} rowClass={() => '[&_td]:py-2'} />
 
 	<p class="text-sm">
 		{m.stock_found_not_on_sheet()}

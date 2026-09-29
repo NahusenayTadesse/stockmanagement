@@ -2,6 +2,7 @@ import { z } from 'zod/v4';
 import { TRANSACTION_DIRECTIONS, TRANSACTION_PURPOSES } from '$lib/constants';
 import { choices, labels } from '$lib/format';
 import { m } from '$lib/paraglide/messages.js';
+import { day } from '$lib/schemas/common';
 
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const ATTACHMENT_TYPES = [
@@ -26,7 +27,7 @@ const fields = {
 		.number({ error: () => m.sales_enter_amount() })
 		.positive({ error: () => m.sales_enter_amount() })
 		.max(999_999_999_999),
-	occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.sales_pick_money_date() }),
+	occurredOn: day,
 	/** 0 = not said. */
 	paymentMethodId: z.coerce.number().int().min(0).default(0),
 	purpose: z.enum(TRANSACTION_PURPOSES).default('other'),

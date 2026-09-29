@@ -2,44 +2,18 @@ import type { ColumnDef } from '@tanstack/table-core';
 import { qty } from '$lib/format';
 import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
+import { column } from '../columnKit';
 
 type Row = NonNullable<PageData['trend']>['buckets'][number];
 
 export function columns(unit: string): ColumnDef<Row>[] {
+	const inUnit = (key: 'in' | 'out' | 'low' | 'closing', label: () => string) =>
+		column<Row>(key, label, (i) => qty(i.getValue() as number, unit));
 	return [
-		{
-			accessorKey: 'label',
-			get header() {
-				return m.reports_col_period();
-			}
-		},
-		{
-			accessorKey: 'in',
-			get header() {
-				return m.reports_in();
-			},
-			cell: (i) => qty(i.getValue() as number, unit)
-		},
-		{
-			accessorKey: 'out',
-			get header() {
-				return m.reports_out();
-			},
-			cell: (i) => qty(i.getValue() as number, unit)
-		},
-		{
-			accessorKey: 'low',
-			get header() {
-				return m.reports_col_lowest();
-			},
-			cell: (i) => qty(i.getValue() as number, unit)
-		},
-		{
-			accessorKey: 'closing',
-			get header() {
-				return m.reports_col_at_end();
-			},
-			cell: (i) => qty(i.getValue() as number, unit)
-		}
+		column('label', m.reports_col_period),
+		inUnit('in', m.reports_in),
+		inUnit('out', m.reports_out),
+		inUnit('low', m.reports_col_lowest),
+		inUnit('closing', m.reports_col_at_end)
 	];
 }

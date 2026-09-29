@@ -7,10 +7,11 @@
  */
 import { getEthiopianYearMonth } from '@nahu/admin-kit/global';
 import type { DocumentType } from '$lib/constants';
+import { round4 } from '$lib/money';
+import { dayNoon } from '$lib/format';
 
-export function round4(n: number): number {
-	return Math.round((n + Number.EPSILON) * 1e4) / 1e4;
-}
+/** Kept here for the stock code that has always imported it from here; see `$lib/money`. */
+export { round4 };
 
 /** A quantity in some unit, in base units. `factor` is base units per one of that unit. */
 export function toBase(quantity: number, factor: number): number {
@@ -119,7 +120,7 @@ export function parseSerials(text: string | null | undefined): {
  */
 export function ethiopianFiscalYear(day: string): number {
 	// Noon in Addis Ababa: far enough from midnight that no process time zone moves the day.
-	const parts = getEthiopianYearMonth(new Date(`${day}T12:00:00+03:00`));
+	const parts = getEthiopianYearMonth(dayNoon(day));
 	if (!parts) throw new Error(`Not a date: ${day}`);
 	return parts.month >= 11 ? parts.year + 1 : parts.year;
 }

@@ -1,23 +1,19 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import { itemAdd, itemEdit } from '../schema';
 
 	let { data } = $props();
 </script>
 
-<svelte:head>
-	<title>{m.admin_pl_title({ name: data.list.name })}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-4">
-	<div>
-		<p class="text-sm text-muted-foreground">{m.admin_pl_entity()}</p>
-		<h1 class="text-2xl font-semibold">{data.list.name}</h1>
-		<p class="text-muted-foreground">
-			{m.admin_pl_intro()}
-		</p>
-	</div>
+	<PageHeader
+		title={data.list.name}
+		eyebrow={m.admin_pl_entity()}
+		tabTitle={m.admin_pl_title({ name: data.list.name })}
+		description={m.admin_pl_intro()}
+	/>
 	<LookupSection
 		config={{
 			entity: m.admin_pl_price_entity(),

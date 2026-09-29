@@ -9,6 +9,7 @@ import { creditSummary } from '$lib/server/credit';
 import { priceListOptions } from '$lib/server/options';
 import { customerSchema } from '$lib/schemas/customers';
 import { m } from '$lib/paraglide/messages.js';
+import { invalidForm } from '$lib/server/actions';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -45,9 +46,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'customers.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(customerSchema));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 
 		const values = customerValues(form.data);
 		const dup = await duplicateCustomer(orgId, values.name, values.phone);

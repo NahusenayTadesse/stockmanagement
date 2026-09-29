@@ -102,11 +102,9 @@
 	"admin_home_expiry": "ማብቂያ",
 	"admin_home_expiry_desc": "ጊዜያቸው ያለፈ ወይም በቅርቡ የሚያልፍ ክምችት ያላቸው ሎቶች።",
 	"admin_home_nothing_expiring": "ለማብቂያ የቀረበ ምንም የለም።",
-	"admin_home_lot": "ሎት {lot}",
 	"admin_home_reorder": "እንደገና ማዘዝ",
 	"admin_home_reorder_desc": "በማዘዣ ደረጃቸው ወይም ከዚያ በታች ያሉ ዕቃዎች።",
 	"admin_home_nothing_reorder": "እንደገና መታዘዝ ያለበት ምንም የለም።",
-	"admin_home_reorder_at": "/ በ{level} ይታዘዝ",
 	"admin_home_latest": "የቅርብ ጊዜ ሰነዶች",
 	"admin_home_no_docs_before": "እስካሁን ሰነድ የለም። በ",
 	"admin_home_no_docs_link": "የዕቃ ገቢ",
@@ -577,9 +575,13 @@
 	"admin_imp_fix_first": "መጀመሪያ ያስተካክሉ",
 	"admin_imp_update": "ቀይር",
 	"admin_imp_add": "ጨምር",
-	"admin_imp_showing": "ከ{total} ረድፎች {shown} እየታዩ ነው፣ ችግር ያለባቸው መጀመሪያ።",
 	"admin_imp_fix_rows": "«መጀመሪያ ያስተካክሉ» የተባሉትን ረድፎች በተመን ሉህዎ ያስተካክሉ፣ እንደገና ይመልከቱት። ማንኛውም ረድፍ ችግር እያለበት ምንም አይገባም።",
 	"admin_imp_importing": "በማስገባት ላይ…",
 	"admin_imp_import_n": "{count} ረድፎችን አስገባ",
-	"admin_imp_no_template": "እንዲህ ያለ አብነት የለም"
+	"admin_imp_no_template": "እንዲህ ያለ አብነት የለም",
+	"admin_fd_col_device": "መሳሪያ",
+	"admin_fd_col_status": "የመጨረሻ ፍተሻ",
+	"admin_fd_col_checked": "የተፈተሸበት",
+	"admin_fd_col_z": "የመጨረሻ Z ሪፖርት",
+	"admin_sms_col_error": "ስህተት"
 }

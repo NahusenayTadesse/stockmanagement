@@ -157,5 +157,10 @@
 	"common_einv_accepted": "ተቀባይነት አግኝቷል",
 	"common_einv_rejected": "ውድቅ ተደርጓል",
 	"common_einv_failed": "አልተሳካም",
-	"common_einv_cancelled": "ተሰርዟል"
+	"common_einv_cancelled": "ተሰርዟል",
+	"common_pick_date": "ቀን ይምረጡ",
+	"common_from": "ከ",
+	"common_to": "እስከ",
+	"common_show": "አሳይ",
+	"common_any": "ማንኛውም"
 }

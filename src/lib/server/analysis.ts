@@ -7,7 +7,7 @@
  */
 import { and, asc, eq, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
-import { formatEthiopianDate, getEthiopianYearMonth } from '@nahu/admin-kit/global';
+import { getEthiopianYearMonth } from '@nahu/admin-kit/global';
 import { db } from '$lib/server/db';
 import {
 	branch,
@@ -25,20 +25,18 @@ import {
 	supplier,
 	uom
 } from '$lib/server/db/schema';
-import { round4 } from '$lib/server/stock/math';
+
 import { m } from '$lib/paraglide/messages.js';
+import { cents, round4 } from '$lib/money';
+import { DAY_MS as DAY, daysBetween } from '$lib/server/days';
+import { dayNoon, ethiopianDay } from '$lib/format';
 
 type Reader = Pick<typeof db, 'select'>;
 
-const DAY = 86_400_000;
-const money = (n: unknown) => Math.round(Number(n) * 100) / 100;
 /** Whole days from `a` to `b`, both `YYYY-MM-DD`. */
-export const daysBetween = (a: string, b: string) =>
-	Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY);
+export { daysBetween };
 const nextDay = (day: string) =>
 	new Date(Date.parse(`${day}T00:00:00Z`) + DAY).toISOString().slice(0, 10);
-const noon = (day: string) => new Date(`${day}T12:00:00+03:00`);
-export const ethiopianDay = (day: string) => formatEthiopianDate(noon(day));
 
 // ── Which locations ───────────────────────────────────────────────────────────────────────────
 
@@ -161,7 +159,7 @@ export async function slowMoving(
 			return {
 				...s,
 				onHand,
-				value: money(onHand * s.avgCost),
+				value: cents(onHand * s.avgCost),
 				lastIssue: d?.lastIssue ?? null,
 				lastReceipt: d?.lastReceipt ?? null,
 				idleDays: idle,
@@ -173,7 +171,7 @@ export async function slowMoving(
 		.sort((a, b) => b.idleDays - a.idleDays || b.value - a.value);
 
 	const total = (s: MovementStatus) =>
-		money(rows.filter((r) => r.status === s).reduce((t, r) => t + r.value, 0));
+		cents(rows.filter((r) => r.status === s).reduce((t, r) => t + r.value, 0));
 	return { rows, slowValue: total('slow'), deadValue: total('dead') };
 }
 
@@ -236,7 +234,7 @@ export async function abcAnalysis(
 			.groupBy(stockMovement.itemId);
 		values = rows.map((r) => ({
 			itemId: r.itemId,
-			value: money(r.value),
+			value: cents(r.value),
 			quantity: round4(Number(r.quantity))
 		}));
 	} else {
@@ -273,7 +271,7 @@ export async function abcAnalysis(
 			.groupBy(stockDocumentLine.itemId);
 		values = rows.map((r) => ({
 			itemId: r.itemId,
-			value: money(r.value),
+			value: cents(r.value),
 			quantity: round4(Number(r.quantity))
 		}));
 	}
@@ -328,20 +326,20 @@ export async function abcAnalysis(
 			unit: i?.unit ?? '',
 			quantity: quantity.get(r.itemId) ?? 0,
 			onHand: stock,
-			stockValue: money(stock * (i?.avgCost ?? 0))
+			stockValue: cents(stock * (i?.avgCost ?? 0))
 		};
 	});
 
-	const total = money(ranked.reduce((s, r) => s + r.value, 0));
+	const total = cents(ranked.reduce((s, r) => s + r.value, 0));
 	const classes: ClassSummary[] = (['A', 'B', 'C', 'none'] as const).map((cls) => {
 		const members = rows.filter((r) => r.cls === cls);
-		const value = money(members.reduce((s, r) => s + r.value, 0));
+		const value = cents(members.reduce((s, r) => s + r.value, 0));
 		return {
 			cls,
 			items: members.length,
 			value,
 			share: total ? Math.round((value / total) * 10000) / 100 : 0,
-			stockValue: money(members.reduce((s, r) => s + r.stockValue, 0))
+			stockValue: cents(members.reduce((s, r) => s + r.stockValue, 0))
 		};
 	});
 	return { rows, total, classes };
@@ -541,7 +539,7 @@ export function bucketOf(day: string, grain: Grain) {
 			.slice(0, 10);
 		return { key: monday, label: m.reports_week_of({ day: ethiopianDay(monday) }) };
 	}
-	const e = getEthiopianYearMonth(noon(day))!;
+	const e = getEthiopianYearMonth(dayNoon(day))!;
 	const [, month, year] = ethiopianDay(day).split(' ');
 	return { key: `${e.year}-${String(e.month).padStart(2, '0')}`, label: `${month} ${year}` };
 }

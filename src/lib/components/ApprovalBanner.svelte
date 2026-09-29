@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import ShieldX from '@lucide/svelte/icons/shield-x';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -29,30 +30,20 @@
 </script>
 
 {#if approval.pending}
-	<div
-		class="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-	>
-		<ShieldCheck class="mt-0.5 size-4 shrink-0" />
-		<p>
-			{m.purchasing_banner_waiting({
-				reason: approval.pending.reason,
-				value: formatETB(approval.pending.value),
-				who: approval.pending.requestedBy ?? m.purchasing_someone()
-			})}
-			<a class="underline" href={resolve('/dashboard/approvals')}>{m.purchasing_banner_link()}</a>
-			{m.purchasing_banner_page()}
-		</p>
-	</div>
+	<Notice tone="warning" icon={ShieldCheck}>
+		{m.purchasing_banner_waiting({
+			reason: approval.pending.reason,
+			value: formatETB(approval.pending.value),
+			who: approval.pending.requestedBy ?? m.purchasing_someone()
+		})}
+		<a class="underline" href={resolve('/dashboard/approvals')}>{m.purchasing_banner_link()}</a>
+		{m.purchasing_banner_page()}
+	</Notice>
 {:else if approval.last?.status === 'rejected'}
-	<div
-		class="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
-	>
-		<ShieldX class="mt-0.5 size-4 shrink-0" />
-		<p>
-			{m.purchasing_banner_rejected({
-				who: approval.last.decidedBy ?? m.purchasing_an_approver(),
-				note: approval.last.decisionNote ? `: “${approval.last.decisionNote}”` : '.'
-			})}
-		</p>
-	</div>
+	<Notice tone="danger" icon={ShieldX}>
+		{m.purchasing_banner_rejected({
+			who: approval.last.decidedBy ?? m.purchasing_an_approver(),
+			note: approval.last.decisionNote ? `: “${approval.last.decisionNote}”` : '.'
+		})}
+	</Notice>
 {/if}

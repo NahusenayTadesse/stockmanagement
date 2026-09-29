@@ -6,7 +6,7 @@
  *
  * Plain database code.
  */
-import { error } from '@sveltejs/kit';
+
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
 import { db } from '$lib/server/db';
@@ -25,6 +25,8 @@ import {
 import { issueNumber, StockError, type Tx } from '$lib/server/stock/post';
 import { releaseRequisition, reserveRequisition } from '$lib/server/reservations';
 import { m } from '$lib/paraglide/messages.js';
+import { round4 } from '$lib/money';
+import { orgRowOr404 } from '$lib/server/org';
 
 /** A requisition's status as a word in a sentence, in the viewer's language. */
 function stateWord(status: string): string {
@@ -42,14 +44,7 @@ function stateWord(status: string): string {
 type Reader = Pick<typeof db, 'select'>;
 
 export async function orgRequisition(orgId: number, id: number, reader: Reader = db) {
-	const [row] = await reader
-		.select()
-		.from(requisition)
-		.where(
-			and(eq(requisition.id, id), eq(requisition.orgId, orgId), isNull(requisition.deletedAt))
-		);
-	if (!row) error(404, m.purchasing_req_not_found());
-	return row;
+	return orgRowOr404(requisition, orgId, id, m.purchasing_req_not_found, reader);
 }
 
 export async function requisitionLines(orgId: number, requisitionId: number, reader: Reader = db) {
@@ -374,5 +369,5 @@ export async function onHandAtStore(orgId: number, locationId: number, itemIds: 
 			)
 		)
 		.groupBy(stockBalance.itemId);
-	return new Map(rows.map((r) => [r.itemId, Math.round(Number(r.quantity) * 10000) / 10000]));
+	return new Map(rows.map((r) => [r.itemId, round4(Number(r.quantity))]));
 }

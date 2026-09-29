@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { setFlash } from 'sveltekit-flash-message/server';
+import { flashDone } from '$lib/server/actions';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { requirePermission } from '@nahu/admin-kit/server/permissions';
 import { branch, fiscalDevice } from '$lib/server/db/schema';
@@ -88,7 +89,7 @@ export const actions: Actions = {
 			setFlash({ type: 'error', message }, event.cookies);
 			return fail(err instanceof FiscalError ? 400 : 502, { message });
 		}
-		setFlash({ type: 'success', message: m.admin_fd_z_printed() }, event.cookies);
+		flashDone(event, m.admin_fd_z_printed());
 		return { done: true };
 	}
 };

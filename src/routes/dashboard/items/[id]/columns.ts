@@ -3,28 +3,17 @@ import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
 import ExpiryCell from '@nahu/admin-kit/components/Table/expiry-cell.svelte';
-import { ethiopianDate } from '@nahu/admin-kit/tableCells';
-import { formatETB } from '@nahu/admin-kit/global';
 import { MOVEMENT_LABELS, qty } from '$lib/format';
 import type { PageData } from './$types';
-import { longText, NAME_LENGTH } from '$lib/cells';
+import { dateCell, longText, moneyCell, NAME_LENGTH, textColumn } from '$lib/table';
 
 type StockRow = PageData['stock'][number];
 type CardRow = PageData['card'][number];
+type HeldRow = PageData['held'][number];
 
 export const stockColumns: ColumnDef<StockRow>[] = [
-	{
-		accessorKey: 'branch',
-		get header() {
-			return m.common_branch();
-		}
-	},
-	{
-		accessorKey: 'location',
-		get header() {
-			return m.common_location();
-		}
-	},
+	textColumn('branch', m.common_branch),
+	textColumn('location', m.common_location),
 	{
 		accessorKey: 'lotNumber',
 		get header() {
@@ -62,6 +51,7 @@ export const stockColumns: ColumnDef<StockRow>[] = [
 	},
 	{
 		accessorKey: 'quantity',
+		meta: { align: 'right' },
 		get header() {
 			return m.common_quantity();
 		},
@@ -69,10 +59,11 @@ export const stockColumns: ColumnDef<StockRow>[] = [
 	},
 	{
 		accessorKey: 'value',
+		meta: { align: 'right' },
 		get header() {
 			return m.stock_col_value();
 		},
-		cell: (info) => formatETB(Number(info.getValue()))
+		cell: moneyCell
 	}
 ];
 
@@ -82,7 +73,7 @@ export const cardColumns: ColumnDef<CardRow>[] = [
 		get header() {
 			return m.common_date();
 		},
-		cell: (info) => ethiopianDate(info.getValue())
+		cell: dateCell
 	},
 	{
 		accessorKey: 'number',
@@ -110,12 +101,7 @@ export const cardColumns: ColumnDef<CardRow>[] = [
 		},
 		cell: longText(NAME_LENGTH)
 	},
-	{
-		accessorKey: 'location',
-		get header() {
-			return m.common_location();
-		}
-	},
+	textColumn('location', m.common_location),
 	{
 		accessorKey: 'lotNumber',
 		get header() {
@@ -140,6 +126,7 @@ export const cardColumns: ColumnDef<CardRow>[] = [
 	},
 	{
 		accessorKey: 'balance',
+		meta: { align: 'right' },
 		get header() {
 			return m.stock_balance();
 		},
@@ -147,9 +134,26 @@ export const cardColumns: ColumnDef<CardRow>[] = [
 	},
 	{
 		accessorKey: 'unitCost',
+		meta: { align: 'right' },
 		get header() {
 			return m.stock_col_unit_cost();
 		},
-		cell: (info) => formatETB(Number(info.getValue()))
+		cell: moneyCell
 	}
 ];
+
+/** Stock held for proformas and requisitions, in the item's base unit. */
+export function heldColumns(unit: string): ColumnDef<HeldRow>[] {
+	return [
+		textColumn('for', m.common_reference),
+		textColumn('location', m.common_location),
+		{
+			accessorKey: 'quantity',
+			meta: { align: 'right' },
+			get header() {
+				return m.common_quantity();
+			},
+			cell: ({ row }) => qty(row.original.quantity, unit)
+		}
+	];
+}

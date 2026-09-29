@@ -2,46 +2,100 @@
 	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import { enhance } from '$app/forms';
 	import Printer from '@lucide/svelte/icons/printer';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
+	import { cents } from '$lib/money';
+	import { moneyCell } from '$lib/table';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data, form } = $props();
 	const s = $derived(data.summary);
 	const diff = $derived(
 		s.shift.countedCash !== null && s.shift.expectedCash !== null
-			? Math.round((s.shift.countedCash - s.shift.expectedCash) * 100) / 100
+			? cents(s.shift.countedCash - s.shift.expectedCash)
 			: null
 	);
+
+	/** Where, and when it opened and closed. */
+	const when = $derived(
+		[
+			s.location,
+			m.sales_shift_opened_at({ when: ethiopianDateTime(s.shift.openedAt) }),
+			s.shift.closedAt && m.sales_shift_closed_at({ when: ethiopianDateTime(s.shift.closedAt) })
+		]
+			.filter(Boolean)
+			.join(' · ')
+	);
+
+	type MethodRow = (typeof s.methods)[number];
+	const sum = (key: 'count' | 'moneyIn' | 'moneyOut') =>
+		s.methods.reduce((total, row) => total + Number(row[key] ?? 0), 0);
+
+	const methodColumns: ColumnDef<MethodRow>[] = [
+		{
+			accessorKey: 'method',
+			get header() {
+				return m.sales_payment_method();
+			},
+			cell: ({ row }) =>
+				`${row.original.method}${row.original.kind === 'cash' ? ` ${m.sales_drawer()}` : ''}`,
+			footer: () => m.common_total()
+		},
+		{
+			accessorKey: 'count',
+			get header() {
+				return m.sales_payments();
+			},
+			footer: () => sum('count')
+		},
+		{
+			accessorKey: 'moneyIn',
+			meta: { align: 'right' },
+			get header() {
+				return m.sales_in();
+			},
+			cell: moneyCell,
+			footer: () => formatETB(cents(sum('moneyIn')))
+		},
+		{
+			accessorKey: 'moneyOut',
+			meta: { align: 'right' },
+			get header() {
+				return m.sales_out();
+			},
+			cell: (info) => (info.getValue() ? moneyCell(info) : '—'),
+			footer: () => formatETB(cents(sum('moneyOut')))
+		}
+	];
 </script>
 
-<svelte:head>
-	<title>{m.sales_shift_number({ id: s.shift.id })}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-2">
-		<div>
-			<p class="text-sm text-muted-foreground">{m.sales_till_shift()}</p>
-			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				#{s.shift.id} · {s.cashier}
-				<Badge variant={s.shift.status === 'open' ? 'secondary' : 'default'}
-					>{s.shift.status === 'open' ? m.sales_shift_open() : m.sales_shift_closed()}</Badge
-				>
-			</h1>
-			<p class="text-muted-foreground">
-				{s.location} · {m.sales_shift_opened_at({ when: ethiopianDateTime(s.shift.openedAt) })}{s
-					.shift.closedAt
-					? ` · ${m.sales_shift_closed_at({ when: ethiopianDateTime(s.shift.closedAt) })}`
-					: ''}
-			</p>
-		</div>
-		<Button variant="outline" onclick={() => window.print()}><Printer /> {m.common_print()}</Button>
-	</div>
+	<PageHeader
+		eyebrow={m.sales_till_shift()}
+		title="#{s.shift.id} · {s.cashier}"
+		tabTitle={m.sales_shift_number({ id: s.shift.id })}
+		description={when}
+	>
+		{#snippet badges()}
+			<Badge variant={s.shift.status === 'open' ? 'secondary' : 'default'}
+				>{s.shift.status === 'open' ? m.sales_shift_open() : m.sales_shift_closed()}</Badge
+			>
+		{/snippet}
+		{#snippet actions()}
+			<Button variant="outline" onclick={() => window.print()}
+				><Printer /> {m.common_print()}</Button
+			>
+		{/snippet}
+	</PageHeader>
 
 	<div class="grid gap-4 sm:grid-cols-3">
 		<StatCard
@@ -75,52 +129,38 @@
 		/>
 	</div>
 
-	<div class="overflow-x-auto rounded-md border">
-		<table class="w-full text-sm">
-			<thead class="bg-muted/50 text-left">
-				<tr>
-					<th class="px-3 py-2">{m.sales_payment_method()}</th>
-					<th class="px-3 py-2 text-right">{m.sales_payments()}</th>
-					<th class="px-3 py-2 text-right">{m.sales_in()}</th>
-					<th class="px-3 py-2 text-right">{m.sales_out()}</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each s.methods as row (row.method)}
-					<tr class="border-t">
-						<td class="px-3 py-2"
-							>{row.method}{row.kind === 'cash' ? ` ${m.sales_drawer()}` : ''}</td
-						>
-						<td class="px-3 py-2 text-right">{row.count}</td>
-						<td class="px-3 py-2 text-right">{formatETB(row.moneyIn)}</td>
-						<td class="px-3 py-2 text-right">{row.moneyOut ? formatETB(row.moneyOut) : '—'}</td>
-					</tr>
-				{:else}
-					<tr
-						><td colspan="4" class="px-3 py-6 text-center text-muted-foreground"
-							>{m.sales_nothing_taken()}</td
-						></tr
-					>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	{#if s.methods.length}
+		<DataTable
+			data={s.methods}
+			columns={methodColumns}
+			variant="compact"
+			fileName={m.sales_shift_number({ id: s.shift.id })}
+		/>
+	{:else}
+		<p class="rounded-md border px-3 py-6 text-center text-sm text-muted-foreground">
+			{m.sales_nothing_taken()}
+		</p>
+	{/if}
 
 	{#if s.shift.status === 'open'}
-		<form method="POST" action="?/close" use:enhance class="flex max-w-md flex-col gap-3">
-			<h2 class="text-lg font-semibold">{m.sales_close_shift_heading()}</h2>
-			<p class="text-sm text-muted-foreground">{m.sales_close_shift_intro()}</p>
-			{#if form?.error}<p class="text-sm text-destructive">{form.error}</p>{/if}
-			<label class="flex flex-col gap-1 text-sm">
-				{m.sales_cash_counted_etb()}
-				<Input name="countedCash" type="number" min="0" step="0.01" required />
-			</label>
-			<label class="flex flex-col gap-1 text-sm">
-				{m.sales_note_optional()}
-				<Input name="note" placeholder={m.sales_over_short_placeholder()} />
-			</label>
-			<Button type="submit">{m.sales_count_and_close()}</Button>
-		</form>
+		<PageSection
+			title={m.sales_close_shift_heading()}
+			hint={m.sales_close_shift_intro()}
+			class="max-w-md"
+		>
+			<form method="POST" action="?/close" use:enhance class="flex flex-col gap-3">
+				{#if form?.refused}<Notice tone="danger">{form.refused}</Notice>{/if}
+				<label class="flex flex-col gap-1 text-sm">
+					{m.sales_cash_counted_etb()}
+					<Input name="countedCash" type="number" min="0" step="0.01" required />
+				</label>
+				<label class="flex flex-col gap-1 text-sm">
+					{m.sales_note_optional()}
+					<Input name="note" placeholder={m.sales_over_short_placeholder()} />
+				</label>
+				<Button type="submit">{m.sales_count_and_close()}</Button>
+			</form>
+		</PageSection>
 	{:else}
 		<div class="rounded-md border p-4 text-sm">
 			<p>

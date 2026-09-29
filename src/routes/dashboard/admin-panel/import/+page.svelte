@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { ColumnDef } from '@tanstack/table-core';
 	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
@@ -8,6 +9,11 @@
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import { renderSnippet } from '@nahu/admin-kit/components/ui/data-table/index.js';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import { longText, NAME_LENGTH } from '$lib/table';
 
 	let { data, form } = $props();
 
@@ -20,19 +26,41 @@
 	const imported = $derived(form && 'imported' in form ? form.imported : null);
 	const problem = $derived(form && 'error' in form ? form.error : null);
 
-	/** Rows with problems first, then warnings, then the rest; at most 500 shown. */
+	type PlanRow = NonNullable<typeof preview>['plan']['rows'][number];
+
+	/** Rows with problems first, then warnings, then the rest. */
 	const shown = $derived(
 		preview
-			? [...preview.plan.rows]
-					.sort(
-						(a, b) =>
-							Number(b.errors.length > 0) - Number(a.errors.length > 0) ||
-							Number(b.warnings.length > 0) - Number(a.warnings.length > 0) ||
-							a.row - b.row
-					)
-					.slice(0, 500)
+			? [...preview.plan.rows].sort(
+					(a, b) =>
+						Number(b.errors.length > 0) - Number(a.errors.length > 0) ||
+						Number(b.warnings.length > 0) - Number(a.warnings.length > 0) ||
+						a.row - b.row
+				)
 			: []
 	);
+
+	const columns: ColumnDef<PlanRow>[] = [
+		{ accessorKey: 'row', header: () => m.admin_imp_th_row() },
+		{
+			id: 'label',
+			accessorFn: (r) => r.label || '—',
+			header: () => m.admin_imp_th_what(),
+			cell: longText(NAME_LENGTH)
+		},
+		{
+			id: 'will',
+			header: () => m.admin_imp_th_will(),
+			cell: ({ row }) => renderSnippet(willCell, row.original)
+		},
+		{
+			id: 'notes',
+			// The words themselves, so the search finds a row by its problem.
+			accessorFn: (r) => [...r.errors, ...r.warnings].join(' '),
+			header: () => m.admin_imp_th_notes(),
+			cell: ({ row }) => renderSnippet(notesCell, row.original)
+		}
+	];
 
 	const submitting = () => {
 		busy = true;
@@ -43,17 +71,33 @@
 	};
 </script>
 
-<svelte:head>
-	<title>{m.admin_imp_title()}</title>
-</svelte:head>
+{#snippet willCell(r: PlanRow)}
+	{#if r.errors.length}
+		<Badge variant="destructive">{m.admin_imp_fix_first()}</Badge>
+	{:else if r.action === 'update'}
+		<Badge variant="secondary">{m.admin_imp_update()}</Badge>
+	{:else}
+		<Badge>{m.admin_imp_add()}</Badge>
+	{/if}
+{/snippet}
+
+{#snippet notesCell(r: PlanRow)}
+	<div class="whitespace-normal">
+		{#each r.errors as e, i (i)}
+			<p class="text-destructive">{e}</p>
+		{/each}
+		{#each r.warnings as w, i (i)}
+			<p class="text-muted-foreground">{w}</p>
+		{/each}
+	</div>
+{/snippet}
 
 <div class="flex flex-col gap-4">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.admin_imp_heading()}</h1>
-		<p class="text-muted-foreground">
-			{m.admin_imp_intro()}
-		</p>
-	</div>
+	<PageHeader
+		title={m.admin_imp_heading()}
+		tabTitle={m.admin_imp_title()}
+		description={m.admin_imp_intro()}
+	/>
 
 	<Card.Root>
 		<Card.Header>
@@ -136,11 +180,7 @@
 	</Card.Root>
 
 	{#if problem}
-		<p
-			class="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
-		>
-			{problem}
-		</p>
+		<Notice tone="danger">{problem}</Notice>
 	{/if}
 
 	{#if imported}
@@ -186,48 +226,7 @@
 				</Card.Description>
 			</Card.Header>
 			<Card.Content class="flex flex-col gap-4">
-				<div class="overflow-x-auto rounded-md border">
-					<table class="w-full text-sm">
-						<thead class="bg-muted/50 text-left">
-							<tr>
-								<th class="px-3 py-2">{m.admin_imp_th_row()}</th>
-								<th class="px-3 py-2">{m.admin_imp_th_what()}</th>
-								<th class="px-3 py-2">{m.admin_imp_th_will()}</th>
-								<th class="px-3 py-2">{m.admin_imp_th_notes()}</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each shown as r (r.row)}
-								<tr class="border-t align-top">
-									<td class="px-3 py-2 tabular-nums">{r.row}</td>
-									<td class="px-3 py-2">{r.label || '—'}</td>
-									<td class="px-3 py-2">
-										{#if r.errors.length}
-											<Badge variant="destructive">{m.admin_imp_fix_first()}</Badge>
-										{:else if r.action === 'update'}
-											<Badge variant="secondary">{m.admin_imp_update()}</Badge>
-										{:else}
-											<Badge>{m.admin_imp_add()}</Badge>
-										{/if}
-									</td>
-									<td class="px-3 py-2">
-										{#each r.errors as e, i (i)}
-											<p class="text-destructive">{e}</p>
-										{/each}
-										{#each r.warnings as w, i (i)}
-											<p class="text-muted-foreground">{w}</p>
-										{/each}
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-				{#if preview.plan.rows.length > shown.length}
-					<p class="text-sm text-muted-foreground">
-						{m.admin_imp_showing({ shown: shown.length, total: preview.plan.rows.length })}
-					</p>
-				{/if}
+				<DataTable variant="compact" search data={shown} {columns} />
 
 				{#if counts.errors}
 					<p class="text-sm">

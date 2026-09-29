@@ -1,15 +1,15 @@
 <script lang="ts">
-	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
-	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
+	import FilterSelect from '$lib/components/filters/FilterSelect.svelte';
 	import ReportFilterBar from '../ReportFilterBar.svelte';
+	import ReportTable from '../ReportTable.svelte';
+	import StatGrid from '../StatGrid.svelte';
 	import { periodColumns, summaryColumns } from './columns';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
-	const select = 'h-9 rounded-md border bg-background px-2 text-sm';
 	const items = $derived(data.report.items);
 	const tiles = $derived<Stat[]>([
 		{
@@ -45,15 +45,12 @@
 	]);
 </script>
 
-<svelte:head>
-	<title>{m.nav_stock_outs()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.reports_outs_title()}</h1>
-		<p class="text-muted-foreground">{m.reports_outs_intro()}</p>
-	</div>
+	<PageHeader
+		title={m.reports_outs_title()}
+		tabTitle={m.nav_stock_outs()}
+		description={m.reports_outs_intro()}
+	/>
 
 	<ReportFilterBar
 		branches={data.branches}
@@ -64,34 +61,33 @@
 		to={data.to}
 		allLocationsLabel={m.reports_all_shelves()}
 	>
-		<div class="flex flex-col gap-1">
-			<Label for="by">{m.reports_outs_count()}</Label>
-			<select id="by" name="by" class={select} value={data.byLocation ? 'location' : 'item'}>
-				<option value="item">{m.reports_outs_across()}</option>
-				<option value="location">{m.reports_outs_each()}</option>
-			</select>
-		</div>
+		<FilterSelect
+			name="by"
+			label={m.reports_outs_count()}
+			value={data.byLocation ? 'location' : 'item'}
+			options={[
+				{ value: 'item', name: m.reports_outs_across() },
+				{ value: 'location', name: m.reports_outs_each() }
+			]}
+			anyLabel={null}
+		/>
 	</ReportFilterBar>
 
-	<div class="grid gap-4 sm:grid-cols-3">
-		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
-	</div>
+	<StatGrid stats={tiles} columns={3} />
 
-	<h2 class="text-lg font-semibold">{m.reports_outs_by_item()}</h2>
-	<DataTable
+	<ReportTable
+		title={m.reports_outs_by_item()}
 		data={items}
 		columns={summaryColumns}
 		fileName={m.reports_file_outs_by_item({ from: data.from, to: data.to })}
 		facetKeys={['now']}
 		facetLabels={{ now: m.reports_col_now() }}
-		height="auto"
 	/>
 
-	<h2 class="text-lg font-semibold">{m.reports_outs_every()}</h2>
-	<DataTable
+	<ReportTable
+		title={m.reports_outs_every()}
 		data={data.report.periods}
 		columns={periodColumns}
 		fileName={m.reports_file_outs({ from: data.from, to: data.to })}
-		height="auto"
 	/>
 </div>

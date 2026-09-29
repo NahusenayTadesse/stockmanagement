@@ -24,14 +24,15 @@ import {
 	transactions,
 	uom
 } from '$lib/server/db/schema';
-import { round4 } from '$lib/server/stock/math';
+
 import { lineNetSql, lineTotSql, lineVatSql } from '$lib/server/tax';
 import { m } from '$lib/paraglide/messages.js';
-import { labels } from '$lib/format';
+import { dayNoon, labels } from '$lib/format';
+import { cents, round4 } from '$lib/money';
+import { daysBetween } from '$lib/server/days';
 
 export type ReportFilters = { from: string; to: string; branchId: number };
 
-const money = (n: unknown) => Math.round(Number(n) * 100) / 100;
 const branchOf = (branchId: number) => (branchId ? eq(location.branchId, branchId) : undefined);
 
 // ── Periods ───────────────────────────────────────────────────────────────────────────────────
@@ -41,9 +42,9 @@ const branchOf = (branchId: number) => (branchId ? eq(location.branchId, branchI
  * the month a business here closes its books by.
  */
 export function periodBuckets(from: string, to: string) {
-	const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+	const days = daysBetween(from, to);
 	const byDay = days <= 62;
-	const noon = (day: string) => new Date(`${day}T12:00:00+03:00`);
+	const noon = dayNoon;
 	const keyOf = (day: string) => {
 		if (byDay) return day;
 		const e = getEthiopianYearMonth(noon(day))!;
@@ -136,18 +137,18 @@ export async function stockValuation(orgId: number, branchId: number) {
 
 	const sorted = (m: Map<string, number>) =>
 		[...m]
-			.map(([label, value]) => ({ label, value: money(value) }))
+			.map(([label, value]) => ({ label, value: cents(value) }))
 			.sort((a, b) => b.value - a.value);
 	const items = [...byItem.values()]
-		.map((i) => ({ ...i, value: money(i.value) }))
+		.map((i) => ({ ...i, value: cents(i.value) }))
 		.sort((a, b) => b.value - a.value);
 
 	return {
 		items,
 		byCategory: sorted(byCategory),
 		byLocation: sorted(byLocation),
-		total: money(items.reduce((s, i) => s + i.value, 0)),
-		expiredValue: money(expiredValue)
+		total: cents(items.reduce((s, i) => s + i.value, 0)),
+		expiredValue: cents(expiredValue)
 	};
 }
 
@@ -198,7 +199,7 @@ export async function movementsOverTime(orgId: number, f: ReportFilters) {
 		else if (r.kind === 'adjustment_in') series.adjustedIn[i] += value;
 	}
 
-	const round = (list: number[]) => list.map(money);
+	const round = (list: number[]) => list.map((n) => cents(n));
 	return {
 		labels: buckets.labels,
 		byDay: buckets.byDay,
@@ -206,7 +207,7 @@ export async function movementsOverTime(orgId: number, f: ReportFilters) {
 		issued: round(series.issued),
 		adjustedOut: round(series.adjustedOut),
 		adjustedIn: round(series.adjustedIn),
-		byKind: [...byKind].map(([kind, v]) => ({ kind, value: money(v.value), lines: v.lines }))
+		byKind: [...byKind].map(([kind, v]) => ({ kind, value: cents(v.value), lines: v.lines }))
 	};
 }
 
@@ -241,7 +242,7 @@ export async function topIssued(orgId: number, f: ReportFilters, limit = 15) {
 	return rows.map((r) => ({
 		...r,
 		quantity: round4(Number(r.quantity)),
-		value: money(r.value),
+		value: cents(r.value),
 		documents: Number(r.documents)
 	}));
 }
@@ -277,7 +278,7 @@ export async function issuedByCustomer(orgId: number, f: ReportFilters) {
 	return rows.map((r) => ({
 		customerId: r.customerId,
 		customer: r.customer ?? m.reports_no_customer(),
-		value: money(r.value),
+		value: cents(r.value),
 		documents: Number(r.documents)
 	}));
 }
@@ -377,13 +378,13 @@ export async function purchasesBySupplier(orgId: number, f: ReportFilters) {
 
 	for (const d of delivered) {
 		const r = row(d.supplierId);
-		r.delivered = money(d.value);
+		r.delivered = cents(d.value);
 		r.deliveries = Number(d.deliveries);
 	}
 	for (const o of ordered) {
 		const r = row(o.supplierId);
 		r.orders = Number(o.orders);
-		r.orderedValue = money(o.orderedValue);
+		r.orderedValue = cents(o.orderedValue);
 		const q = Number(o.orderedQty);
 		r.fillRate = q > 0 ? Math.round((Number(o.receivedQty) / q) * 1000) / 10 : null;
 	}
@@ -442,15 +443,15 @@ export async function wastage(orgId: number, f: ReportFilters) {
 		...l,
 		reasonName: REASON_NAMES[l.reason] ?? l.reason,
 		quantity: round4(Number(l.quantity)),
-		value: money(l.value)
+		value: cents(l.value)
 	}));
 	const byReason = new Map<string, number>();
 	for (const r of rows) byReason.set(r.reasonName, (byReason.get(r.reasonName) ?? 0) + r.value);
 
 	return {
 		rows,
-		byReason: [...byReason].map(([label, value]) => ({ label, value: money(value) })),
-		total: money(rows.reduce((s, r) => s + r.value, 0))
+		byReason: [...byReason].map(([label, value]) => ({ label, value: cents(value) })),
+		total: cents(rows.reduce((s, r) => s + r.value, 0))
 	};
 }
 
@@ -511,20 +512,20 @@ export async function moneyOverTime(orgId: number, f: ReportFilters) {
 		[...m]
 			.map(([label, v]) => ({
 				label,
-				in: money(v.in),
-				out: money(v.out),
-				net: money(v.in - v.out)
+				in: cents(v.in),
+				out: cents(v.out),
+				net: cents(v.in - v.out)
 			}))
 			.sort((a, b) => b.in + b.out - (a.in + a.out));
 
 	return {
 		labels: buckets.labels,
-		moneyIn: moneyIn.map(money),
-		moneyOut: moneyOut.map(money),
+		moneyIn: moneyIn.map((n) => cents(n)),
+		moneyOut: moneyOut.map((n) => cents(n)),
 		byPurpose: table(byPurpose),
 		byMethod: table(byMethod),
-		totalIn: money(moneyIn.reduce((s, v) => s + v, 0)),
-		totalOut: money(moneyOut.reduce((s, v) => s + v, 0))
+		totalIn: cents(moneyIn.reduce((s, v) => s + v, 0)),
+		totalOut: cents(moneyOut.reduce((s, v) => s + v, 0))
 	};
 }
 
@@ -571,9 +572,9 @@ export async function vatRegisters(orgId: number, f: ReportFilters) {
 			.filter((r) => types.includes(r.type))
 			.map((r) => {
 				const sign = r.type === negative ? -1 : 1;
-				const net = money(Number(r.net) * sign);
-				const vat = money(Number(r.vat) * sign);
-				const tot = money(Number(r.tot) * sign);
+				const net = cents(Number(r.net) * sign);
+				const vat = cents(Number(r.vat) * sign);
+				const tot = cents(Number(r.tot) * sign);
 				return {
 					id: r.id,
 					number: r.number,
@@ -589,7 +590,7 @@ export async function vatRegisters(orgId: number, f: ReportFilters) {
 					net,
 					vat,
 					tot,
-					gross: money(net + vat + tot)
+					gross: cents(net + vat + tot)
 				};
 			})
 			// A sale nobody priced is not a sale for tax purposes: it moved no money.
@@ -598,7 +599,7 @@ export async function vatRegisters(orgId: number, f: ReportFilters) {
 	const sales = register(['issue', 'sales_return'], 'sales_return');
 	const purchases = register(['receipt', 'purchase_return'], 'purchase_return');
 	const sum = (list: typeof sales, k: 'net' | 'vat' | 'tot') =>
-		money(list.reduce((s, r) => s + r[k], 0));
+		cents(list.reduce((s, r) => s + r[k], 0));
 	const outputVat = sum(sales, 'vat');
 	const inputVat = sum(purchases, 'vat');
 	return {
@@ -609,7 +610,7 @@ export async function vatRegisters(orgId: number, f: ReportFilters) {
 			outputVat,
 			purchasesNet: sum(purchases, 'net'),
 			inputVat,
-			payable: money(outputVat - inputVat),
+			payable: cents(outputVat - inputVat),
 			/** Turnover tax on sales, for a business that pays TOT instead of VAT. */
 			tot: sum(sales, 'tot')
 		}
@@ -650,7 +651,7 @@ export async function withholdingRegister(orgId: number, f: ReportFilters) {
 
 	const byUs = rows.filter((r) => r.direction === 'out');
 	const fromUs = rows.filter((r) => r.direction === 'in');
-	const sum = (list: typeof rows) => money(list.reduce((s, r) => s + r.withheld, 0));
+	const sum = (list: typeof rows) => cents(list.reduce((s, r) => s + r.withheld, 0));
 	return {
 		byUs,
 		fromUs,

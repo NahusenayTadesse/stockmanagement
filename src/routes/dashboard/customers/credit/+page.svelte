@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { ethiopianDay } from '$lib/format';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PostButton from '$lib/components/PostButton.svelte';
 	import MessageSquare from '@lucide/svelte/icons/message-square';
-	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import ReportChart from '@nahu/admin-kit/components/reports/ReportChart.svelte';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import type { ReportChartData, Stat } from '@nahu/admin-kit/components/reports/types';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { columns } from './columns';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -59,43 +59,27 @@
 		labels: data.buckets.map((b) => b.label),
 		series: [{ label: m.sales_owed(), data: data.buckets.map((b) => data.totals[b.key]) }]
 	});
-	let reminding = $state(false);
 	const overdueCount = $derived(data.rows.filter((r) => r.overdue > 0 && r.isActive).length);
 </script>
 
-<svelte:head>
-	<title>{m.nav_credit()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div>
-			<h1 class="text-2xl font-semibold">{m.nav_credit()}</h1>
-			<p class="text-muted-foreground">
-				{m.sales_credit_intro({
-					date: formatEthiopianDate(new Date(`${data.today}T12:00:00+03:00`))
-				})}
-			</p>
-		</div>
-		{#if data.canText && overdueCount}
-			<form
-				method="POST"
-				action="?/remindAll"
-				use:enhance={() => {
-					reminding = true;
-					return async ({ update }) => {
-						await update();
-						reminding = false;
-					};
-				}}
-			>
-				<Button type="submit" variant="outline" disabled={reminding}>
-					<MessageSquare />
-					{reminding ? m.common_sending() : m.sales_text_reminders({ count: overdueCount })}
-				</Button>
-			</form>
-		{/if}
-	</div>
+	<PageHeader
+		title={m.nav_credit()}
+		description={m.sales_credit_intro({
+			date: ethiopianDay(data.today)
+		})}
+	>
+		{#snippet actions()}
+			{#if data.canText && overdueCount}
+				<PostButton
+					action="?/remindAll"
+					icon={MessageSquare}
+					label={m.sales_text_reminders({ count: overdueCount })}
+					busyLabel={m.common_sending()}
+				/>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	<div class="grid gap-4 sm:grid-cols-3">
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
@@ -106,7 +90,12 @@
 	</div>
 
 	{#if data.rows.length}
-		<DataTable data={data.rows} {columns} fileName={m.sales_ageing_file({ date: data.today })} />
+		<DataTable
+			data={data.rows}
+			{columns}
+			variant="list"
+			fileName={m.sales_ageing_file({ date: data.today })}
+		/>
 	{:else}
 		<p class="rounded-md border p-6 text-center text-muted-foreground">
 			{m.sales_nobody_owes()}

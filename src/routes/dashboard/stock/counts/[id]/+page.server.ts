@@ -1,9 +1,8 @@
 import { m } from '$lib/paraglide/messages.js';
 import { fail } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
-import { setFlash } from 'sveltekit-flash-message/server';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
 import { category, location, stockCount, stockDocument, user } from '$lib/server/db/schema';
@@ -17,7 +16,8 @@ import {
 	postCount,
 	saveCounts
 } from '$lib/server/counts';
-import { ApprovalRequired, StockError } from '$lib/server/stock/post';
+import { ApprovalRequired } from '$lib/server/stock/post';
+import { attempt, attemptForm, flashDone, invalidForm } from '$lib/server/actions';
 import { approvalState, closePendingFor, requestApproval } from '$lib/server/approvals';
 import { requireBranch } from '$lib/server/scope';
 import { countFound } from '$lib/schemas/counts';
@@ -98,42 +98,38 @@ export const actions: Actions = {
 			const text = String(value).trim();
 			entries.push({ lineId: Number(m[1]), counted: text === '' ? null : Number(text) });
 		}
-		try {
-			await db.transaction((tx) => saveCounts(tx, orgId, count.id, entries, event.locals.user?.id));
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(400);
-			}
-			throw err;
-		}
-		setFlash({ type: 'success', message: m.stock_counts_saved() }, event.cookies);
-		return { saved: true };
+		return attempt(
+			event,
+			async () => {
+				await db.transaction((tx) =>
+					saveCounts(tx, orgId, count.id, entries, event.locals.user?.id)
+				);
+				return m.stock_counts_saved();
+			},
+			{ status: 400 }
+		);
 	},
 
 	addFound: async (event) => {
 		const form = await superValidate(event.request, zod4(countFound));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 		const { orgId, count } = await openCountOf(event);
-		try {
-			await db.transaction((tx) =>
-				addFoundLine(tx, {
-					orgId,
-					countId: count.id,
-					itemId: form.data.itemId,
-					lotId: form.data.lotId || null,
-					counted: form.data.counted
-				})
-			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setError(form, 'itemId', err.message);
-				return message(form, { type: 'error', text: err.message }, { status: 400 });
-			}
-			throw err;
-		}
-		return message(form, { type: 'success', text: m.stock_added_to_count() });
+		return attemptForm(
+			form,
+			async () => {
+				await db.transaction((tx) =>
+					addFoundLine(tx, {
+						orgId,
+						countId: count.id,
+						itemId: form.data.itemId,
+						lotId: form.data.lotId || null,
+						counted: form.data.counted
+					})
+				);
+				return m.stock_added_to_count();
+			},
+			{ field: 'itemId' }
+		);
 	},
 
 	post: async (event) => {
@@ -141,46 +137,28 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const countId = Number(event.params.id);
 		await requireBranch(event.locals, (await orgCount(orgId, countId)).branchId);
-		try {
-			const result = await db.transaction((tx) =>
-				postCount(tx, { orgId, countId, userId: event.locals.user?.id })
-			);
-			setFlash(
-				{
-					type: 'success',
-					message: result.number
-						? result.lines === 1
-							? m.stock_count_posted_one({ number: result.number })
-							: m.stock_count_posted_many({ count: result.lines, number: result.number })
-						: m.stock_count_posted_none()
-				},
-				event.cookies
-			);
-			return { posted: true };
-		} catch (err) {
-			// Over the business's limit: recorded for a second person, not refused.
-			if (err instanceof ApprovalRequired) {
+		return attempt(event, async () => {
+			try {
+				const result = await db.transaction((tx) =>
+					postCount(tx, { orgId, countId, userId: event.locals.user?.id })
+				);
+				return result.number
+					? result.lines === 1
+						? m.stock_count_posted_one({ number: result.number })
+						: m.stock_count_posted_many({ count: result.lines, number: result.number })
+					: m.stock_count_posted_none();
+			} catch (err) {
+				// Over the business's limit: recorded for a second person, not refused.
+				if (!(err instanceof ApprovalRequired)) throw err;
 				await requestApproval({
 					orgId,
 					userId: event.locals.user?.id,
 					subject: { kind: 'count', countId },
 					refusal: err
 				});
-				setFlash(
-					{
-						type: 'success',
-						message: m.stock_count_sent_for_approval({ reason: err.reason })
-					},
-					event.cookies
-				);
-				return { sentForApproval: true };
+				return m.stock_count_sent_for_approval({ reason: err.reason });
 			}
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { stockError: err.message });
-			}
-			throw err;
-		}
+		});
 	},
 
 	cancel: async (event) => {
@@ -192,7 +170,7 @@ export const actions: Actions = {
 			.update(stockCount)
 			.set({ status: 'cancelled', updatedBy: event.locals.user?.id })
 			.where(eq(stockCount.id, count.id));
-		setFlash({ type: 'success', message: m.stock_count_cancelled() }, event.cookies);
-		return { cancelled: true };
+		flashDone(event, m.stock_count_cancelled());
+		return { done: true };
 	}
 };

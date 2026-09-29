@@ -16,6 +16,7 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { editUserSchema, resetPasswordSchema } from '$lib/schemas/users';
+	import PermissionTable from '../../PermissionTable.svelte';
 
 	let { data } = $props();
 
@@ -62,7 +63,9 @@
 		},
 		{
 			name: m.common_status(),
-			value: data.person.status ? m.common_active() : m.common_inactive()
+			kind: 'status' as const,
+			value: data.person.status ? 'Active' : 'Inactive',
+			label: data.person.status ? m.common_active() : m.common_inactive()
 		},
 		{
 			name: m.admin_users_permissions(),
@@ -206,16 +209,14 @@
 	{/if}
 </SingleView>
 
-<section class="mt-8">
-	<h2 class="mb-2 text-lg font-semibold">{m.admin_users_may_do({ name: data.person.name })}</h2>
-	<ul class="divide-y rounded-md border">
-		{#each data.permissionList as permission (permission.value)}
-			<li class="px-4 py-2">
-				<p>{permission.name}</p>
-				<p class="font-mono text-xs text-muted-foreground">{permission.description}</p>
-			</li>
-		{:else}
-			<li class="px-4 py-2 text-muted-foreground">{m.admin_nothing()}</li>
-		{/each}
-	</ul>
-</section>
+<div class="mt-8">
+	<PermissionTable
+		title={m.admin_users_may_do({ name: data.person.name })}
+		permissions={data.permissionList.map((p) => ({
+			key: p.value,
+			words: p.name,
+			code: p.description
+		}))}
+		empty={m.admin_nothing()}
+	/>
+</div>

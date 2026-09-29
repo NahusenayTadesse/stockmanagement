@@ -22,6 +22,7 @@ import {
 import { documentTotals } from '$lib/server/tax';
 import { m } from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime';
+import { cents } from '$lib/money';
 
 export async function saleForPrint(orgId: number, documentId: number) {
 	const [row] = await db
@@ -122,7 +123,7 @@ export async function saleForPrint(orgId: number, documentId: number) {
 		})),
 		totals: totals && { net: totals.net, vat: totals.vat, tot: totals.tot, gross: totals.gross },
 		payments,
-		balance: Math.max(0, Math.round(((totals?.gross ?? 0) - paid) * 100) / 100),
+		balance: Math.max(0, cents((totals?.gross ?? 0) - paid)),
 		qr: row.doc.einvoiceQr
 			? await QRCode.toDataURL(row.doc.einvoiceQr, { margin: 1, width: 160 })
 			: null

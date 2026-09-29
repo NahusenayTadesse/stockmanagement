@@ -1,23 +1,12 @@
 import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
-import DataTableSort from '@nahu/admin-kit/components/Table/data-table-sort.svelte';
-import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
-import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 import { formatETB } from '@nahu/admin-kit/global';
 import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
-import { longText } from '$lib/cells';
+import { dateCell, longText, moneyCell, sortable, statusCell, textColumn } from '$lib/table';
 
 type Row = PageData['customers'][number];
-
-/** A sortable header, named in the viewer's language when it is drawn. */
-const sortable = (name: () => string) =>
-	(({ column }) =>
-		renderComponent(DataTableSort, {
-			name: name(),
-			onclick: column.getToggleSortingHandler()
-		})) satisfies ColumnDef<Row>['header'];
 
 export const columns: ColumnDef<Row>[] = [
 	{
@@ -30,13 +19,7 @@ export const columns: ColumnDef<Row>[] = [
 				entity: 'customer'
 			})
 	},
-	{
-		accessorKey: 'phone',
-		get header() {
-			return m.common_phone();
-		},
-		cell: (info) => info.getValue() ?? ''
-	},
+	textColumn<Row>('phone', m.common_phone),
 	{
 		accessorKey: 'address',
 		get header() {
@@ -44,25 +27,28 @@ export const columns: ColumnDef<Row>[] = [
 		},
 		cell: longText()
 	},
-	{ accessorKey: 'tin', header: 'TIN', cell: (info) => info.getValue() ?? '' },
+	textColumn<Row>('tin', () => 'TIN'),
 	{ accessorKey: 'purchases', header: sortable(m.sales_purchases) },
 	{
 		accessorKey: 'lastPurchase',
 		header: sortable(m.sales_last_purchase),
-		cell: (info) => (info.getValue() ? ethiopianDate(info.getValue()) : '—')
+		cell: (info) => (info.getValue() ? dateCell(info) : '—')
 	},
 	{
 		accessorKey: 'taken',
+		meta: { align: 'right' },
 		header: sortable(m.sales_goods_at_cost),
-		cell: (info) => formatETB(Number(info.getValue()))
+		cell: moneyCell
 	},
 	{
 		accessorKey: 'paid',
+		meta: { align: 'right' },
 		header: sortable(m.sales_paid),
-		cell: (info) => formatETB(Number(info.getValue()))
+		cell: moneyCell
 	},
 	{
 		accessorKey: 'owed',
+		meta: { align: 'right' },
 		header: sortable(m.sales_owes),
 		cell: ({ row }) =>
 			row.original.owed < 0
@@ -71,11 +57,13 @@ export const columns: ColumnDef<Row>[] = [
 	},
 	{
 		accessorKey: 'overdue',
+		meta: { align: 'right' },
 		header: sortable(m.sales_overdue),
 		cell: (info) => (Number(info.getValue()) > 0 ? formatETB(Number(info.getValue())) : '—')
 	},
 	{
 		accessorKey: 'creditLimit',
+		meta: { align: 'right' },
 		get header() {
 			return m.sales_credit_limit();
 		},
@@ -92,9 +80,9 @@ export const columns: ColumnDef<Row>[] = [
 			return m.common_status();
 		},
 		cell: ({ row }) =>
-			renderComponent(Statuses, {
-				status: row.original.status ? 'active' : 'inactive',
-				label: row.original.status ? m.common_active() : m.common_inactive()
-			})
+			statusCell(
+				row.original.status ? 'active' : 'inactive',
+				row.original.status ? m.common_active() : m.common_inactive()
+			)
 	}
 ];

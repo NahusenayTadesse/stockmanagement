@@ -10,7 +10,9 @@
 	import { formatETB } from '@nahu/admin-kit/global';
 	import { barcodeAdd, barcodeEdit, STORAGE_CHOICES, unitAdd, unitEdit } from '$lib/schemas/items';
 	import { TAX_CODE_LABELS, qty } from '$lib/format';
-	import { cardColumns, stockColumns } from './columns';
+	import { cardColumns, heldColumns, stockColumns } from './columns';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
 	import KitComponents from './KitComponents.svelte';
 	import Variants from './Variants.svelte';
 	import ReorderRules from './ReorderRules.svelte';
@@ -100,19 +102,13 @@
 	});
 </script>
 
-<svelte:head>
-	<title>{title}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-8">
-	<div class="flex flex-col gap-2">
-		<h1 class="text-2xl font-semibold">{title}</h1>
-		{#if title !== it.name}<p class="text-muted-foreground">{it.name}</p>{/if}
-		<div class="flex flex-wrap gap-1">
+	<PageHeader {title} description={title !== it.name ? it.name : undefined}>
+		{#snippet badges()}
 			{#each flags as f (f)}<Badge variant="secondary">{f}</Badge>{/each}
 			{#if !it.isActive}<Badge variant="destructive">{m.stock_inactive()}</Badge>{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>
@@ -197,11 +193,10 @@
 	</div>
 
 	{#if data.kit}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.stock_components()}</h2>
-			<p class="text-sm text-muted-foreground">
-				{m.stock_components_hint({ unit: data.base?.symbol ?? m.stock_unit_word() })}
-			</p>
+		<PageSection
+			title={m.stock_components()}
+			hint={m.stock_components_hint({ unit: data.base?.symbol ?? m.stock_unit_word() })}
+		>
 			<KitComponents
 				kit={data.kit}
 				unitList={data.unitList}
@@ -209,73 +204,61 @@
 				unit={data.base?.symbol}
 				readonly={!data.canManage}
 			/>
-		</section>
+		</PageSection>
 	{/if}
 
 	{#if !data.parent}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.stock_variants()}</h2>
+		<PageSection title={m.stock_variants()}>
 			<Variants variants={data.variants} form={data.variantForm} unit={data.base?.symbol} />
-		</section>
+		</PageSection>
 	{/if}
 
 	{#if it.stockTracked}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.stock_reorder_by_location()}</h2>
+		<PageSection title={m.stock_reorder_by_location()}>
 			<ReorderRules
 				rules={data.rules}
 				locations={data.ruleLocations}
 				unit={data.base?.symbol}
 				readonly={!data.canManage}
 			/>
-		</section>
+		</PageSection>
 	{/if}
 
 	{#if data.held.length}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.stock_held()}</h2>
-			<p class="text-sm text-muted-foreground">
-				{m.stock_held_hint()}
-			</p>
-			<ul class="divide-y rounded-md border text-sm">
-				{#each data.held as h (h.id)}
-					<li class="flex flex-wrap justify-between gap-2 px-3 py-2">
-						<span>{h.for} · {h.location}</span>
-						<span class="font-medium">{qty(h.quantity, data.base?.symbol ?? '')}</span>
-					</li>
-				{/each}
-			</ul>
-		</section>
+		<PageSection title={m.stock_held()} hint={m.stock_held_hint()}>
+			<DataTable
+				variant="compact"
+				data={data.held}
+				columns={heldColumns(data.base?.symbol ?? '')}
+			/>
+		</PageSection>
 	{/if}
 
-	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">{m.stock_where_it_is()}</h2>
+	<PageSection title={m.stock_where_it_is()}>
 		{#if data.stock.length}
 			<DataTable
 				data={data.stock}
 				columns={stockColumns}
 				fileName={m.stock_stock_file({ item: it.name })}
-				height="auto"
+				variant="compact"
+				search
 			/>
 		{:else}
 			<p class="text-muted-foreground">{m.stock_none_in_stock()}</p>
 		{/if}
-	</section>
+	</PageSection>
 
-	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">{m.stock_bin_card()}</h2>
-		<p class="text-sm text-muted-foreground">
-			{m.stock_bin_card_hint()}
-		</p>
+	<PageSection title={m.stock_bin_card()} hint={m.stock_bin_card_hint()}>
 		{#if data.card.length}
 			<DataTable
 				data={data.card}
 				columns={cardColumns}
 				fileName={m.stock_bin_card_file({ item: it.name })}
-				height="auto"
+				variant="compact"
+				search
 			/>
 		{:else}
 			<p class="text-muted-foreground">{m.stock_no_movements()}</p>
 		{/if}
-	</section>
+	</PageSection>
 </div>

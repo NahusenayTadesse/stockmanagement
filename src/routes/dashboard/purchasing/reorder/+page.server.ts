@@ -1,5 +1,4 @@
-import { fail } from '@sveltejs/kit';
-import { redirect, setFlash } from 'sveltekit-flash-message/server';
+import { redirect } from 'sveltekit-flash-message/server';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
@@ -11,6 +10,7 @@ import { branchScope, inScope } from '$lib/server/scope';
 import { location } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { m } from '$lib/paraglide/messages.js';
+import { attempt } from '$lib/server/actions';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -43,44 +43,39 @@ export const actions: Actions = {
 			.filter(Number.isInteger)
 			.map((itemId) => ({ itemId, quantity: Number(form.get(`qty_${itemId}`)) }));
 
-		// Deliveries go to one of the viewer's own locations.
-		const locationId = Number(form.get('locationId'));
-		const [loc] = await db
-			.select({ branchId: location.branchId })
-			.from(location)
-			.where(and(eq(location.id, locationId), eq(location.orgId, orgId)));
-		if (!loc || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setFlash({ type: 'error', message: m.purchasing_reorder_choose_delivery() }, event.cookies);
-			return fail(400);
-		}
+		return attempt(
+			event,
+			async () => {
+				// Deliveries go to one of the viewer's own locations.
+				const locationId = Number(form.get('locationId'));
+				const [loc] = await db
+					.select({ branchId: location.branchId })
+					.from(location)
+					.where(and(eq(location.id, locationId), eq(location.orgId, orgId)));
+				if (!loc || !inScope(await branchScope(event.locals), loc.branchId)) {
+					throw new StockError(m.purchasing_reorder_choose_delivery());
+				}
 
-		let ids: number[];
-		try {
-			ids = await db.transaction((tx) =>
-				ordersFromReorder(tx, {
-					orgId,
-					locationId,
-					date: localToday(),
-					picks,
-					userId: event.locals.user?.id
-				})
-			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(400, { refused: err.message });
-			}
-			throw err;
-		}
-
-		const text =
-			ids.length === 1
-				? m.purchasing_reorder_created_one()
-				: m.purchasing_reorder_created_many({ n: ids.length });
-		redirect(
-			ids.length === 1 ? `/dashboard/purchasing/${ids[0]}` : '/dashboard/purchasing',
-			{ type: 'success', message: text },
-			event.cookies
+				const ids = await db.transaction((tx) =>
+					ordersFromReorder(tx, {
+						orgId,
+						locationId,
+						date: localToday(),
+						picks,
+						userId: event.locals.user?.id
+					})
+				);
+				const text =
+					ids.length === 1
+						? m.purchasing_reorder_created_one()
+						: m.purchasing_reorder_created_many({ n: ids.length });
+				redirect(
+					ids.length === 1 ? `/dashboard/purchasing/${ids[0]}` : '/dashboard/purchasing',
+					{ type: 'success', message: text },
+					event.cookies
+				);
+			},
+			{ status: 400 }
 		);
 	}
 };

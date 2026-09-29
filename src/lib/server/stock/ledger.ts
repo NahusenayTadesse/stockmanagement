@@ -15,7 +15,8 @@ import {
 	stockMovement,
 	MOVEMENT_KINDS
 } from '$lib/server/db/schema';
-import { movingAverage, round4 } from './math';
+import { movingAverage } from './math';
+import { round4 } from '$lib/money';
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type Item = typeof item.$inferSelect;

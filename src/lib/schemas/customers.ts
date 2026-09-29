@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { m } from '$lib/paraglide/messages.js';
+import { day } from '$lib/schemas/common';
 
 /**
  * A customer: only the name is needed. Walk-in buyers who leave no name are not customers at all —
@@ -52,7 +53,7 @@ export const receivePayment = z.object({
 	amount: z
 		.number({ error: () => m.sales_enter_amount() })
 		.positive({ error: () => m.sales_enter_amount() }),
-	occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.sales_pick_the_date() }),
+	occurredOn: day,
 	paymentMethodId: z.coerce.number().int().min(0).default(0),
 	reference: z.string().trim().max(100).default(''),
 	receiptNumber: z.string().trim().max(60).default(''),

@@ -1,21 +1,15 @@
 import type { ColumnDef } from '@tanstack/table-core';
-import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
-import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
 import { formatETB } from '@nahu/admin-kit/global';
 import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
+import { column, recordLink, RIGHT, textColumn } from '$lib/table';
 
 type Row = PageData['rows'][number];
 const etb = (v: unknown) => (Number(v) ? formatETB(Number(v)) : '—');
 
-/** An amount column, headed in the viewer's language. */
-const money = (key: keyof Row & string, header: () => string): ColumnDef<Row> => ({
-	accessorKey: key,
-	get header() {
-		return header();
-	},
-	cell: (i) => etb(i.getValue())
-});
+/** An ageing bucket: the shared amount column, with a dash where nothing is owed. */
+const money = (key: keyof Row & string, header: () => string) =>
+	column<Row>(key, header, (i) => etb(i.getValue()), RIGHT);
 
 export const columns: ColumnDef<Row>[] = [
 	{
@@ -23,20 +17,9 @@ export const columns: ColumnDef<Row>[] = [
 		get header() {
 			return m.sales_customer();
 		},
-		cell: ({ row }) =>
-			renderComponent(DataTableLinks, {
-				id: row.original.id,
-				name: row.original.name,
-				entity: 'customer'
-			})
+		cell: ({ row }) => recordLink('customer', row.original.id, row.original.name)
 	},
-	{
-		accessorKey: 'phone',
-		get header() {
-			return m.common_phone();
-		},
-		cell: (i) => i.getValue() ?? ''
-	},
+	textColumn<Row>('phone', m.common_phone),
 	{
 		accessorKey: 'balance',
 		get header() {

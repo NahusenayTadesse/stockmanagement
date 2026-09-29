@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect } from 'sveltekit-flash-message/server';
 import { APIError } from 'better-auth/api';
@@ -13,6 +13,7 @@ import { addUserSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
 import { and, inArray } from 'drizzle-orm';
 import { m } from '$lib/paraglide/messages.js';
+import { invalidForm, refuseForm } from '$lib/server/actions';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
@@ -38,25 +39,20 @@ export const actions: Actions = {
 	addUser: async (event) => {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(addUserSchema));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 
 		const { name, email, password, role, branchId, branchIds } = form.data;
 
 		const target = await orgRole(orgId, role);
 		if (!target) {
-			setError(form, 'role', m.admin_users_choose_role());
-			return message(form, { type: 'error', text: m.admin_users_choose_role() }, { status: 400 });
+			return refuseForm(form, m.admin_users_choose_role(), { field: 'role' });
 		}
 		// Only an owner can make another owner: the owner role holds every permission.
 		if (target.isOwner && !event.locals.isSuperAdmin) {
-			setError(form, 'role', m.admin_users_only_owner_add_owner());
-			return message(
-				form,
-				{ type: 'error', text: m.admin_users_only_owner_add_owner() },
-				{ status: 403 }
-			);
+			return refuseForm(form, m.admin_users_only_owner_add_owner(), {
+				field: 'role',
+				status: 403
+			});
 		}
 		if (branchId) {
 			const [b] = await db
@@ -64,12 +60,7 @@ export const actions: Actions = {
 				.from(branch)
 				.where(and(eq(branch.id, branchId), eq(branch.orgId, orgId)));
 			if (!b) {
-				setError(form, 'branchId', m.admin_users_choose_branch());
-				return message(
-					form,
-					{ type: 'error', text: m.admin_users_choose_branch() },
-					{ status: 400 }
-				);
+				return refuseForm(form, m.admin_users_choose_branch(), { field: 'branchId' });
 			}
 		}
 
@@ -79,19 +70,17 @@ export const actions: Actions = {
 				.from(branch)
 				.where(and(eq(branch.orgId, orgId), inArray(branch.id, branchIds)));
 			if (mine.length !== new Set(branchIds).size) {
-				setError(form, 'branchIds._errors', m.admin_users_choose_branches());
-				return message(
-					form,
-					{ type: 'error', text: m.admin_users_choose_branches() },
-					{ status: 400 }
-				);
+				return refuseForm(form, m.admin_users_choose_branches(), { field: 'branchIds._errors' });
 			}
 		}
 
 		const [taken] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
 		if (taken) {
-			setError(form, 'email', m.admin_register_email_taken());
-			return message(form, { type: 'error', text: m.admin_users_email_in_use() }, { status: 409 });
+			return refuseForm(form, m.admin_users_email_in_use(), {
+				field: 'email',
+				fieldText: m.admin_register_email_taken(),
+				status: 409
+			});
 		}
 
 		let id: string;
@@ -111,7 +100,7 @@ export const actions: Actions = {
 			console.error('user create failed', err);
 			const text =
 				err instanceof APIError && err.message ? err.message : m.admin_users_create_failed();
-			return message(form, { type: 'error', text }, { status: 500 });
+			return refuseForm(form, text, { status: 500 });
 		}
 
 		redirect(

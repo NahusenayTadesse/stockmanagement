@@ -1,5 +1,15 @@
 /** Display helpers shared by pages and table columns. Client-safe. */
 import { m } from '$lib/paraglide/messages.js';
+import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+
+/** A `YYYY-MM-DD` day as a moment: noon in Addis Ababa, so no time zone moves the day. */
+export const dayNoon = (day: string) => new Date(`${day}T12:00:00+03:00`);
+
+/** A `YYYY-MM-DD` day written out on the Ethiopian calendar, for sentences and details. */
+export const ethiopianDay = (day: string) => formatEthiopianDate(dayNoon(day));
+
+/** For printed papers: the Ethiopian day, with the Gregorian one in brackets. */
+export const printedDay = (day: string) => `${ethiopianDay(day)} (${day})`;
 
 const QTY = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
 
@@ -50,6 +60,19 @@ export const DOCUMENT_STATUS_LABELS = labels({
 });
 
 /** What the tax office said about an e-invoice. */
+/** Which badge colour a document status takes (the kit's badge knows these words). */
+export const DOCUMENT_STATUS_BADGE: Record<string, string> = {
+	posted: 'confirmed',
+	draft: 'pending',
+	in_transit: 'pending',
+	cancelled: 'cancelled'
+};
+
+/** Money that moved in (+) or out (−): "+ ETB 1,200.00". */
+export function signedAmount(direction: 'in' | 'out', amount: number) {
+	return `${direction === 'in' ? '+' : '−'} ${formatETB(amount)}`;
+}
+
 export const EINVOICE_STATUS_LABELS: Record<string, string> = labels({
 	submitted: m.common_einv_submitted,
 	accepted: m.common_einv_accepted,

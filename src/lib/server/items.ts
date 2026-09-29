@@ -1,6 +1,6 @@
 import { m } from '$lib/paraglide/messages.js';
 import { and, asc, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { error } from '@sveltejs/kit';
+
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { db } from '$lib/server/db';
 import {
@@ -15,21 +15,17 @@ import {
 	uom
 } from '$lib/server/db/schema';
 import { belongsToOrg } from '$lib/server/options';
+import { cents } from '$lib/money';
+import { packsOf, unitFactor } from '$lib/server/units';
+import { orgRow, orgRowOr404 } from '$lib/server/org';
 
 /** The item, if it belongs to this business and is not deleted. */
 export async function orgItem(orgId: number, id: number) {
-	const [row] = await db
-		.select()
-		.from(item)
-		.where(and(eq(item.id, id), eq(item.orgId, orgId), isNull(item.deletedAt)))
-		.limit(1);
-	return row;
+	return orgRow(item, orgId, id);
 }
 
 export async function requireOrgItem(orgId: number, id: number) {
-	const row = await orgItem(orgId, id);
-	if (!row) error(404, m.stock_item_not_found());
-	return row;
+	return orgRowOr404(item, orgId, id, m.stock_item_not_found);
 }
 
 /** What an item is may not change once stock of it has moved: the ledger was written in its terms. */
@@ -228,16 +224,8 @@ export async function checkComponent(
 		);
 	}
 	const uomId = Number(values.uomId) || comp.baseUomId;
-	if (uomId !== comp.baseUomId) {
-		const [pack] = await db
-			.select({ id: itemUnit.id })
-			.from(itemUnit)
-			.where(
-				and(eq(itemUnit.itemId, comp.id), eq(itemUnit.uomId, uomId), isNull(itemUnit.deletedAt))
-			);
-		if (!pack) {
-			throw new WriteRefused('uomId', m.stock_err_component_no_unit({ item: comp.name }));
-		}
+	if ((await unitFactor(db, comp, uomId)) === null) {
+		throw new WriteRefused('uomId', m.stock_err_component_no_unit({ item: comp.name }));
 	}
 	const [dup] = await db
 		.select({ id: kitComponent.id })
@@ -300,7 +288,7 @@ export async function kitComponents(orgId: number, kitId: number, locationId?: n
 		return {
 			...r,
 			base,
-			cost: Math.round(base * r.avgCost * 100) / 100,
+			cost: cents(base * r.avgCost),
 			onHand: have,
 			/** How many kits this component alone allows; services never limit. */
 			makes: r.stockTracked ? Math.floor(have / base + 1e-9) : null
@@ -353,15 +341,10 @@ export async function kitsAvailable(orgId: number, kitIds: number[], locationId?
 	return out;
 }
 
+/** The packs of these items, keyed `itemId:uomId`, for the kit screens' component lists. */
 async function packFactors(itemIds: number[]) {
-	const out = new Map<string, number>();
-	if (!itemIds.length) return out;
-	const rows = await db
-		.select({ itemId: itemUnit.itemId, uomId: itemUnit.uomId, factor: itemUnit.factor })
-		.from(itemUnit)
-		.where(and(inArray(itemUnit.itemId, itemIds), isNull(itemUnit.deletedAt)));
-	for (const r of rows) out.set(`${r.itemId}:${r.uomId}`, r.factor);
-	return out;
+	const rows = await packsOf(db, itemIds);
+	return new Map(rows.map((r) => [`${r.itemId}:${r.uomId}`, r.factor]));
 }
 
 async function onHandOf(orgId: number, itemIds: number[], locationId?: number) {

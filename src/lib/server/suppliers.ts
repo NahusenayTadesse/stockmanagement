@@ -2,7 +2,7 @@
  * Suppliers: who they are, what they delivered, what was paid, and what is still owed. Every
  * query is filtered by the business first.
  */
-import { error } from '@sveltejs/kit';
+
 import { and, asc, desc, eq, inArray, isNull, ne, sql, type Column } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
@@ -17,6 +17,8 @@ import {
 	transactions,
 	uom
 } from '$lib/server/db/schema';
+import { cents } from '$lib/money';
+import { orgRowOr404 } from '$lib/server/org';
 
 /** The outer supplier row, for the correlated subqueries below. See `qualified`. */
 const supplierRef = qualified(supplier, supplier.id);
@@ -77,7 +79,7 @@ export async function supplierList(
 		.orderBy(asc(supplier.name));
 
 	return rows.map((r) => {
-		const received = Math.round(Number(r.received) * 100) / 100;
+		const received = cents(Number(r.received));
 		const paid = Number(r.paid);
 		return {
 			...r,
@@ -85,18 +87,13 @@ export async function supplierList(
 			deliveries: Number(r.deliveries),
 			received,
 			paid,
-			owed: Math.round((received - paid) * 100) / 100
+			owed: cents(received - paid)
 		};
 	});
 }
 
 export async function orgSupplier(orgId: number, id: number) {
-	const [row] = await db
-		.select()
-		.from(supplier)
-		.where(and(eq(supplier.id, id), eq(supplier.orgId, orgId), isNull(supplier.deletedAt)));
-	if (!row) error(404, m.purchasing_supplier_not_found());
-	return row;
+	return orgRowOr404(supplier, orgId, id, m.purchasing_supplier_not_found);
 }
 
 /** Form values as columns: empty optional fields become nulls. */
@@ -203,13 +200,13 @@ export async function supplierDetail(orgId: number, supplierId: number) {
 		.reduce((s, p) => s + (p.direction === 'out' ? p.amount + p.withheld : -p.amount), 0);
 
 	return {
-		deliveries: deliveries.map((d) => ({ ...d, value: Math.round(Number(d.value) * 100) / 100 })),
+		deliveries: deliveries.map((d) => ({ ...d, value: cents(Number(d.value)) })),
 		items: items.map((i) => ({ ...i, onHand: Number(i.onHand) })),
 		payments,
 		totals: {
-			received: Math.round(received * 100) / 100,
-			paid: Math.round(paid * 100) / 100,
-			owed: Math.round((received - paid) * 100) / 100
+			received: cents(received),
+			paid: cents(paid),
+			owed: cents(received - paid)
 		}
 	};
 }

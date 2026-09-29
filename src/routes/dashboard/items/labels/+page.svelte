@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
 	import Printer from '@lucide/svelte/icons/printer';
@@ -48,16 +49,8 @@
 	};
 </script>
 
-<svelte:head>
-	<title>{m.stock_labels_title()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-4">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.stock_labels_title()}</h1>
-		<p class="text-muted-foreground">
-			{m.stock_labels_intro()}
-		</p>
+	<PageHeader title={m.stock_labels_title()} description={m.stock_labels_intro()}>
 		{#if bare}
 			<p class="mt-2 text-sm">
 				{m.stock_labels_bare({ count: bare })}
@@ -70,7 +63,7 @@
 				{/if}
 			</p>
 		{/if}
-	</div>
+	</PageHeader>
 
 	<fieldset class="flex flex-wrap gap-2">
 		<legend class="mb-2 text-sm font-medium">{m.stock_label()}</legend>

@@ -6,11 +6,11 @@
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { customer, item, itemUnit, priceListItem } from '$lib/server/db/schema';
+import { customer, item, priceListItem } from '$lib/server/db/schema';
+import { cents } from '$lib/money';
+import { packsOf } from '$lib/server/units';
 
 type Reader = Pick<typeof db, 'select'>;
-
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 /** The price list a customer buys on, if any. */
 export async function priceListOf(orgId: number, customerId: number | null, reader: Reader = db) {
@@ -38,10 +38,7 @@ export async function priceTable(
 			.select({ id: item.id, baseUomId: item.baseUomId, salePrice: item.salePrice })
 			.from(item)
 			.where(and(eq(item.orgId, orgId), inArray(item.id, itemIds))),
-		reader
-			.select({ itemId: itemUnit.itemId, uomId: itemUnit.uomId, factor: itemUnit.factor })
-			.from(itemUnit)
-			.where(and(inArray(itemUnit.itemId, itemIds), isNull(itemUnit.deletedAt))),
+		packsOf(reader, itemIds),
 		priceListId
 			? reader
 					.select({

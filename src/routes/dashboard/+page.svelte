@@ -1,17 +1,80 @@
 <script lang="ts">
+	import type { ColumnDef } from '@tanstack/table-core';
 	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import ExpiryCell from '@nahu/admin-kit/components/Table/expiry-cell.svelte';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
-	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
-	import { DOCUMENT_LABELS, DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
+	import { DOCUMENT_LABELS, qty } from '$lib/format';
+	import { dateCell, longText, NAME_LENGTH, documentStatusCell } from '$lib/table';
+	import { recordLink } from '$lib/table';
 
 	let { data } = $props();
 
 	const stats = $derived(data.stats);
+
+	type Stats = NonNullable<typeof stats>;
+	const expiringColumns: ColumnDef<Stats['expiring'][number]>[] = [
+		{
+			accessorKey: 'item',
+			header: () => m.common_item(),
+			cell: ({ row }) => recordLink('item', row.original.itemId, row.original.item)
+		},
+		{ accessorKey: 'lotNumber', header: () => m.stock_col_lot() },
+		{
+			id: 'onHand',
+			accessorFn: (r) => qty(r.onHand, r.unit),
+			header: () => m.stock_on_hand()
+		},
+		{
+			accessorKey: 'expiryDate',
+			header: () => m.stock_col_expiry(),
+			cell: ({ row }) =>
+				renderComponent(ExpiryCell, {
+					expiresOn: row.original.expiryDate,
+					warningDays: row.original.warningDays
+				})
+		}
+	];
+
+	const lowStockColumns: ColumnDef<Stats['lowStock'][number]>[] = [
+		{
+			accessorKey: 'name',
+			header: () => m.common_item(),
+			cell: ({ row }) => recordLink('item', row.original.id, row.original.name)
+		},
+		{
+			id: 'onHand',
+			accessorFn: (r) => qty(r.onHand, r.unit),
+			header: () => m.stock_on_hand()
+		},
+		{
+			id: 'reorderLevel',
+			accessorFn: (r) => qty(r.reorderLevel),
+			header: () => m.stock_reorder_at()
+		}
+	];
+
+	const recentColumns: ColumnDef<Stats['recent'][number]>[] = [
+		{
+			id: 'number',
+			accessorFn: (doc) =>
+				doc.number ?? m.admin_home_draft_doc({ type: DOCUMENT_LABELS[doc.type].toLowerCase() }),
+			header: () => m.stock_document(),
+			cell: ({ row, getValue }) => recordLink('document', row.original.id, String(getValue()))
+		},
+		{ accessorKey: 'party', header: () => m.stock_col_party(), cell: longText(NAME_LENGTH) },
+		{ accessorKey: 'docDate', header: () => m.common_date(), cell: dateCell },
+		{
+			accessorKey: 'status',
+			header: () => m.common_status(),
+			cell: ({ row }) => documentStatusCell(row.original.status)
+		}
+	];
 
 	const moneyTiles = $derived<Stat[]>(
 		data.money
@@ -173,12 +236,8 @@
 	);
 </script>
 
-<svelte:head>
-	<title>{m.common_dashboard()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<h1 class="text-2xl font-semibold">{data.organization?.name}</h1>
+	<PageHeader title={data.organization?.name ?? ''} tabTitle={m.common_dashboard()} />
 
 	{#if data.money}
 		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -235,24 +294,7 @@
 					{#if stats.expiring.length === 0}
 						<p class="text-muted-foreground">{m.admin_home_nothing_expiring()}</p>
 					{:else}
-						<ul class="divide-y">
-							{#each stats.expiring as row (row.lotId)}
-								<li class="flex flex-wrap items-center justify-between gap-2 py-2">
-									<div>
-										<a
-											class="font-medium hover:underline"
-											href={resolve('/dashboard/items/[id]', { id: String(row.itemId) })}
-										>
-											{row.item}
-										</a>
-										<p class="text-sm text-muted-foreground">
-											{m.admin_home_lot({ lot: row.lotNumber })} · {qty(row.onHand, row.unit)}
-										</p>
-									</div>
-									<ExpiryCell expiresOn={row.expiryDate} warningDays={row.warningDays} />
-								</li>
-							{/each}
-						</ul>
+						<DataTable variant="compact" data={stats.expiring} columns={expiringColumns} />
 					{/if}
 				</Card.Content>
 			</Card.Root>
@@ -266,24 +308,7 @@
 					{#if stats.lowStock.length === 0}
 						<p class="text-muted-foreground">{m.admin_home_nothing_reorder()}</p>
 					{:else}
-						<ul class="divide-y">
-							{#each stats.lowStock as row (row.id)}
-								<li class="flex items-center justify-between gap-2 py-2">
-									<a
-										class="font-medium hover:underline"
-										href={resolve('/dashboard/items/[id]', { id: String(row.id) })}
-									>
-										{row.name}
-									</a>
-									<span class="text-sm">
-										{qty(row.onHand, row.unit)}
-										<span class="text-muted-foreground"
-											>{m.admin_home_reorder_at({ level: qty(row.reorderLevel) })}</span
-										>
-									</span>
-								</li>
-							{/each}
-						</ul>
+						<DataTable variant="compact" data={stats.lowStock} columns={lowStockColumns} />
 					{/if}
 				</Card.Content>
 			</Card.Root>
@@ -302,26 +327,7 @@
 						>{m.admin_home_no_docs_after()}
 					</p>
 				{:else}
-					<ul class="divide-y">
-						{#each stats.recent as doc (doc.id)}
-							<li class="flex flex-wrap items-center justify-between gap-2 py-2">
-								<a
-									class="font-medium hover:underline"
-									href={resolve('/dashboard/stock/documents/[id]', { id: String(doc.id) })}
-								>
-									{doc.number ??
-										m.admin_home_draft_doc({ type: DOCUMENT_LABELS[doc.type].toLowerCase() })}
-								</a>
-								<span class="flex items-center gap-2 text-sm text-muted-foreground">
-									{doc.party ?? ''}
-									{formatEthiopianDate(new Date(doc.docDate))}
-									<Badge variant={doc.status === 'posted' ? 'default' : 'secondary'}>
-										{DOCUMENT_STATUS_LABELS[doc.status]}
-									</Badge>
-								</span>
-							</li>
-						{/each}
-					</ul>
+					<DataTable variant="compact" data={stats.recent} columns={recentColumns} />
 				{/if}
 			</Card.Content>
 		</Card.Root>

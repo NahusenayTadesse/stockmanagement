@@ -1,416 +1,110 @@
 import type { ColumnDef } from '@tanstack/table-core';
-import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
-import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
-import { formatETB } from '@nahu/admin-kit/global';
-import { ethiopianDate } from '@nahu/admin-kit/tableCells';
-import { MOVEMENT_LABELS, qty } from '$lib/format';
+import { MOVEMENT_LABELS } from '$lib/format';
+import { longText, NAME_LENGTH } from '$lib/table';
 import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
-import { longText, NAME_LENGTH } from '$lib/cells';
+import {
+	column,
+	date,
+	documentColumn,
+	itemColumn,
+	link,
+	money,
+	percent,
+	quantity,
+	skuColumn
+} from './columnKit';
 
-const etb = (v: unknown) => formatETB(Number(v));
-
-export const valuationColumns: ColumnDef<PageData['stock']['items'][number]>[] = [
-	{
-		accessorKey: 'item',
-		get header() {
-			return m.common_item();
-		},
-		cell: ({ row }) =>
-			renderComponent(DataTableLinks, {
-				id: row.original.itemId,
-				name: row.original.item,
-				entity: 'item'
-			})
-	},
-	{
-		accessorKey: 'sku',
-		get header() {
-			return m.reports_col_code();
-		}
-	},
-	{
-		accessorKey: 'category',
-		get header() {
-			return m.reports_col_category();
-		}
-	},
-	{
-		accessorKey: 'onHand',
-		get header() {
-			return m.reports_col_on_hand();
-		},
-		cell: ({ row }) => qty(row.original.onHand, row.original.unit)
-	},
-	{
-		accessorKey: 'avgCost',
-		get header() {
-			return m.reports_col_average_cost();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'value',
-		get header() {
-			return m.reports_col_value();
-		},
-		cell: (i) => etb(i.getValue())
-	}
+type Valuation = PageData['stock']['items'][number];
+export const valuationColumns: ColumnDef<Valuation>[] = [
+	itemColumn(),
+	skuColumn(),
+	column('category', m.reports_col_category),
+	quantity('onHand', m.reports_col_on_hand),
+	money('avgCost', m.reports_col_average_cost),
+	money('value', m.reports_col_value)
 ];
 
-export const issuedColumns: ColumnDef<PageData['issued'][number]>[] = [
-	{
-		accessorKey: 'item',
-		get header() {
-			return m.common_item();
-		},
-		cell: ({ row }) =>
-			renderComponent(DataTableLinks, {
-				id: row.original.itemId,
-				name: row.original.item,
-				entity: 'item'
-			})
-	},
-	{
-		accessorKey: 'sku',
-		get header() {
-			return m.reports_col_code();
-		}
-	},
-	{
-		accessorKey: 'quantity',
-		get header() {
-			return m.reports_col_issued();
-		},
-		cell: ({ row }) => qty(row.original.quantity, row.original.unit)
-	},
-	{
-		accessorKey: 'documents',
-		get header() {
-			return m.reports_col_documents();
-		}
-	},
-	{
-		accessorKey: 'value',
-		get header() {
-			return m.reports_col_value_at_cost();
-		},
-		cell: (i) => etb(i.getValue())
-	}
+type Issued = PageData['issued'][number];
+export const issuedColumns: ColumnDef<Issued>[] = [
+	itemColumn(),
+	skuColumn(),
+	quantity('quantity', m.reports_col_issued),
+	column('documents', m.reports_col_documents),
+	money('value', m.reports_col_value_at_cost)
 ];
 
-export const kindColumns: ColumnDef<PageData['movements']['byKind'][number]>[] = [
-	{
-		accessorKey: 'kind',
-		get header() {
-			return m.reports_col_movement();
-		},
-		cell: (i) => MOVEMENT_LABELS[i.getValue() as string]
-	},
-	{
-		accessorKey: 'lines',
-		get header() {
-			return m.reports_col_lines();
-		}
-	},
-	{
-		accessorKey: 'value',
-		get header() {
-			return m.reports_col_value_at_cost();
-		},
-		cell: (i) => etb(i.getValue())
-	}
+type Kind = PageData['movements']['byKind'][number];
+export const kindColumns: ColumnDef<Kind>[] = [
+	column('kind', m.reports_col_movement, (i) => MOVEMENT_LABELS[i.getValue() as string]),
+	column('lines', m.reports_col_lines),
+	money('value', m.reports_col_value_at_cost)
 ];
 
-export const customerColumns: ColumnDef<NonNullable<PageData['byCustomer']>[number]>[] = [
-	{
-		accessorKey: 'customer',
-		get header() {
-			return m.reports_col_customer();
-		},
-		cell: ({ row }) =>
-			row.original.customerId
-				? renderComponent(DataTableLinks, {
-						id: row.original.customerId,
-						name: row.original.customer,
-						entity: 'customer'
-					})
-				: row.original.customer
-	},
-	{
-		accessorKey: 'documents',
-		get header() {
-			return m.reports_col_issues();
-		}
-	},
-	{
-		accessorKey: 'value',
-		get header() {
-			return m.reports_col_value_at_cost();
-		},
-		cell: (i) => etb(i.getValue())
-	}
+type Customer = NonNullable<PageData['byCustomer']>[number];
+export const customerColumns: ColumnDef<Customer>[] = [
+	link('customer', m.reports_col_customer, 'customer', (r) => ({
+		id: r.customerId,
+		name: r.customer
+	})),
+	column('documents', m.reports_col_issues),
+	money('value', m.reports_col_value_at_cost)
 ];
 
-export const supplierColumns: ColumnDef<PageData['suppliers'][number]>[] = [
-	{
-		accessorKey: 'supplier',
-		get header() {
-			return m.reports_col_supplier();
-		},
-		cell: ({ row }) =>
-			renderComponent(DataTableLinks, {
-				id: row.original.supplierId,
-				name: row.original.supplier,
-				entity: 'supplier'
-			})
-	},
-	{
-		accessorKey: 'deliveries',
-		get header() {
-			return m.reports_col_deliveries();
-		}
-	},
-	{
-		accessorKey: 'delivered',
-		get header() {
-			return m.reports_col_delivered_cost();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'orders',
-		get header() {
-			return m.reports_col_orders();
-		}
-	},
-	{
-		accessorKey: 'orderedValue',
-		get header() {
-			return m.reports_col_ordered_value();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'fillRate',
-		get header() {
-			return m.reports_col_fill_rate();
-		},
-		cell: (i) => (i.getValue() == null ? '—' : `${i.getValue()}%`)
-	}
+type Supplier = PageData['suppliers'][number];
+export const supplierColumns: ColumnDef<Supplier>[] = [
+	link('supplier', m.reports_col_supplier, 'supplier', (r) => ({
+		id: r.supplierId,
+		name: r.supplier
+	})),
+	column('deliveries', m.reports_col_deliveries),
+	money('delivered', m.reports_col_delivered_cost),
+	column('orders', m.reports_col_orders),
+	money('orderedValue', m.reports_col_ordered_value),
+	percent('fillRate', m.reports_col_fill_rate)
 ];
 
-export const wasteColumns: ColumnDef<PageData['waste']['rows'][number]>[] = [
-	{
-		accessorKey: 'docDate',
-		get header() {
-			return m.common_date();
-		},
-		cell: (i) => ethiopianDate(i.getValue())
-	},
-	{
-		accessorKey: 'number',
-		get header() {
-			return m.reports_col_document();
-		},
-		cell: ({ row }) =>
-			renderComponent(DataTableLinks, {
-				id: row.original.documentId,
-				name: row.original.number ?? `#${row.original.documentId}`,
-				entity: 'document'
-			})
-	},
-	{
-		accessorKey: 'reasonName',
-		get header() {
-			return m.reports_col_reason();
-		}
-	},
-	{
-		accessorKey: 'item',
-		get header() {
-			return m.common_item();
-		}
-	},
-	{
-		accessorKey: 'lotNumber',
-		get header() {
-			return m.reports_col_lot();
-		},
-		cell: (i) => i.getValue() ?? '—'
-	},
-	{
-		accessorKey: 'location',
-		get header() {
-			return m.common_location();
-		}
-	},
-	{
-		accessorKey: 'quantity',
-		get header() {
-			return m.common_quantity();
-		},
-		cell: ({ row }) => qty(row.original.quantity, row.original.unit)
-	},
-	{
-		accessorKey: 'value',
-		get header() {
-			return m.reports_col_value_at_cost();
-		},
-		cell: (i) => etb(i.getValue())
-	}
+type Waste = PageData['waste']['rows'][number];
+export const wasteColumns: ColumnDef<Waste>[] = [
+	date('docDate', m.common_date),
+	documentColumn('number', (r) => ({ id: r.documentId, number: r.number })),
+	column('reasonName', m.reports_col_reason),
+	column('item', m.common_item),
+	column('lotNumber', m.reports_col_lot, (i) => i.getValue() ?? '—'),
+	column('location', m.common_location),
+	quantity('quantity', m.common_quantity),
+	money('value', m.reports_col_value_at_cost)
 ];
 
 type Split = { label: string; in: number; out: number; net: number };
-export const splitColumns = (first: string): ColumnDef<Split>[] => [
-	{ accessorKey: 'label', header: first },
-	{
-		accessorKey: 'in',
-		get header() {
-			return m.reports_in();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'out',
-		get header() {
-			return m.reports_out();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'net',
-		get header() {
-			return m.reports_net();
-		},
-		cell: (i) => etb(i.getValue())
-	}
+/** Money in, out and net, by `first` (purpose, method). */
+export const splitColumns = (first: () => string): ColumnDef<Split>[] => [
+	column('label', first),
+	money('in', m.reports_in),
+	money('out', m.reports_out),
+	money('net', m.reports_net)
 ];
 
-export const registerColumns: ColumnDef<NonNullable<PageData['vat']>['sales'][number]>[] = [
-	{
-		accessorKey: 'docDate',
-		get header() {
-			return m.common_date();
-		},
-		cell: (i) => ethiopianDate(i.getValue())
-	},
-	{
-		accessorKey: 'number',
-		get header() {
-			return m.reports_col_document();
-		},
-		cell: ({ row }) =>
-			renderComponent(DataTableLinks, {
-				id: row.original.id,
-				name: row.original.number ?? `#${row.original.id}`,
-				entity: 'document'
-			})
-	},
-	{
-		accessorKey: 'kind',
-		get header() {
-			return m.reports_col_kind();
-		}
-	},
-	{
-		accessorKey: 'party',
-		get header() {
-			return m.reports_col_party();
-		},
-		cell: longText(NAME_LENGTH)
-	},
-	{
-		accessorKey: 'tin',
-		get header() {
-			return m.reports_col_tin();
-		},
-		cell: (i) => i.getValue() ?? '—'
-	},
-	{
-		accessorKey: 'net',
-		get header() {
-			return m.reports_col_before_vat();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'vat',
-		get header() {
-			return m.reports_col_vat();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'tot',
-		get header() {
-			return m.reports_col_tot();
-		},
-		cell: (i) => etb(i.getValue())
-	},
-	{
-		accessorKey: 'gross',
-		get header() {
-			return m.common_total();
-		},
-		cell: (i) => etb(i.getValue())
-	}
+type Register = NonNullable<PageData['vat']>['sales'][number];
+export const registerColumns: ColumnDef<Register>[] = [
+	date('docDate', m.common_date),
+	documentColumn('number', (r) => ({ id: r.id, number: r.number })),
+	column('kind', m.reports_col_kind),
+	column('party', m.reports_col_party, longText(NAME_LENGTH)),
+	column('tin', m.reports_col_tin, (i) => i.getValue() ?? '—'),
+	money('net', m.reports_col_before_vat),
+	money('vat', m.reports_col_vat),
+	money('tot', m.reports_col_tot),
+	money('gross', m.common_total)
 ];
 
-export const withholdingColumns: ColumnDef<NonNullable<PageData['withholding']>['byUs'][number]>[] =
-	[
-		{
-			accessorKey: 'occurredOn',
-			get header() {
-				return m.common_date();
-			},
-			cell: (i) => ethiopianDate(i.getValue())
-		},
-		{
-			accessorKey: 'id',
-			get header() {
-				return m.reports_col_transaction();
-			},
-			cell: ({ row }) =>
-				renderComponent(DataTableLinks, {
-					id: row.original.id,
-					name: `#${row.original.id}`,
-					entity: 'transaction'
-				})
-		},
-		{
-			accessorKey: 'party',
-			get header() {
-				return m.reports_col_paid_to_by();
-			},
-			cell: longText(NAME_LENGTH)
-		},
-		{
-			accessorKey: 'tin',
-			get header() {
-				return m.reports_col_tin();
-			},
-			cell: (i) => i.getValue() ?? m.reports_no_tin()
-		},
-		{
-			accessorKey: 'amount',
-			get header() {
-				return m.reports_col_cash();
-			},
-			cell: (i) => etb(i.getValue())
-		},
-		{
-			accessorKey: 'withheld',
-			get header() {
-				return m.reports_col_withheld();
-			},
-			cell: (i) => etb(i.getValue())
-		},
-		{
-			accessorKey: 'receipt',
-			get header() {
-				return m.reports_col_receipt_no();
-			},
-			cell: (i) => i.getValue() ?? m.reports_receipt_missing()
-		}
-	];
+type Withholding = NonNullable<PageData['withholding']>['byUs'][number];
+export const withholdingColumns: ColumnDef<Withholding>[] = [
+	date('occurredOn', m.common_date),
+	link('id', m.reports_col_transaction, 'transaction', (r) => ({ id: r.id, name: `#${r.id}` })),
+	column('party', m.reports_col_paid_to_by, longText(NAME_LENGTH)),
+	column('tin', m.reports_col_tin, (i) => i.getValue() ?? m.reports_no_tin()),
+	money('amount', m.reports_col_cash),
+	money('withheld', m.reports_col_withheld),
+	column('receipt', m.reports_col_receipt_no, (i) => i.getValue() ?? m.reports_receipt_missing())
+];

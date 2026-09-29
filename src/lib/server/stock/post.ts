@@ -28,7 +28,6 @@ import {
 	branch,
 	category,
 	item,
-	itemUnit,
 	kitComponent,
 	landedCost,
 	location,
@@ -55,7 +54,6 @@ import {
 	ethiopianFiscalYear,
 	isExpired,
 	parseSerials,
-	round4,
 	toBase
 } from './math';
 import { ApprovalRequired, StockError } from './errors';
@@ -72,6 +70,9 @@ import {
 	type Tx
 } from './ledger';
 import { ensureTransitLocation } from './transit';
+import { amountText, cents, round4 } from '$lib/money';
+import { unitFactors } from '$lib/server/units';
+import { daysBetween } from '$lib/server/days';
 
 export { ApprovalRequired, StockError };
 export type { Tx };
@@ -81,7 +82,6 @@ type Context = LedgerContext & {
 	shelfLife: Map<number, { days: number; refuse: boolean }>;
 };
 
-const DAY = 86_400_000;
 /** A landed cost's kind, in the viewer's language, for refusals that name it. */
 function landedKind(kind: string) {
 	const names: Record<string, () => string> = {
@@ -107,9 +107,6 @@ function lotState(state: string) {
 	};
 	return names[state]?.() ?? state;
 }
-
-const money = (n: number) =>
-	n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export async function postDocument(
 	tx: Tx,
@@ -239,14 +236,7 @@ export async function postDocument(
 		.for('update');
 	const itemById = new Map(items.map((i) => [i.id, i]));
 
-	const factors = await tx
-		.select({ itemId: itemUnit.itemId, uomId: itemUnit.uomId, factor: itemUnit.factor })
-		.from(itemUnit)
-		.where(and(inArray(itemUnit.itemId, itemIds), isNull(itemUnit.deletedAt)));
-	const factorOf = (it: Item, uomId: number) =>
-		uomId === it.baseUomId
-			? 1
-			: factors.find((f) => f.itemId === it.id && f.uomId === uomId)?.factor;
+	const factorOf = await unitFactors(tx, itemIds);
 
 	// Receipts: the least shelf life each item's category accepts.
 	const shelfLife = new Map<number, { days: number; refuse: boolean }>();
@@ -280,14 +270,14 @@ export async function postDocument(
 			const cost = line.unitCost == null ? it.avgCost : line.unitCost / factor;
 			value += Math.abs(toBase(line.quantity, factor)) * cost;
 		}
-		value = Math.round(value * 100) / 100;
+		value = cents(value);
 		const writesOff = lines.some((l) => l.quantity < 0);
 		const limit = org?.approveAdjustmentsOver ?? null;
 		const reason =
 			org?.approveWriteOffs && writesOff
 				? m.stock_reason_write_off()
 				: limit !== null && value >= limit
-					? m.stock_reason_worth({ value: money(value), limit: money(limit) })
+					? m.stock_reason_worth({ value: amountText(value), limit: amountText(limit) })
 					: null;
 		if (reason) throw new ApprovalRequired('adjustment', value, reason);
 	}
@@ -698,7 +688,7 @@ async function bringIn(
 		// A delivery that will not last long enough on the shelf: flagged, or refused.
 		const rule = ctx.shelfLife.get(it.id);
 		if (doc.type === 'receipt' && rule && line.expiryDate) {
-			const daysLeft = Math.round((Date.parse(line.expiryDate) - Date.parse(today)) / DAY);
+			const daysLeft = daysBetween(today, line.expiryDate);
 			if (daysLeft < rule.days) {
 				const text = m.stock_warn_shelf_life({
 					lot: lotNumber,

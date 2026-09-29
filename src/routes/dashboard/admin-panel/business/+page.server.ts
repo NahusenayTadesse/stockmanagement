@@ -2,25 +2,19 @@ import { fail } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
-import { setFlash } from 'sveltekit-flash-message/server';
 import { requirePermission } from '@nahu/admin-kit/server/permissions';
-import { recordAudit } from '@nahu/admin-kit/server/audit';
 import { saveUploadedFile } from '@nahu/admin-kit/server/files';
-import { db } from '$lib/server/db';
-import { costLayer, organization } from '$lib/server/db/schema';
+import { costLayer } from '$lib/server/db/schema';
 import { localToday } from '@nahu/admin-kit/time';
 import { startFifo } from '$lib/server/stock/ledger';
 import { orgIdOf } from '$lib/server/tenant';
 import { removeStoredFile } from '$lib/server/files';
 import { seal } from '$lib/server/secrets';
 import { businessSchema, logoSchema } from '$lib/schemas/business';
+import { flashDone, invalidForm } from '$lib/server/actions';
+import { currentOrganization as current, updateOrganization } from '../organization.server';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 import { m } from '$lib/paraglide/messages.js';
-
-async function current(orgId: number) {
-	const [org] = await db.select().from(organization).where(eq(organization.id, orgId));
-	return org;
-}
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const org = await current(orgIdOf(locals));
@@ -75,8 +69,7 @@ export const actions: Actions = {
 	save: async (event) => {
 		const orgId = guard(event);
 		const form = await superValidate(event.request, zod4(businessSchema));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 
 		const before = await current(orgId);
 		const after = {
@@ -108,19 +101,14 @@ export const actions: Actions = {
 		};
 		const wasFifo = before.costingMethod === 'fifo';
 		const isFifo = after.costingMethod === 'fifo';
-		await db.transaction(async (tx) => {
-			await tx.update(organization).set(after).where(eq(organization.id, orgId));
+		await updateOrganization(event, before, after, {
+			redact: ['einvoiceSecret'],
 			// Turning FIFO on: what is on hand becomes the first layer, at today's average cost.
 			// Turning it off: the average carries on from where the layers left it.
-			if (isFifo && !wasFifo) await startFifo(tx, orgId, localToday());
-			if (wasFifo && !isFifo) await tx.delete(costLayer).where(eq(costLayer.orgId, orgId));
-			await recordAudit(tx, event, {
-				table: 'organization',
-				recordId: orgId,
-				action: 'update',
-				before: { ...before, einvoiceSecret: before.einvoiceSecret ? '(set)' : null },
-				after: { ...after, einvoiceSecret: after.einvoiceSecret ? '(set)' : null }
-			});
+			also: async (tx) => {
+				if (isFifo && !wasFifo) await startFifo(tx, orgId, localToday());
+				if (wasFifo && !isFifo) await tx.delete(costLayer).where(eq(costLayer.orgId, orgId));
+			}
 		});
 		return message(form, {
 			type: 'success',
@@ -144,16 +132,7 @@ export const actions: Actions = {
 			return message(form, { type: 'error', text }, { status: 400 });
 		}
 
-		await db.transaction(async (tx) => {
-			await tx.update(organization).set({ logo: fileName }).where(eq(organization.id, orgId));
-			await recordAudit(tx, event, {
-				table: 'organization',
-				recordId: orgId,
-				action: 'update',
-				before: { logo: before.logo },
-				after: { logo: fileName }
-			});
-		});
+		await updateOrganization(event, before, { logo: fileName });
 		removeStoredFile(before.logo);
 		return message(form, { type: 'success', text: m.admin_biz_logo_updated() });
 	},
@@ -163,18 +142,9 @@ export const actions: Actions = {
 		const before = await current(orgId);
 		if (!before.logo) return fail(404);
 
-		await db.transaction(async (tx) => {
-			await tx.update(organization).set({ logo: null }).where(eq(organization.id, orgId));
-			await recordAudit(tx, event, {
-				table: 'organization',
-				recordId: orgId,
-				action: 'update',
-				before: { logo: before.logo },
-				after: { logo: null }
-			});
-		});
+		await updateOrganization(event, before, { logo: null });
 		removeStoredFile(before.logo);
-		setFlash({ type: 'success', message: m.admin_biz_logo_removed() }, event.cookies);
+		flashDone(event, m.admin_biz_logo_removed());
 		return { removed: true };
 	}
 };

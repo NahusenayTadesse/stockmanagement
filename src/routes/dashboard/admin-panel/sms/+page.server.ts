@@ -1,15 +1,14 @@
-import { eq } from 'drizzle-orm';
 import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { env } from '$env/dynamic/private';
 import { requirePermission } from '@nahu/admin-kit/server/permissions';
-import { recordAudit } from '@nahu/admin-kit/server/audit';
-import { db } from '$lib/server/db';
-import { organization } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
+import { DAY_MS } from '$lib/server/days';
 import { formatEthPhone } from '$lib/phone';
 import { sendSms, smsLog, smsSettings } from '$lib/server/sms';
 import { smsSettingsSchema, smsWriteSchema } from '$lib/schemas/sms';
+import { invalidForm } from '$lib/server/actions';
+import { currentOrganization, updateOrganization } from '../organization.server';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
 
@@ -31,7 +30,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		superValidate(zod4(smsWriteSchema)),
 		smsLog(orgId)
 	]);
-	const month = new Date(Date.now() - 30 * 86_400_000);
+	const month = new Date(Date.now() - 30 * DAY_MS);
 	const recent = log.filter((m) => new Date(m.createdAt) >= month);
 	return {
 		form,
@@ -53,9 +52,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'business.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(smsSettingsSchema));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 		// Kept in one spelling, so the alert list reads the same everywhere.
 		const phones = form.data.smsAlertPhones
 			.split(/[,;\n]/)
@@ -68,23 +65,7 @@ export const actions: Actions = {
 			smsAlertPhones: [...new Set(phones)].join(', ') || null,
 			smsSignature: form.data.smsSignature || null
 		};
-		await db.transaction(async (tx) => {
-			const [before] = await tx.select().from(organization).where(eq(organization.id, orgId));
-			await tx.update(organization).set(values).where(eq(organization.id, orgId));
-			await recordAudit(tx, event, {
-				table: 'organization',
-				recordId: orgId,
-				action: 'update',
-				before: {
-					smsEnabled: before.smsEnabled,
-					smsSales: before.smsSales,
-					smsPayments: before.smsPayments,
-					smsAlertPhones: before.smsAlertPhones,
-					smsSignature: before.smsSignature
-				},
-				after: values
-			});
-		});
+		await updateOrganization(event, await currentOrganization(orgId), values);
 		return message(form, { type: 'success', text: m.admin_sms_saved() });
 	},
 
@@ -93,9 +74,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'business.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(smsWriteSchema));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 		const r = await sendSms(orgId, {
 			to: form.data.to,
 			text: form.data.text,

@@ -10,7 +10,6 @@ import { db } from '$lib/server/db';
 import {
 	customer,
 	item,
-	itemUnit,
 	location,
 	paymentMethod,
 	posCart,
@@ -24,9 +23,10 @@ import { postDocument, StockError, type Tx } from '$lib/server/stock/post';
 import { documentTotals } from '$lib/server/tax';
 import { m } from '$lib/paraglide/messages.js';
 import { discountPercent, priceListOf, priceTable } from '$lib/server/pricing';
+import { cents } from '$lib/money';
+import { factorIn, packsOf } from '$lib/server/units';
 
 type Reader = Pick<typeof db, 'select'>;
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 // ── Shifts ────────────────────────────────────────────────────────────────────────────────────
 
@@ -235,10 +235,7 @@ export async function checkout(
 			.select()
 			.from(item)
 			.where(and(eq(item.orgId, input.orgId), inArray(item.id, itemIds), isNull(item.deletedAt))),
-		tx
-			.select()
-			.from(itemUnit)
-			.where(and(inArray(itemUnit.itemId, itemIds), isNull(itemUnit.deletedAt)))
+		packsOf(tx, itemIds)
 	]);
 	const prices = await priceTable(
 		input.orgId,
@@ -253,7 +250,7 @@ export async function checkout(
 		if (!it) throw new StockError(m.sales_err_item_not_here());
 		if (!it.sellable || !it.isActive)
 			throw new StockError(m.sales_err_not_for_sale({ name: it.name }));
-		if (l.uomId !== it.baseUomId && !units.some((u) => u.itemId === it.id && u.uomId === l.uomId)) {
+		if (factorIn(units, it, l.uomId) === undefined) {
 			throw new StockError(m.sales_err_not_in_unit({ name: it.name }));
 		}
 		if (!(l.unitPrice >= 0)) throw new StockError(m.sales_err_give_price({ name: it.name }));

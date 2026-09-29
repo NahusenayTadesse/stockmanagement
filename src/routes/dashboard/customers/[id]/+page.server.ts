@@ -22,10 +22,10 @@ import { methodOptions, priceListOptions } from '$lib/server/options';
 import { sendMail } from '$lib/server/mail';
 import { localToday } from '@nahu/admin-kit/time';
 import { formatETB } from '@nahu/admin-kit/global';
-import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { fail } from '@sveltejs/kit';
 import { setFlash } from 'sveltekit-flash-message/server';
 import { m } from '$lib/paraglide/messages.js';
+import { attemptForm, invalidForm } from '$lib/server/actions';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -77,8 +77,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'customers.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(customerEdit));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 
 		const before = await orgCustomer(orgId, Number(event.params.id));
 		const after = { ...customerValues(form.data), isActive: form.data.status };
@@ -109,32 +108,21 @@ export const actions: Actions = {
 		const orgId = orgIdOf(event.locals);
 		const c = await orgCustomer(orgId, Number(event.params.id));
 		const form = await superValidate(event.request, zod4(receivePayment));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 
-		let transactionId: number;
-		try {
+		return attemptForm(form, async () => {
 			const values = await checkTransaction(
 				{ ...form.data, direction: 'in', purpose: 'sale', customerId: c.id, party: c.name },
 				orgId
 			);
-			[{ id: transactionId }] = await db
+			const [{ id: transactionId }] = await db
 				.insert(transactions)
 				.values({ ...values, orgId, createdBy: event.locals.user?.id })
 				.$returningId();
-		} catch (err) {
-			if (err instanceof WriteRefused) {
-				if (err.field) setError(form, err.field as 'reference', err.message);
-				return message(form, { type: 'error', text: err.message }, { status: 400 });
-			}
-			throw err;
-		}
-		// A text confirming it, when the business sends them.
-		const sms = await smsPaymentReceived(orgId, transactionId, event.locals.user?.id);
-		const note = sms && smsNote(sms, c.phone ?? '');
-		return message(form, {
-			type: 'success',
-			text: `${m.sales_received_from({ amount: formatETB(form.data.amount), name: c.name })}${note ? ` · ${note}` : ''}`
+			// A text confirming it, when the business sends them.
+			const sms = await smsPaymentReceived(orgId, transactionId, event.locals.user?.id);
+			const note = sms && smsNote(sms, c.phone ?? '');
+			return `${m.sales_received_from({ amount: formatETB(form.data.amount), name: c.name })}${note ? ` · ${note}` : ''}`;
 		});
 	},
 

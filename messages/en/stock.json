@@ -676,5 +676,6 @@
 	"stock_einvoice_st_submitted": "submitted",
 	"stock_einvoice_st_rejected": "rejected",
 	"stock_einvoice_st_failed": "failed",
-	"stock_einvoice_st_cancelled": "cancelled"
+	"stock_einvoice_st_cancelled": "cancelled",
+	"stock_counted_of": "of {total}"
 }

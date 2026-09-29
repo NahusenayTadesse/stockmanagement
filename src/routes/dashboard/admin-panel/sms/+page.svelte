@@ -5,7 +5,10 @@
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
@@ -61,24 +64,13 @@
 	]);
 </script>
 
-<svelte:head><title>{m.admin_sms_title()}</title></svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-col gap-1">
-		<h1 class="text-2xl font-semibold">{m.admin_sms_title()}</h1>
-		<p class="text-muted-foreground">
-			{m.admin_sms_intro({ signature })}
-		</p>
-	</div>
+	<PageHeader title={m.admin_sms_title()} description={m.admin_sms_intro({ signature })} />
 
 	{#if !data.server.configured}
-		<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-			{m.admin_sms_no_key()}
-		</div>
+		<Notice tone="danger">{m.admin_sms_no_key()}</Notice>
 	{:else if data.server.dryRun}
-		<div class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-			{m.admin_sms_dry_run()}
-		</div>
+		<Notice tone="warning">{m.admin_sms_dry_run()}</Notice>
 	{/if}
 
 	<div class="grid gap-4 sm:grid-cols-3">
@@ -194,9 +186,7 @@
 		</Card.Root>
 	</div>
 
-	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">{m.admin_sms_messages()}</h2>
-		<p class="text-sm text-muted-foreground">{m.admin_sms_last_500()}</p>
+	<PageSection title={m.admin_sms_messages()} hint={m.admin_sms_last_500()}>
 		<DataTable data={data.log} {columns} fileName={m.admin_sms_export_name()} />
-	</section>
+	</PageSection>
 </div>

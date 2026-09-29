@@ -2,6 +2,10 @@
 	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { enhance } from '$app/forms';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
+	import PostButton from '$lib/components/PostButton.svelte';
 	import { resolve } from '$app/paths';
 	import Ban from '@lucide/svelte/icons/ban';
 	import Check from '@lucide/svelte/icons/check';
@@ -17,7 +21,7 @@
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB } from '@nahu/admin-kit/global';
 	import {
 		quoteHeader,
 		quoteLineAdd,
@@ -25,7 +29,7 @@
 		QUOTE_STATUS_LABELS
 	} from '$lib/schemas/quotes';
 	import QuoteHeaderFields from '../QuoteHeaderFields.svelte';
-	import { DOCUMENT_STATUS_LABELS } from '$lib/format';
+	import { DOCUMENT_STATUS_LABELS, ethiopianDay } from '$lib/format';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
@@ -71,35 +75,28 @@
 		{ name: 'gross', label: m.sales_with_tax(), type: 'money', required: false, inForm: false },
 		{ name: 'note', label: m.common_note(), type: 'text', required: false, long: true }
 	];
-	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
+	const day = ethiopianDay;
 	const buyerName = $derived(data.buyer?.name ?? q.buyerName ?? '—');
+	const buyerTin = $derived(data.buyer?.tin ?? q.buyerTin);
+	const subtitle = $derived(
+		`${m.sales_for_buyer({ name: buyerName })}${buyerTin ? m.sales_tin_paren({ tin: buyerTin }) : ''} · ` +
+			`${day(q.quoteDate)}${q.validUntil ? ` · ${m.sales_valid_until_date({ date: day(q.validUntil) })}` : ''}`
+	);
 </script>
 
-<svelte:head>
-	<title>{q.number ?? m.sales_draft_quote_title({ id: q.id })}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">{m.sales_proforma_invoice()}</p>
-			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{q.number ?? m.sales_draft_number({ id: q.id })}
-				<Badge variant={q.status === 'cancelled' ? 'destructive' : 'secondary'}
-					>{data.expired ? QUOTE_STATUS_LABELS.expired : QUOTE_STATUS_LABELS[q.status]}</Badge
-				>
-			</h1>
-			<p class="text-muted-foreground">
-				{m.sales_for_buyer({ name: buyerName })}{(data.buyer?.tin ?? q.buyerTin)
-					? m.sales_tin_paren({ tin: data.buyer?.tin ?? q.buyerTin ?? '' })
-					: ''} ·
-				{day(q.quoteDate)}{q.validUntil
-					? ` · ${m.sales_valid_until_date({ date: day(q.validUntil) })}`
-					: ''}
-			</p>
-		</div>
-
-		<div class="flex flex-wrap gap-2">
+	<PageHeader
+		eyebrow={m.sales_proforma_invoice()}
+		title={q.number ?? m.sales_draft_number({ id: q.id })}
+		tabTitle={q.number ?? m.sales_draft_quote_title({ id: q.id })}
+		description={subtitle}
+	>
+		{#snippet badges()}
+			<Badge variant={q.status === 'cancelled' ? 'destructive' : 'secondary'}
+				>{data.expired ? QUOTE_STATUS_LABELS.expired : QUOTE_STATUS_LABELS[q.status]}</Badge
+			>
+		{/snippet}
+		{#snippet actions()}
 			<Button
 				href={resolve('/dashboard/sales/quotes/[id]/print', { id: String(q.id) })}
 				target="_blank"
@@ -137,34 +134,32 @@
 					/>
 				{/if}
 				{#if data.buyer?.email}
-					<form method="POST" action="?/email" use:enhance>
-						<Button type="submit" variant="outline" disabled={!data.lines.rows.length}
-							><Mail /> {m.sales_email()}</Button
-						>
-					</form>
+					<PostButton
+						action="?/email"
+						icon={Mail}
+						label={m.sales_email()}
+						busyLabel={m.common_sending()}
+						disabled={!data.lines.rows.length}
+					/>
 				{/if}
 				{#if q.status === 'draft'}
-					<form method="POST" action="?/markSent" use:enhance>
-						<Button type="submit" variant="outline" disabled={!data.lines.rows.length}
-							><Send /> {m.sales_mark_sent()}</Button
-						>
-					</form>
+					<PostButton
+						action="?/markSent"
+						icon={Send}
+						label={m.sales_mark_sent()}
+						disabled={!data.lines.rows.length}
+					/>
 				{/if}
 				{#if q.status === 'sent'}
-					<form method="POST" action="?/accept" use:enhance>
-						<Button type="submit" variant="outline"><Check /> {m.sales_accepted_button()}</Button>
-					</form>
+					<PostButton action="?/accept" icon={Check} label={m.sales_accepted_button()} />
 				{/if}
-				<form method="POST" action="?/cancel" use:enhance>
-					<Button type="submit" variant="outline"><Ban /> {m.common_cancel()}</Button>
-				</form>
+				<PostButton action="?/cancel" icon={Ban} label={m.common_cancel()} />
 			{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	{#if data.held.length}
-		<div class="rounded-md border p-3 text-sm">
-			<p class="font-medium">{m.sales_stock_held()}</p>
+		<Notice title={m.sales_stock_held()}>
 			<p class="mb-2 text-muted-foreground">
 				{q.validUntil ? m.sales_stock_held_intro_dated() : m.sales_stock_held_intro()}
 			</p>
@@ -180,15 +175,13 @@
 					</li>
 				{/each}
 			</ul>
-		</div>
+		</Notice>
 	{:else if data.reserves && q.status === 'accepted' && !q.locationId}
-		<p class="rounded-md border p-3 text-sm text-muted-foreground">
-			{m.sales_no_stock_held()}
-		</p>
+		<Notice tone="warning">{m.sales_no_stock_held()}</Notice>
 	{/if}
 
 	{#if data.sale}
-		<p class="rounded-md border p-3 text-sm">
+		<Notice tone="success">
 			{m.sales_became_sale()}
 			<a
 				class="font-medium underline"
@@ -196,7 +189,7 @@
 				>{data.sale.number ?? m.sales_draft_lower({ id: data.sale.id })}</a
 			>
 			({DOCUMENT_STATUS_LABELS[data.sale.status]}).
-		</p>
+		</Notice>
 	{:else if data.editable && data.canManage && data.canSell && data.lines.rows.length}
 		<form
 			method="POST"
@@ -226,8 +219,7 @@
 		</form>
 	{/if}
 
-	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">{m.sales_lines()}</h2>
+	<PageSection title={m.sales_lines()}>
 		<LookupSection
 			config={{ entity: m.sales_line(), plural: m.sales_lines(), fields }}
 			rows={data.lines.rows}
@@ -253,7 +245,7 @@
 			<dt class="font-semibold">{m.common_total()}</dt>
 			<dd class="text-right font-semibold">{formatETB(data.totals.gross)}</dd>
 		</dl>
-	</section>
+	</PageSection>
 
 	{#if q.terms || q.note}
 		<div class="flex flex-col gap-1 text-sm">

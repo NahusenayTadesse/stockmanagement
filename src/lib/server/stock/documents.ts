@@ -2,13 +2,12 @@
  * Stock document headers and lines: what a draft may contain. Posting is `./post`.
  */
 import { m } from '$lib/paraglide/messages.js';
-import { error } from '@sveltejs/kit';
+
 import { and, eq, isNull } from 'drizzle-orm';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { db } from '$lib/server/db';
 import {
 	item,
-	itemUnit,
 	location,
 	lot,
 	purchaseOrderLine,
@@ -25,17 +24,14 @@ import { checkCustomer, sellsToCustomers } from '$lib/server/customers';
 import { customerSchema } from '$lib/schemas/customers';
 import type { z } from 'zod/v4';
 import type { documentHeader } from '$lib/schemas/stock';
+import { cents, round4 } from '$lib/money';
+import { unitFactor } from '$lib/server/units';
+import { orgRowOr404 } from '$lib/server/org';
 
 type Header = z.infer<typeof documentHeader>;
 
 export async function orgDocument(orgId: number, id: number) {
-	const [doc] = await db
-		.select()
-		.from(stockDocument)
-		.where(and(eq(stockDocument.id, id), eq(stockDocument.orgId, orgId)))
-		.limit(1);
-	if (!doc) error(404, m.stock_doc_not_found());
-	return doc;
+	return orgRowOr404(stockDocument, orgId, id, m.stock_doc_not_found);
 }
 
 /**
@@ -181,9 +177,7 @@ export async function recostForeignLines(documentId: number, exchangeRate: numbe
 		await db
 			.update(stockDocumentLine)
 			.set(
-				exchangeRate
-					? { unitCost: Math.round(l.foreign * exchangeRate * 10000) / 10000 }
-					: { foreignUnitCost: null }
+				exchangeRate ? { unitCost: round4(l.foreign * exchangeRate) } : { foreignUnitCost: null }
 			)
 			.where(eq(stockDocumentLine.id, l.id));
 	}
@@ -242,22 +236,9 @@ export async function lineValues(
 
 	if (!values.uomId) values.uomId = it.baseUomId;
 	await belongsToOrg(uom, values.uomId, orgId, 'uomId', 'unit');
-	let factor = 1;
-	if (Number(values.uomId) !== it.baseUomId) {
-		const [conv] = await db
-			.select({ id: itemUnit.id, factor: itemUnit.factor })
-			.from(itemUnit)
-			.where(
-				and(
-					eq(itemUnit.itemId, it.id),
-					eq(itemUnit.uomId, Number(values.uomId)),
-					isNull(itemUnit.deletedAt)
-				)
-			);
-		if (!conv) {
-			throw new WriteRefused('uomId', m.stock_err_no_conversion_unit({ item: it.name }));
-		}
-		factor = conv.factor;
+	const factor = await unitFactor(db, it, Number(values.uomId));
+	if (factor === null) {
+		throw new WriteRefused('uomId', m.stock_err_no_conversion_unit({ item: it.name }));
 	}
 
 	// A sale price belongs on issues only; left empty, it is the item's list price for this unit.
@@ -267,7 +248,7 @@ export async function lineValues(
 			values.unitPrice != null && values.unitPrice !== ''
 				? Number(values.unitPrice)
 				: it.salePrice != null
-					? Math.round(it.salePrice * factor * 100) / 100
+					? cents(it.salePrice * factor)
 					: null;
 	}
 
@@ -285,7 +266,7 @@ export async function lineValues(
 	if (doc.type === 'receipt' && doc.currency && doc.exchangeRate) {
 		if (values.foreignUnitCost != null && values.foreignUnitCost !== '') {
 			foreignUnitCost = Number(values.foreignUnitCost);
-			unitCost = Math.round(foreignUnitCost * doc.exchangeRate * 10000) / 10000;
+			unitCost = round4(foreignUnitCost * doc.exchangeRate);
 		}
 	}
 

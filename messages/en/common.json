@@ -157,5 +157,10 @@
 	"common_einv_accepted": "accepted",
 	"common_einv_rejected": "rejected",
 	"common_einv_failed": "failed",
-	"common_einv_cancelled": "cancelled"
+	"common_einv_cancelled": "cancelled",
+	"common_pick_date": "Pick a date",
+	"common_from": "From",
+	"common_to": "To",
+	"common_show": "Show",
+	"common_any": "Any"
 }

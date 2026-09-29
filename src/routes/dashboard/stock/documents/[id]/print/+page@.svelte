@@ -1,9 +1,12 @@
 <script lang="ts">
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import { column, indexColumn, quantityColumn, stackedCell, taxSummary, RIGHT } from '$lib/table';
 	import { m } from '$lib/paraglide/messages.js';
 	import PrintSheet from '@nahu/admin-kit/components/PrintSheet.svelte';
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { fileUrl } from '@nahu/admin-kit/files';
-	import { ADJUSTMENT_REASONS, qty } from '$lib/format';
+	import { ADJUSTMENT_REASONS } from '$lib/format';
 
 	let { data } = $props();
 
@@ -31,6 +34,52 @@
 	const priceOf = (l: (typeof data.lines)[number]) => (withPrice ? l.unitPrice : l.unitCost);
 	const total = $derived(
 		data.lines.reduce((sum, l) => sum + (priceOf(l) ?? 0) * Math.abs(l.quantity), 0)
+	);
+
+	type Line = (typeof data.lines)[number];
+	const columns = $derived<ColumnDef<Line>[]>([
+		indexColumn<Line>(),
+		column<Line>('item', m.common_item, ({ row: { original: l } }) => stackedCell(l.item, l.sku)),
+		column<Line>(
+			'lotNumber',
+			m.stock_lot_serials,
+			({ row: { original: l } }) =>
+				stackedCell(
+					l.lotNumber ?? l.pickedLot ?? '',
+					l.expiryDate && m.stock_exp({ date: l.expiryDate }),
+					l.serials?.split('\n').join(', ')
+				),
+			{ class: 'text-xs' }
+		),
+		quantityColumn<Line>('quantity', m.common_quantity),
+		...(withCost || withPrice
+			? [
+					column<Line>(
+						'unitCost',
+						withPrice ? m.stock_unit_price : m.stock_col_unit_cost,
+						({ row: { original: l } }) => (priceOf(l) == null ? '' : formatETB(priceOf(l)!)),
+						RIGHT
+					),
+					column<Line>(
+						'amount' as keyof Line & string,
+						m.stock_amount,
+						({ row: { original: l } }) =>
+							priceOf(l) == null ? '' : formatETB(priceOf(l)! * Math.abs(l.quantity)),
+						RIGHT
+					)
+				]
+			: [])
+	]);
+	/** Before tax and the tax, when there is any; then the total. */
+	const summary = $derived(
+		withCost || withPrice
+			? taxSummary({
+					net: data.totals?.net ?? total,
+					vat,
+					tot: data.totals?.tot ?? 0,
+					gross: vat || data.totals?.tot ? (data.totals?.gross ?? total) : total
+				})
+			: []
 	);
 </script>
 
@@ -116,76 +165,7 @@
 		{/if}
 	</dl>
 
-	<table class="w-full border-collapse text-sm">
-		<thead>
-			<tr class="border-b-2 text-left">
-				<th class="py-1 pr-2">#</th>
-				<th class="py-1 pr-2">{m.common_item()}</th>
-				<th class="py-1 pr-2">{m.stock_lot_serials()}</th>
-				<th class="py-1 pr-2 text-right">{m.common_quantity()}</th>
-				{#if withCost || withPrice}
-					<th class="py-1 pr-2 text-right"
-						>{withPrice ? m.stock_unit_price() : m.stock_col_unit_cost()}</th
-					>
-					<th class="py-1 text-right">{m.stock_amount()}</th>
-				{/if}
-			</tr>
-		</thead>
-		<tbody>
-			{#each data.lines as line, i (line.id)}
-				<tr class="border-b align-top">
-					<td class="py-1 pr-2">{i + 1}</td>
-					<td class="py-1 pr-2">{line.item}<br /><span class="text-xs">{line.sku}</span></td>
-					<td class="py-1 pr-2 text-xs">
-						{line.lotNumber ?? line.pickedLot ?? ''}
-						{#if line.expiryDate}<br />{m.stock_exp({ date: line.expiryDate })}{/if}
-						{#if line.serials}<br />{line.serials.split('\n').join(', ')}{/if}
-					</td>
-					<td class="py-1 pr-2 text-right">{qty(line.quantity, line.unit)}</td>
-					{#if withCost || withPrice}
-						<td class="py-1 pr-2 text-right"
-							>{priceOf(line) == null ? '' : formatETB(priceOf(line))}</td
-						>
-						<td class="py-1 text-right">
-							{priceOf(line) == null ? '' : formatETB(priceOf(line)! * Math.abs(line.quantity))}
-						</td>
-					{/if}
-				</tr>
-			{/each}
-		</tbody>
-		{#if withCost || withPrice}
-			<tfoot>
-				{#if vat}
-					<tr>
-						<td colspan="5" class="py-1 pr-2 text-right">{m.stock_before_vat()}</td>
-						<td class="py-1 text-right">{formatETB(data.totals?.net ?? total)}</td>
-					</tr>
-					<tr>
-						<td colspan="5" class="py-1 pr-2 text-right">{m.stock_vat()}</td>
-						<td class="py-1 text-right">{formatETB(vat)}</td>
-					</tr>
-				{/if}
-				{#if data.totals?.tot}
-					{#if !vat}
-						<tr>
-							<td colspan="5" class="py-1 pr-2 text-right">{m.stock_before_tax()}</td>
-							<td class="py-1 text-right">{formatETB(data.totals.net)}</td>
-						</tr>
-					{/if}
-					<tr>
-						<td colspan="5" class="py-1 pr-2 text-right">TOT</td>
-						<td class="py-1 text-right">{formatETB(data.totals.tot)}</td>
-					</tr>
-				{/if}
-				<tr class="font-semibold">
-					<td colspan="5" class="py-1 pr-2 text-right">{m.common_total()}</td>
-					<td class="py-1 text-right"
-						>{formatETB(vat || data.totals?.tot ? (data.totals?.gross ?? total) : total)}</td
-					>
-				</tr>
-			</tfoot>
-		{/if}
-	</table>
+	<DataTable variant="print" data={data.lines} {columns} {summary} />
 
 	{#if doc.paidAmount != null && doc.paidStatus !== 'void'}
 		<p class="text-sm">

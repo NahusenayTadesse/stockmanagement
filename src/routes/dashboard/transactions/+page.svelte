@@ -1,19 +1,25 @@
 <script lang="ts">
-	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
+	import { ethiopianDay } from '$lib/format';
+	import DatePresets from '$lib/components/filters/DatePresets.svelte';
 	import { resolve } from '$app/paths';
 	import Plus from '@lucide/svelte/icons/plus';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
-	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import FilterBar from '$lib/components/filters/FilterBar.svelte';
+	import FilterField from '$lib/components/filters/FilterField.svelte';
+	import FilterSelect from '$lib/components/filters/FilterSelect.svelte';
+	import DateRangeFields from '$lib/components/filters/DateRangeFields.svelte';
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { moneyCell } from '$lib/table';
 	import TransactionFields from '$lib/components/TransactionFields.svelte';
 	import { PURPOSE_CHOICES, transactionAdd } from '$lib/schemas/transactions';
 	import { columns } from './columns';
@@ -26,7 +32,7 @@
 	const { form, errors, enhance, delayed, allErrors } = createForm(data.form, transactionAdd);
 
 	const f = $derived(data.filters);
-	const ethiopian = (day: string) => formatEthiopianDate(new Date(`${day}T12:00:00+03:00`));
+	const ethiopian = ethiopianDay;
 
 	/** A preset keeps the other filters and only swaps the dates. */
 	function presetHref(from: string, to: string) {
@@ -79,124 +85,144 @@
 		}
 	]);
 
-	const select = 'h-9 rounded-md border bg-background px-2 text-sm';
+	type MethodRow = (typeof data.byMethod)[number] & { net: number };
+	const byMethod = $derived(data.byMethod.map((r) => ({ ...r, net: r.moneyIn - r.moneyOut })));
+	const methodColumns: ColumnDef<MethodRow>[] = [
+		{
+			accessorKey: 'method',
+			get header() {
+				return m.sales_method();
+			}
+		},
+		{
+			accessorKey: 'moneyIn',
+			meta: { align: 'right' },
+			get header() {
+				return m.sales_in();
+			},
+			cell: moneyCell
+		},
+		{
+			accessorKey: 'moneyOut',
+			meta: { align: 'right' },
+			get header() {
+				return m.sales_out();
+			},
+			cell: moneyCell
+		},
+		{
+			accessorKey: 'net',
+			meta: { align: 'right' },
+			get header() {
+				return m.sales_net();
+			},
+			cell: moneyCell
+		}
+	];
 </script>
 
-<svelte:head>
-	<title>{m.sales_transactions_title()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-2">
-		<div>
-			<h1 class="text-2xl font-semibold">{m.sales_transactions_title()}</h1>
-			<p class="text-muted-foreground">
-				{m.sales_every_birr({ from: ethiopian(f.from), to: ethiopian(f.to) })}
-			</p>
-		</div>
-		{#if data.canManage}
-			<DialogComp bind:open title={m.sales_record_transaction()} variant="default" IconComp={Plus}>
-				<form
-					method="POST"
-					action="?/add"
-					enctype="multipart/form-data"
-					use:enhance
-					id="add"
-					class="flex flex-col gap-4"
+	<PageHeader
+		title={m.sales_transactions_title()}
+		description={m.sales_every_birr({ from: ethiopian(f.from), to: ethiopian(f.to) })}
+	>
+		{#snippet actions()}
+			{#if data.canManage}
+				<DialogComp
+					bind:open
+					title={m.sales_record_transaction()}
+					variant="default"
+					IconComp={Plus}
 				>
-					<Errors allErrors={$allErrors} />
-					<TransactionFields
-						{form}
-						{errors}
-						methods={data.methods}
-						branches={data.branches}
-						suppliers={data.suppliers}
-						customers={data.customers}
-						withFile
-					/>
-					<Button type="submit" form="add">
-						{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.sales_record()}{/if}
-					</Button>
-				</form>
-			</DialogComp>
-		{/if}
-	</div>
+					<form
+						method="POST"
+						action="?/add"
+						enctype="multipart/form-data"
+						use:enhance
+						id="add"
+						class="flex flex-col gap-4"
+					>
+						<Errors allErrors={$allErrors} />
+						<TransactionFields
+							{form}
+							{errors}
+							methods={data.methods}
+							branches={data.branches}
+							suppliers={data.suppliers}
+							customers={data.customers}
+							withFile
+						/>
+						<Button type="submit" form="add">
+							{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.sales_record()}{/if}
+						</Button>
+					</form>
+				</DialogComp>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
-	<Card.Root>
-		<Card.Content class="flex flex-col gap-4 pt-6">
-			<div class="flex flex-wrap gap-2">
-				{#each data.presets as p (p.key)}
-					<Button
-						href={presetHref(p.from, p.to)}
-						size="sm"
-						variant={p.from === f.from && p.to === f.to ? 'default' : 'outline'}>{p.label}</Button
-					>
-				{/each}
-			</div>
-			<form method="GET" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-				<div class="flex flex-col gap-1">
-					<Label for="from">{m.sales_from()}</Label>
-					<DateInput id="from" name="from" value={f.from} />
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="to">{m.sales_to_date()}</Label>
-					<DateInput id="to" name="to" value={f.to} />
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="direction">{m.sales_money()}</Label>
-					<select id="direction" name="direction" class={select} value={f.direction}>
-						<option value="">{m.sales_in_and_out()}</option>
-						<option value="in">{m.sales_in()}</option>
-						<option value="out">{m.sales_out()}</option>
-					</select>
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="method">{m.sales_method()}</Label>
-					<select id="method" name="method" class={select} value={String(f.methodId)}>
-						<option value="0">{m.sales_any_method()}</option>
-						{#each data.methods.slice(1) as method (method.value)}<option
-								value={String(method.value)}>{method.name}</option
-							>{/each}
-					</select>
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="purpose">{m.sales_for()}</Label>
-					<select id="purpose" name="purpose" class={select} value={f.purpose}>
-						<option value="">{m.sales_anything()}</option>
-						{#each PURPOSE_CHOICES as p (p.value)}<option value={p.value}>{p.name}</option>{/each}
-					</select>
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="status">{m.common_status()}</Label>
-					<select id="status" name="status" class={select} value={f.status}>
-						<option value="">{m.sales_recorded_and_verified()}</option>
-						<option value="recorded">{m.sales_not_verified()}</option>
-						<option value="verified">{m.sales_verified()}</option>
-						<option value="void">{m.sales_voided()}</option>
-					</select>
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="branch">{m.common_branch()}</Label>
-					<select id="branch" name="branch" class={select} value={String(f.branchId)}>
-						<option value="0">{m.sales_all_branches()}</option>
-						{#each data.branches.slice(1) as b (b.value)}<option value={String(b.value)}
-								>{b.name}</option
-							>{/each}
-					</select>
-				</div>
-				<div class="flex flex-col gap-1">
-					<Label for="q">{m.common_search()}</Label>
-					<Input id="q" name="q" value={f.q} placeholder={m.sales_search_placeholder()} />
-				</div>
-				<div class="flex gap-2 sm:col-span-2 lg:col-span-4">
-					<Button type="submit">{m.sales_apply()}</Button>
-					<Button href={resolve('/dashboard/transactions')} variant="ghost"
-						>{m.sales_reset()}</Button
-					>
-				</div>
-			</form>
-		</Card.Content>
-	</Card.Root>
+	<FilterBar submitLabel={m.sales_apply()}>
+		<DateRangeFields
+			from={f.from}
+			to={f.to}
+			fromLabel={m.sales_from()}
+			toLabel={m.sales_to_date()}
+		/>
+		<FilterSelect
+			name="direction"
+			label={m.sales_money()}
+			value={f.direction}
+			anyLabel={m.sales_in_and_out()}
+			options={[
+				{ value: 'in', name: m.sales_in() },
+				{ value: 'out', name: m.sales_out() }
+			]}
+		/>
+		<FilterSelect
+			name="method"
+			label={m.sales_method()}
+			value={f.methodId}
+			anyLabel={m.sales_any_method()}
+			anyValue={0}
+			options={data.methods.slice(1)}
+		/>
+		<FilterSelect
+			name="purpose"
+			label={m.sales_for()}
+			value={f.purpose}
+			anyLabel={m.sales_anything()}
+			options={PURPOSE_CHOICES}
+		/>
+		<FilterSelect
+			name="status"
+			label={m.common_status()}
+			value={f.status}
+			anyLabel={m.sales_recorded_and_verified()}
+			options={[
+				{ value: 'recorded', name: m.sales_not_verified() },
+				{ value: 'verified', name: m.sales_verified() },
+				{ value: 'void', name: m.sales_voided() }
+			]}
+		/>
+		<FilterSelect
+			name="branch"
+			label={m.common_branch()}
+			value={f.branchId}
+			anyLabel={m.sales_all_branches()}
+			anyValue={0}
+			options={data.branches.slice(1)}
+		/>
+		<FilterField label={m.common_search()} for="q">
+			<Input id="q" name="q" value={f.q} placeholder={m.sales_search_placeholder()} />
+		</FilterField>
+		{#snippet after()}
+			<DatePresets presets={data.presets} from={f.from} to={f.to} href={presetHref}>
+				<Button href={resolve('/dashboard/transactions')} size="sm" variant="ghost"
+					>{m.sales_reset()}</Button
+				>
+			</DatePresets>
+		{/snippet}
+	</FilterBar>
 
 	<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
@@ -209,26 +235,12 @@
 				<Card.Description>{m.sales_by_method_intro()}</Card.Description>
 			</Card.Header>
 			<Card.Content>
-				<table class="w-full text-sm">
-					<thead>
-						<tr class="border-b text-left text-muted-foreground">
-							<th class="py-1">{m.sales_method()}</th>
-							<th class="py-1 text-right">{m.sales_in()}</th>
-							<th class="py-1 text-right">{m.sales_out()}</th>
-							<th class="py-1 text-right">{m.sales_net()}</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each data.byMethod as row (row.method)}
-							<tr class="border-b last:border-0">
-								<td class="py-1">{row.method}</td>
-								<td class="py-1 text-right">{formatETB(row.moneyIn)}</td>
-								<td class="py-1 text-right">{formatETB(row.moneyOut)}</td>
-								<td class="py-1 text-right font-medium">{formatETB(row.moneyIn - row.moneyOut)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
+				<DataTable
+					data={byMethod}
+					columns={methodColumns}
+					variant="compact"
+					fileName={m.sales_by_payment_method()}
+				/>
 			</Card.Content>
 		</Card.Root>
 	{/if}
@@ -236,6 +248,7 @@
 	<DataTable
 		data={data.rows}
 		{columns}
+		variant="list"
 		fileName={m.sales_tx_file_range({ from: f.from, to: f.to })}
 	/>
 </div>

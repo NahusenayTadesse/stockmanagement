@@ -28,13 +28,12 @@ import {
 import { unseal } from '$lib/server/secrets';
 import { lineAmounts } from '$lib/server/tax';
 import type { Tx } from '$lib/server/stock/post';
+import { cents } from '$lib/money';
 
 /** The database, or a caller's transaction (the seed issues invoices inside its own). */
 type Conn = typeof db | Tx;
 
 export class EinvoiceError extends Error {}
-
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 /** The invoice, in our own terms, from a posted sale or customer return. */
 export async function invoiceFor(orgId: number, documentId: number, conn: Conn = db) {

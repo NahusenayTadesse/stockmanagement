@@ -28,6 +28,7 @@ import { customerChoices } from '$lib/server/customers';
 import { documentTotals, suggestedWithholding } from '$lib/server/tax';
 import { addAttachment, checkTransaction, linkableTransactions } from '$lib/server/transactions';
 import { linkSchema, transactionAdd } from '$lib/schemas/transactions';
+import { cents } from '$lib/money';
 
 type Doc = typeof stockDocument.$inferSelect;
 
@@ -132,7 +133,7 @@ export async function paymentSection(orgId: number, doc: Doc, locals: App.Locals
 	const withholding = totals
 		? await suggestedWithholding(orgId, doc, totals.net)
 		: { amount: 0, rate: 0 };
-	const amount = totals ? Math.round((totals.gross - withholding.amount) * 100) / 100 : 0;
+	const amount = totals ? cents(totals.gross - withholding.amount) : 0;
 
 	const [named] = doc.supplierId
 		? await db.select({ name: supplier.name }).from(supplier).where(eq(supplier.id, doc.supplierId))

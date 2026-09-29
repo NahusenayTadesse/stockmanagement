@@ -9,7 +9,6 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { localToday } from '@nahu/admin-kit/time';
 import {
 	item,
-	itemUnit,
 	location,
 	organization,
 	serialUnit,
@@ -20,7 +19,9 @@ import {
 } from '$lib/server/db/schema';
 import { StockError } from './errors';
 import { move, valueOut, type Context, type Tx } from './ledger';
-import { parseSerials, round4, toBase } from './math';
+import { parseSerials, toBase } from './math';
+import { round4 } from '$lib/money';
+import { unitFactors } from '$lib/server/units';
 
 /** The branch's transit location, made the first time something is sent there. */
 export async function ensureTransitLocation(tx: Tx, orgId: number, branchId: number) {
@@ -116,23 +117,13 @@ export async function receiveTransfer(
 	};
 
 	const lost: { lineId: number; item: string; quantity: number }[] = [];
+	const factorOf = await unitFactors(
+		tx,
+		lines.map((l) => l.itemId)
+	);
 	for (const line of lines) {
 		const [it] = await tx.select().from(item).where(eq(item.id, line.itemId)).for('update');
-		const factor =
-			line.uomId === it.baseUomId
-				? 1
-				: ((
-						await tx
-							.select({ factor: itemUnit.factor })
-							.from(itemUnit)
-							.where(
-								and(
-									eq(itemUnit.itemId, it.id),
-									eq(itemUnit.uomId, line.uomId),
-									isNull(itemUnit.deletedAt)
-								)
-							)
-					)[0]?.factor ?? 1);
+		const factor = factorOf(it, line.uomId) ?? 1;
 
 		// What went into transit on this line: per lot, and per serial unit.
 		const sent = await tx

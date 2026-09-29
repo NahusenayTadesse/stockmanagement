@@ -1,8 +1,7 @@
 import { z } from 'zod/v4';
 import { m } from '$lib/paraglide/messages.js';
 import { labels } from '$lib/format';
-
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.purchasing_v_pick_date() });
+import { day, optionalDay } from '$lib/schemas/common';
 
 export const orderHeader = z.object({
 	supplierId: z.coerce
@@ -14,10 +13,7 @@ export const orderHeader = z.object({
 		.int()
 		.positive({ error: () => m.purchasing_v_choose_delivery() }),
 	orderDate: day,
-	expectedDate: z
-		.string()
-		.regex(/^(\d{4}-\d{2}-\d{2})?$/, { error: () => m.purchasing_v_pick_date() })
-		.default(''),
+	expectedDate: optionalDay,
 	reference: z.string().trim().max(80).default(''),
 	note: z.string().trim().max(2000).default('')
 });
@@ -44,3 +40,13 @@ export const PO_STATUS_LABELS: Record<string, string> = labels({
 	closed: m.purchasing_po_status_closed,
 	cancelled: m.purchasing_po_status_cancelled
 });
+
+/** The words the status badge knows (its colour), for each order status. */
+export const PO_BADGE: Record<string, string> = {
+	draft: 'draft',
+	ordered: 'pending',
+	partially_received: 'pending',
+	received: 'complete',
+	closed: 'confirmed',
+	cancelled: 'cancelled'
+};

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import Save from '@lucide/svelte/icons/save';
@@ -30,17 +31,8 @@
 	const logoDelayed = logo.delayed;
 </script>
 
-<svelte:head>
-	<title>{m.nav_business_profile()}</title>
-</svelte:head>
-
 <div class="flex max-w-5xl flex-col gap-6">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.nav_business_profile()}</h1>
-		<p class="text-muted-foreground">
-			{m.admin_biz_intro()}
-		</p>
-	</div>
+	<PageHeader title={m.nav_business_profile()} description={m.admin_biz_intro()} />
 
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>

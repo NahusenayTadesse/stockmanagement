@@ -9,7 +9,7 @@ import { organization } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { digestContent, draftFollowUp, expiryWatch, type FollowUp } from '$lib/server/expiry';
 import { sendMail } from '$lib/server/mail';
-import { StockError } from '$lib/server/stock/post';
+import { attempt } from '$lib/server/actions';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -36,8 +36,8 @@ export const actions: Actions = {
 			.filter(([lotId, locationId]) => Number.isInteger(lotId) && Number.isInteger(locationId))
 			.map(([lotId, locationId]) => ({ lotId, locationId }));
 
-		let ids: number[];
-		try {
+		let ids = null as number[] | null;
+		const answer = await attempt(event, async () => {
 			ids = await db.transaction((tx) =>
 				draftFollowUp(tx, {
 					orgId,
@@ -47,13 +47,9 @@ export const actions: Actions = {
 					userId: event.locals.user?.id
 				})
 			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { refused: err.message });
-			}
-			throw err;
-		}
+			return null;
+		});
+		if (!ids) return answer;
 
 		const one = ids.length === 1;
 		const text =

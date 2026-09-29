@@ -28,6 +28,7 @@ export const extraColumns: ColumnDef<LookupRow>[] = [
 	},
 	{
 		accessorKey: 'onHand',
+		meta: { align: 'right' },
 		get header() {
 			return m.stock_on_hand();
 		},

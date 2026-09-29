@@ -1,15 +1,35 @@
 <script lang="ts">
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import { column, indexColumn, joined, quantityColumn, stackedCell, RIGHT } from '$lib/table';
 	import PrintSheet from '@nahu/admin-kit/components/PrintSheet.svelte';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { fileUrl } from '@nahu/admin-kit/files';
 	import { REQUISITION_STATUS_LABELS } from '$lib/schemas/requisitions';
-	import { qty } from '$lib/format';
+	import { printedDay, qty } from '$lib/format';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
 	const req = $derived(data.req);
-	const day = (d: string) => `${formatEthiopianDate(new Date(`${d}T12:00:00+03:00`))} (${d})`;
+	const day = printedDay;
+
+	type Line = (typeof data.lines)[number];
+	const columns: ColumnDef<Line>[] = [
+		indexColumn<Line>(),
+		column<Line>('item', m.common_item, ({ row: { original: l } }) =>
+			stackedCell(l.item, joined(l.sku, l.note))
+		),
+		quantityColumn<Line>('quantity', m.purchasing_col_requested),
+		column<Line>(
+			'approvedQuantity',
+			m.purchasing_col_approved,
+			({ row: { original: l } }) =>
+				l.approvedQuantity === null ? '' : qty(l.approvedQuantity, l.unit),
+			RIGHT
+		),
+		// Left blank, for the storekeeper to write in what was handed over.
+		{ id: 'issued', header: m.purchasing_col_issued(), cell: () => '', meta: { align: 'right' } }
+	];
 </script>
 
 <svelte:head>
@@ -59,34 +79,7 @@
 		{/if}
 	</dl>
 
-	<table class="w-full border-collapse text-sm">
-		<thead>
-			<tr class="border-b-2 text-left">
-				<th class="py-1 pr-2">#</th>
-				<th class="py-1 pr-2">{m.common_item()}</th>
-				<th class="py-1 pr-2 text-right">{m.purchasing_col_requested()}</th>
-				<th class="py-1 pr-2 text-right">{m.purchasing_col_approved()}</th>
-				<th class="py-1 text-right">{m.purchasing_col_issued()}</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each data.lines as line, i (line.id)}
-				<tr class="border-b align-top">
-					<td class="py-1 pr-2">{i + 1}</td>
-					<td class="py-1 pr-2">
-						{line.item}<br /><span class="text-xs"
-							>{line.sku}{line.note ? ` · ${line.note}` : ''}</span
-						>
-					</td>
-					<td class="py-1 pr-2 text-right">{qty(line.quantity, line.unit)}</td>
-					<td class="py-1 pr-2 text-right"
-						>{line.approvedQuantity === null ? '' : qty(line.approvedQuantity, line.unit)}</td
-					>
-					<td class="py-1 text-right"></td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+	<DataTable variant="print" data={data.lines} {columns} />
 
 	{#if req.note}<p class="text-sm whitespace-pre-line">
 			{m.purchasing_print_note({ note: req.note })}

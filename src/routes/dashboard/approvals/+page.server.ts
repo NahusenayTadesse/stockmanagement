@@ -1,5 +1,4 @@
 import { fail } from '@sveltejs/kit';
-import { setFlash } from 'sveltekit-flash-message/server';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
 import { orgIdOf } from '$lib/server/tenant';
@@ -10,7 +9,7 @@ import {
 	withdrawApproval
 } from '$lib/server/approvals';
 import { branchScope, inScope } from '$lib/server/scope';
-import { StockError } from '$lib/server/stock/post';
+import { attempt } from '$lib/server/actions';
 import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
@@ -46,7 +45,7 @@ async function decide(event: RequestEvent, approve: boolean) {
 	requirePermission(event.locals, 'approvals.decide');
 	const req = await requestOf(event);
 	if (!req) return fail(404);
-	try {
+	return attempt(event, async () => {
 		const { done } = await db.transaction((tx) =>
 			decideApproval(tx, {
 				orgId: req.orgId,
@@ -56,15 +55,8 @@ async function decide(event: RequestEvent, approve: boolean) {
 				note: req.note
 			})
 		);
-		setFlash({ type: 'success', message: done }, event.cookies);
-		return { decided: true };
-	} catch (err) {
-		if (err instanceof StockError) {
-			setFlash({ type: 'error', message: err.message }, event.cookies);
-			return fail(409, { refused: err.message });
-		}
-		throw err;
-	}
+		return done;
+	});
 }
 
 export const actions: Actions = {
@@ -76,18 +68,11 @@ export const actions: Actions = {
 	withdraw: async (event) => {
 		const req = await requestOf(event);
 		if (!req) return fail(404);
-		try {
+		return attempt(event, async () => {
 			await db.transaction((tx) =>
 				withdrawApproval(tx, { orgId: req.orgId, requestId: req.id, userId: event.locals.user!.id })
 			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409);
-			}
-			throw err;
-		}
-		setFlash({ type: 'success', message: m.purchasing_appr_withdrawn_msg() }, event.cookies);
-		return { withdrawn: true };
+			return m.purchasing_appr_withdrawn_msg();
+		});
 	}
 };

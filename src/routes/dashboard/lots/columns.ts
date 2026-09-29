@@ -4,8 +4,8 @@ import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.
 import ExpiryCell from '@nahu/admin-kit/components/Table/expiry-cell.svelte';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
 import type { LookupRow } from '@nahu/admin-kit/components/lookup/types';
-import { formatETB } from '@nahu/admin-kit/global';
 import { qty } from '$lib/format';
+import { moneyCell } from '$lib/table';
 
 /** The columns the lookup descriptor cannot express: a linked item, the expiry badge, amounts. */
 export const extraColumns: ColumnDef<LookupRow>[] = [
@@ -34,6 +34,7 @@ export const extraColumns: ColumnDef<LookupRow>[] = [
 	},
 	{
 		accessorKey: 'onHand',
+		meta: { align: 'right' },
 		get header() {
 			return m.stock_on_hand();
 		},
@@ -41,9 +42,10 @@ export const extraColumns: ColumnDef<LookupRow>[] = [
 	},
 	{
 		accessorKey: 'value',
+		meta: { align: 'right' },
 		get header() {
 			return m.stock_col_value();
 		},
-		cell: (info) => formatETB(Number(info.getValue()))
+		cell: moneyCell
 	}
 ];

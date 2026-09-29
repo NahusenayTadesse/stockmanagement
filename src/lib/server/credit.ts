@@ -22,10 +22,10 @@ import { addLocalDays, localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import { customer, stockDocument, stockDocumentLine, transactions } from '$lib/server/db/schema';
 import { lineAmounts, lineNetSql, lineTotSql, lineVatSql } from '$lib/server/tax';
+import { amountText, cents } from '$lib/money';
+import { daysBetween } from '$lib/server/days';
 
 type Reader = Pick<typeof db, 'select'>;
-
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 /** A sale's value: every line at its price, in the line's own unit, VAT and TOT included. */
 export const lineValueSql = sql<number>`COALESCE(SUM(${lineNetSql} + ${lineVatSql} + ${lineTotSql}), 0)`;
@@ -54,9 +54,6 @@ function bucketOf(daysOverdue: number): Bucket {
 	if (daysOverdue <= 90) return 'd61_90';
 	return 'd90_plus';
 }
-
-const daysBetween = (from: string, to: string) =>
-	Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
 /** Posted sales, customer returns and live payments of the given customers (or all of them). */
 async function rawLedger(orgId: number, customerIds: number[] | null, reader: Reader) {
@@ -365,8 +362,7 @@ export async function creditCheck(
 	const after = cents(now + sale);
 	if (after <= c.creditLimit + 0.004) return null;
 
-	const etb = (n: number) =>
-		`ETB ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+	const etb = (n: number) => `ETB ${amountText(n)}`;
 	return c.creditLimit === 0
 		? m.sales_credit_cash_only({ name: c.name, amount: etb(after) })
 		: m.sales_credit_over_limit({ name: c.name, amount: etb(after), limit: etb(c.creditLimit) });

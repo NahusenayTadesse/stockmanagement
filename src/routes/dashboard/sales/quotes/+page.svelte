@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { longText, NAME_LENGTH } from '$lib/cells';
+	import { dateCell, longText, moneyCell, NAME_LENGTH, sortable, statusCell } from '$lib/table';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { ColumnDef } from '@tanstack/table-core';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
@@ -10,8 +11,6 @@
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
-	import { formatETB } from '@nahu/admin-kit/global';
-	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 	import { quoteHeader, QUOTE_STATUS_LABELS } from '$lib/schemas/quotes';
 	import QuoteHeaderFields from './QuoteHeaderFields.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -23,10 +22,19 @@
 	const { form, errors, enhance, delayed, allErrors } = createForm(data.form, quoteHeader);
 
 	type Row = (typeof data.quotes)[number];
+	/** The colour of each state, from the kit's badge set. */
+	const STATUS_COLOUR: Record<string, string> = {
+		draft: 'pending',
+		sent: 'pending',
+		accepted: 'approved',
+		converted: 'complete',
+		expired: 'closed',
+		cancelled: 'cancelled'
+	};
 	const columns: ColumnDef<Row>[] = [
 		{
 			accessorKey: 'number',
-			header: m.sales_proforma(),
+			header: sortable(m.sales_proforma),
 			cell: ({ row }) =>
 				renderComponent(DataTableLinks, {
 					id: row.original.id,
@@ -34,64 +42,65 @@
 					entity: 'quote'
 				})
 		},
-		{ accessorKey: 'buyer', header: m.sales_for(), cell: longText(NAME_LENGTH) },
-		{ accessorKey: 'quoteDate', header: m.common_date(), cell: (i) => ethiopianDate(i.getValue()) },
+		{ accessorKey: 'buyer', header: sortable(m.sales_for), cell: longText(NAME_LENGTH) },
+		{ accessorKey: 'quoteDate', header: sortable(m.common_date), cell: dateCell },
 		{
 			accessorKey: 'validUntil',
-			header: m.sales_valid_until(),
-			cell: (i) => (i.getValue() ? ethiopianDate(i.getValue()) : '—')
+			header: sortable(m.sales_valid_until),
+			cell: (i) => (i.getValue() ? dateCell(i) : '—')
 		},
 		{
 			accessorKey: 'net',
-			header: m.sales_pos_before_tax(),
-			cell: (i) => formatETB(Number(i.getValue()))
+			header: sortable(m.sales_pos_before_tax),
+			cell: moneyCell,
+			meta: { align: 'right' }
 		},
 		{
 			accessorKey: 'status',
-			header: m.common_status(),
-			cell: (i) => QUOTE_STATUS_LABELS[i.getValue() as string] ?? i.getValue()
+			get header() {
+				return m.common_status();
+			},
+			cell: (i) => {
+				const status = i.getValue() as string;
+				return statusCell(STATUS_COLOUR[status], QUOTE_STATUS_LABELS[status] ?? status);
+			}
 		}
 	];
 </script>
 
-<svelte:head>
-	<title>{m.sales_quotes_title()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-4">
-	<div class="flex flex-wrap items-start justify-between gap-2">
-		<div>
-			<h1 class="text-2xl font-semibold">{m.sales_quotes_title()}</h1>
-			<p class="text-muted-foreground">{m.sales_quotes_intro()}</p>
-		</div>
-		{#if data.canManage}
-			<DialogComp bind:open title={m.sales_new_quote()} variant="default" IconComp={Plus}>
-				<form
-					method="POST"
-					action="?/create"
-					use:enhance
-					id="new-quote"
-					class="flex flex-col gap-4"
-				>
-					<Errors allErrors={$allErrors} />
-					<QuoteHeaderFields
-						{form}
-						{errors}
-						customers={data.customers}
-						locations={data.locations}
-					/>
-					<Button type="submit" form="new-quote">
-						{#if $delayed}<LoadingBtn
-								name={m.sales_creating()}
-							/>{:else}{m.sales_start_quote()}{/if}
-					</Button>
-				</form>
-			</DialogComp>
-		{/if}
-	</div>
+	<PageHeader title={m.sales_quotes_title()} description={m.sales_quotes_intro()}>
+		{#snippet actions()}
+			{#if data.canManage}
+				<DialogComp bind:open title={m.sales_new_quote()} variant="default" IconComp={Plus}>
+					<form
+						method="POST"
+						action="?/create"
+						use:enhance
+						id="new-quote"
+						class="flex flex-col gap-4"
+					>
+						<Errors allErrors={$allErrors} />
+						<QuoteHeaderFields
+							{form}
+							{errors}
+							customers={data.customers}
+							locations={data.locations}
+						/>
+						<Button type="submit" form="new-quote">
+							{#if $delayed}<LoadingBtn
+									name={m.sales_creating()}
+								/>{:else}{m.sales_start_quote()}{/if}
+						</Button>
+					</form>
+				</DialogComp>
+			{/if}
+		{/snippet}
+	</PageHeader>
 	<DataTable
 		data={data.quotes}
 		{columns}
+		variant="list"
 		fileName={m.sales_quotes_title()}
 		facetKeys={['status']}
 	/>

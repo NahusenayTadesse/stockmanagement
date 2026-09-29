@@ -16,18 +16,17 @@ import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	item,
-	itemUnit,
 	lot,
 	serialUnit,
 	stockDocument,
 	stockDocumentLine,
 	stockMovement
 } from '$lib/server/db/schema';
+import { round4 } from '$lib/money';
+import { factorIn, packsOf } from '$lib/server/units';
 
 type Reader = Pick<typeof db, 'select'>;
 type Writer = Pick<typeof db, 'select' | 'insert'>;
-
-const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 export class ReturnError extends Error {}
 
@@ -57,16 +56,13 @@ export async function returnable(orgId: number, documentId: number, reader: Read
 			)
 		);
 	const unstocked = docLines.filter((l) => !l.stockTracked);
+	// Packs deleted since still convert the lines entered in them.
 	const packs = unstocked.some((l) => l.uomId !== l.baseUomId)
-		? await reader
-				.select({ itemId: itemUnit.itemId, uomId: itemUnit.uomId, factor: itemUnit.factor })
-				.from(itemUnit)
-				.where(
-					inArray(
-						itemUnit.itemId,
-						unstocked.map((l) => l.itemId)
-					)
-				)
+		? await packsOf(
+				reader,
+				unstocked.map((l) => l.itemId),
+				{ withDeleted: true }
+			)
 		: [];
 
 	const movedRows = await reader
@@ -92,7 +88,7 @@ export async function returnable(orgId: number, documentId: number, reader: Read
 		const factor =
 			l.uomId === l.baseUomId
 				? 1
-				: (packs.find((p) => p.itemId === l.itemId && p.uomId === l.uomId)?.factor ?? 1);
+				: (factorIn(packs, { id: l.itemId, baseUomId: l.baseUomId }, l.uomId) ?? 1);
 		const componentValue = movedRows
 			.filter((m) => m.lineId === l.id)
 			.reduce((sum, m) => sum + Number(m.value), 0);
@@ -192,15 +188,11 @@ export async function createReturn(
 				left.map((l) => l.itemId)
 			)
 		);
-	const factors = await tx
-		.select({ itemId: itemUnit.itemId, uomId: itemUnit.uomId, factor: itemUnit.factor })
-		.from(itemUnit)
-		.where(
-			inArray(
-				itemUnit.itemId,
-				left.map((l) => l.itemId)
-			)
-		);
+	const factors = await packsOf(
+		tx,
+		left.map((l) => l.itemId),
+		{ withDeleted: true }
+	);
 	const lotIds = left.map((l) => l.lotId).filter((id): id is number => id !== null);
 	const lots = lotIds.length ? await tx.select().from(lot).where(inArray(lot.id, lotIds)) : [];
 
@@ -227,10 +219,7 @@ export async function createReturn(
 	for (const r of left) {
 		const line = lines.find((l) => l.id === r.lineId)!;
 		const it = items.find((i) => i.id === r.itemId)!;
-		const factor =
-			line.uomId === it.baseUomId
-				? 1
-				: (factors.find((f) => f.itemId === it.id && f.uomId === line.uomId)?.factor ?? 1);
+		const factor = line.uomId === it.baseUomId ? 1 : (factorIn(factors, it, line.uomId) ?? 1);
 		const l = lots.find((x) => x.id === r.lotId);
 		await tx.insert(stockDocumentLine).values({
 			orgId: input.orgId,

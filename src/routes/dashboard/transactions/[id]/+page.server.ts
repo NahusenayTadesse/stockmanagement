@@ -1,10 +1,9 @@
 import { fail } from '@sveltejs/kit';
 import { alias } from 'drizzle-orm/mysql-core';
 import { and, eq, isNull } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { setFlash } from 'sveltekit-flash-message/server';
-import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { recordAudit } from '@nahu/admin-kit/server/audit';
 import { db } from '$lib/server/db';
@@ -28,6 +27,7 @@ import {
 } from '$lib/server/transactions';
 import { attachmentAdd, transactionEdit, voidSchema } from '$lib/schemas/transactions';
 import { m } from '$lib/paraglide/messages.js';
+import { attemptForm, invalidForm } from '$lib/server/actions';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const verifier = alias(user, 'verifier');
@@ -127,12 +127,11 @@ async function editable(event: RequestEvent) {
 export const actions: Actions = {
 	edit: async (event) => {
 		const form = await superValidate(event.request, zod4(transactionEdit));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 		const { txn, locked } = await editable(event);
 		if (locked) return message(form, { type: 'error', text: locked }, { status: 409 });
 
-		try {
+		return attemptForm(form, async () => {
 			const values = await checkTransaction(form.data, txn.orgId, txn.id);
 			await db.transaction(async (tx) => {
 				await tx
@@ -147,14 +146,8 @@ export const actions: Actions = {
 					after: values
 				});
 			});
-		} catch (err) {
-			if (err instanceof WriteRefused) {
-				if (err.field) setError(form, err.field as 'reference', err.message);
-				return message(form, { type: 'error', text: err.message }, { status: 400 });
-			}
-			throw err;
-		}
-		return message(form, { type: 'success', text: m.common_saved() });
+			return m.common_saved();
+		});
 	},
 
 	attach: async (event) => {

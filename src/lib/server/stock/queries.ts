@@ -17,6 +17,7 @@ import {
 	stockMovement,
 	uom
 } from '$lib/server/db/schema';
+import { round4 } from '$lib/money';
 
 /**
  * Everything on hand, one row per location, item and lot, with its value at average cost. Stock
@@ -246,7 +247,7 @@ export async function binCard(orgId: number, itemId: number, locationId?: number
 
 	let balance = 0;
 	return rows.map((row) => {
-		balance = Math.round((balance + Number(row.quantity)) * 1e4) / 1e4;
+		balance = round4(balance + Number(row.quantity));
 		return { ...row, balance };
 	});
 }

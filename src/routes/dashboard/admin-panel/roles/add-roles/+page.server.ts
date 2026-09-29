@@ -1,4 +1,4 @@
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect } from 'sveltekit-flash-message/server';
 import { isDuplicateKey } from '@nahu/admin-kit/server/dbErrors';
@@ -9,6 +9,7 @@ import { permissionOptions, ungrantable } from '$lib/server/users';
 import { roleSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
+import { invalidForm, refuseForm } from '$lib/server/actions';
 
 export const load: PageServerLoad = async () => ({
 	form: await superValidate(zod4(roleSchema)),
@@ -19,17 +20,14 @@ export const actions: Actions = {
 	add: async (event) => {
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(roleSchema));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 
 		const refused = await ungrantable(event.locals, form.data.permissions);
 		if (refused === null || refused.length) {
 			const text = refused
 				? m.admin_users_cannot_grant({ names: refused.join(', ') })
 				: m.admin_users_choose_permissions();
-			setError(form, 'permissions._errors', text);
-			return message(form, { type: 'error', text }, { status: 403 });
+			return refuseForm(form, text, { field: 'permissions._errors', status: 403 });
 		}
 
 		let id: number;
@@ -50,11 +48,14 @@ export const actions: Actions = {
 			});
 		} catch (err) {
 			if (isDuplicateKey(err)) {
-				setError(form, 'name', m.admin_roles_name_exists());
-				return message(form, { type: 'error', text: m.admin_roles_exists() }, { status: 409 });
+				return refuseForm(form, m.admin_roles_exists(), {
+					field: 'name',
+					fieldText: m.admin_roles_name_exists(),
+					status: 409
+				});
 			}
 			console.error('role create failed', err);
-			return message(form, { type: 'error', text: m.admin_roles_add_failed() }, { status: 500 });
+			return refuseForm(form, m.admin_roles_add_failed(), { status: 500 });
 		}
 
 		redirect(

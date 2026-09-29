@@ -1,16 +1,17 @@
-import { and, eq, isNull } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect } from 'sveltekit-flash-message/server';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
-import { location, requisition } from '$lib/server/db/schema';
+import { requisition } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { locationOptions } from '$lib/server/options';
-import { branchScope, inScope } from '$lib/server/scope';
+import { branchScope } from '$lib/server/scope';
 import { departmentNames, requisitionList } from '$lib/server/requisitions';
 import { requisitionHeader } from '$lib/schemas/requisitions';
+import { attemptForm, invalidForm } from '$lib/server/actions';
+import { pickedStore } from '$lib/server/checks';
 import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -40,46 +41,36 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'requisitions.request');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(requisitionHeader));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
-		const [loc] = await db
-			.select({ id: location.id, branchId: location.branchId, kind: location.kind })
-			.from(location)
-			.where(
-				and(
-					eq(location.id, form.data.locationId),
-					eq(location.orgId, orgId),
-					isNull(location.deletedAt)
-				)
-			);
-		if (!loc || loc.kind === 'transit' || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setError(form, 'locationId', m.purchasing_v_store_from_list());
-			return message(
-				form,
-				{ type: 'error', text: m.purchasing_v_store_from_list() },
-				{ status: 400 }
-			);
-		}
+		if (!form.valid) return invalidForm(form);
 
-		const [row] = await db
-			.insert(requisition)
-			.values({
+		return attemptForm(form, async () => {
+			const loc = await pickedStore(
+				event.locals,
 				orgId,
-				branchId: loc.branchId,
-				locationId: loc.id,
-				department: form.data.department,
-				requestDate: form.data.requestDate,
-				neededBy: form.data.neededBy || null,
-				note: form.data.note || null,
-				createdBy: event.locals.user?.id
-			})
-			.$returningId();
+				form.data.locationId,
+				m.purchasing_v_store_from_list(),
+				{ noTransit: true }
+			);
 
-		redirect(
-			`/dashboard/requisitions/${row.id}`,
-			{ type: 'success', message: m.purchasing_req_drafted() },
-			event.cookies
-		);
+			const [row] = await db
+				.insert(requisition)
+				.values({
+					orgId,
+					branchId: loc.branchId,
+					locationId: loc.id,
+					department: form.data.department,
+					requestDate: form.data.requestDate,
+					neededBy: form.data.neededBy || null,
+					note: form.data.note || null,
+					createdBy: event.locals.user?.id
+				})
+				.$returningId();
+
+			redirect(
+				`/dashboard/requisitions/${row.id}`,
+				{ type: 'success', message: m.purchasing_req_drafted() },
+				event.cookies
+			);
+		});
 	}
 };

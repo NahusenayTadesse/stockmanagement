@@ -1,12 +1,21 @@
 <script lang="ts">
+	import { ethiopianDay } from '$lib/format';
+	import type { CellContext, ColumnDef } from '@tanstack/table-core';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
+	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
+	import { dateCell, moneyCell, textColumn } from '$lib/table';
+	import PostButton from '$lib/components/PostButton.svelte';
 	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
-	import { enhance } from '$app/forms';
+	import SingleTable from '@nahu/admin-kit/components/SingleTable.svelte';
 	import { resolve } from '$app/paths';
 	import Banknote from '@lucide/svelte/icons/banknote';
 	import Mail from '@lucide/svelte/icons/mail';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Printer from '@lucide/svelte/icons/printer';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
@@ -16,7 +25,7 @@
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB } from '@nahu/admin-kit/global';
 	import CustomerFields from '$lib/components/CustomerFields.svelte';
 	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { customerEdit, receivePayment } from '$lib/schemas/customers';
@@ -32,7 +41,58 @@
 	let { data } = $props();
 	let open = $state(false);
 	let payOpen = $state(false);
-	let emailing = $state(false);
+
+	type Activity = (typeof data.credit.recent)[number];
+	/** An amount, or blank where the row has none (a sale pays nothing; a payment buys nothing). */
+	const amount = (info: CellContext<Activity, unknown>) =>
+		Number(info.getValue()) ? formatETB(Number(info.getValue())) : '';
+	const activityColumns: ColumnDef<Activity>[] = [
+		{
+			accessorKey: 'date',
+			get header() {
+				return m.common_date();
+			},
+			cell: dateCell
+		},
+		{
+			accessorKey: 'label',
+			get header() {
+				return m.sales_what();
+			},
+			cell: ({ row }) =>
+				renderComponent(DataTableLinks, {
+					id: row.original.id,
+					name: row.original.label,
+					entity:
+						row.original.kind === 'sale' || row.original.kind === 'return'
+							? 'document'
+							: 'transaction'
+				})
+		},
+		textColumn<Activity>('reference', m.common_reference),
+		{
+			accessorKey: 'debit',
+			get header() {
+				return m.sales_bought();
+			},
+			cell: amount
+		},
+		{
+			accessorKey: 'credit',
+			get header() {
+				return m.sales_paid();
+			},
+			cell: amount
+		},
+		{
+			accessorKey: 'balance',
+			meta: { align: 'right' },
+			get header() {
+				return m.sales_balance();
+			},
+			cell: moneyCell
+		}
+	];
 
 	// svelte-ignore state_referenced_locally
 	const {
@@ -62,18 +122,15 @@
 
 	const c = $derived(data.customer);
 	const credit = $derived(data.credit);
-	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
+	const day = ethiopianDay;
 
-	/** A plain list, not the kit's detail table, which capitalises emails. */
 	const details = $derived([
-		{
-			name: m.common_phone(),
-			value: c.phone ?? '—',
-			href: c.phone ? `tel:${c.phone.replace(/[^+0-9]/g, '')}` : null
-		},
+		c.phone
+			? { name: m.common_phone(), value: c.phone, kind: 'phone' as const }
+			: { name: m.common_phone(), value: '—' },
 		{ name: m.common_email(), value: c.email ?? '—', href: c.email ? `mailto:${c.email}` : null },
-		{ name: m.common_address(), value: c.address ?? '—', href: null, long: 60 },
-		{ name: 'TIN', value: c.tin ?? '—', href: null },
+		{ name: m.common_address(), value: c.address ?? '—', long: 60 },
+		{ name: 'TIN', value: c.tin ?? '—' },
 		{
 			name: m.sales_credit_label(),
 			value:
@@ -81,10 +138,9 @@
 					? m.sales_credit_no_limit_days({ days: c.creditDays })
 					: c.creditLimit === 0
 						? m.sales_cash_only()
-						: m.sales_credit_up_to({ amount: formatETB(c.creditLimit), days: c.creditDays }),
-			href: null
+						: m.sales_credit_up_to({ amount: formatETB(c.creditLimit), days: c.creditDays })
 		},
-		{ name: m.common_note(), value: c.note ?? '—', href: null, long: 120 }
+		{ name: m.common_note(), value: c.note ?? '—', long: 120 }
 	]);
 
 	const tiles = $derived<Stat[]>([
@@ -132,45 +188,26 @@
 	]);
 </script>
 
-<svelte:head>
-	<title>{c.name}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">{m.sales_customer()}</p>
-			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{c.name}
-				{#if !c.isActive}<Badge variant="secondary">{m.sales_inactive_badge()}</Badge>{/if}
-				{#if credit.overLimit}<Badge variant="destructive"
-						>{m.sales_over_credit_limit_badge()}</Badge
-					>{/if}
-			</h1>
-		</div>
-		<div class="flex flex-wrap gap-2">
+	<PageHeader title={c.name} eyebrow={m.sales_customer()}>
+		{#snippet badges()}
+			{#if !c.isActive}<Badge variant="secondary">{m.sales_inactive_badge()}</Badge>{/if}
+			{#if credit.overLimit}<Badge variant="destructive">{m.sales_over_credit_limit_badge()}</Badge
+				>{/if}
+		{/snippet}
+		{#snippet actions()}
 			<Button
 				href={resolve('/dashboard/customers/[id]/statement', { id: String(c.id) })}
 				target="_blank"
 				variant="outline"><Printer /> {m.sales_statement()}</Button
 			>
 			{#if data.canManage && c.email}
-				<form
-					method="POST"
+				<PostButton
 					action="?/emailStatement"
-					use:enhance={() => {
-						emailing = true;
-						return async ({ update }) => {
-							await update();
-							emailing = false;
-						};
-					}}
-				>
-					<Button type="submit" variant="outline" disabled={emailing}>
-						<Mail />
-						{emailing ? m.common_sending() : m.sales_email_statement()}
-					</Button>
-				</form>
+					icon={Mail}
+					label={m.sales_email_statement()}
+					busyLabel={m.common_sending()}
+				/>
 			{/if}
 			{#if data.canText}
 				{#if credit.balance > 0}
@@ -309,8 +346,8 @@
 					</form>
 				</DialogComp>
 			{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
@@ -355,25 +392,7 @@
 			<Card.Header>
 				<Card.Title>{m.sales_contact()}</Card.Title>
 			</Card.Header>
-			<Card.Content>
-				<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
-					{#each details as row (row.name)}
-						<dt class="font-semibold">{row.name}</dt>
-						<dd class="break-words">
-							{#if row.href}
-								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- tel:/mailto:, not a route -->
-								<a class="underline underline-offset-2 hover:no-underline" href={row.href}
-									>{row.value}</a
-								>
-							{:else if 'long' in row}
-								<BigText text={row.value} max={row.long} />
-							{:else}
-								{row.value}
-							{/if}
-						</dd>
-					{/each}
-				</dl>
-			</Card.Content>
+			<Card.Content><SingleTable singleTable={details} /></Card.Content>
 		</Card.Root>
 	</div>
 
@@ -382,48 +401,13 @@
 			<Card.Title>{m.sales_recent_activity()}</Card.Title>
 			<Card.Description>{m.sales_full_history()}</Card.Description>
 		</Card.Header>
-		<Card.Content class="overflow-x-auto">
-			<table class="w-full text-sm">
-				<thead class="text-left text-muted-foreground">
-					<tr>
-						<th class="py-1 pr-2">{m.common_date()}</th>
-						<th class="py-1 pr-2">{m.sales_what()}</th>
-						<th class="py-1 pr-2 text-right">{m.sales_bought()}</th>
-						<th class="py-1 pr-2 text-right">{m.sales_paid()}</th>
-						<th class="py-1 text-right">{m.sales_balance()}</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each credit.recent as e (`${e.kind}-${e.id}`)}
-						<tr class="border-t">
-							<td class="py-1.5 pr-2">{day(e.date)}</td>
-							<td class="py-1.5 pr-2">
-								{#if e.kind === 'sale' || e.kind === 'return'}
-									<a
-										class="hover:underline"
-										href={resolve('/dashboard/stock/documents/[id]', { id: String(e.id) })}
-										>{e.label}</a
-									>
-								{:else}
-									<a
-										class="hover:underline"
-										href={resolve('/dashboard/transactions/[id]', { id: String(e.id) })}
-										>{e.label}</a
-									>
-								{/if}
-								{#if e.reference}<span class="text-xs text-muted-foreground">
-										· {e.reference}</span
-									>{/if}
-							</td>
-							<td class="py-1.5 pr-2 text-right">{e.debit ? formatETB(e.debit) : ''}</td>
-							<td class="py-1.5 pr-2 text-right">{e.credit ? formatETB(e.credit) : ''}</td>
-							<td class="py-1.5 text-right font-medium">{formatETB(e.balance)}</td>
-						</tr>
-					{:else}
-						<tr><td colspan="5" class="py-3 text-muted-foreground">{m.sales_no_activity()}</td></tr>
-					{/each}
-				</tbody>
-			</table>
+		<Card.Content>
+			<DataTable
+				data={credit.recent}
+				columns={activityColumns}
+				variant="compact"
+				fileName={m.sales_recent_activity()}
+			/>
 		</Card.Content>
 	</Card.Root>
 
@@ -438,7 +422,7 @@
 					{#each data.texts as t (t.id)}
 						<li class="flex flex-col gap-1 py-2">
 							<span class="text-xs text-muted-foreground">
-								{new Date(t.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' })} ·
+								{ethiopianDateTime(t.createdAt)} ·
 								{t.phone}
 								· {t.kind} ·
 								<span

@@ -1,10 +1,10 @@
-import { fail } from '@sveltejs/kit';
 import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { auth } from '$lib/server/auth';
 import { changePasswordSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
+import { invalidForm } from '$lib/server/actions';
 
 export const load: PageServerLoad = async () => ({
 	form: await superValidate(zod4(changePasswordSchema))
@@ -13,7 +13,7 @@ export const load: PageServerLoad = async () => ({
 export const actions: Actions = {
 	changePassword: async (event) => {
 		const form = await superValidate(event.request, zod4(changePasswordSchema));
-		if (!form.valid) return fail(400, { form });
+		if (!form.valid) return invalidForm(form);
 
 		try {
 			await auth.api.changePassword({

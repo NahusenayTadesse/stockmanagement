@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
 	import { enhance } from '$app/forms';
 	import Check from '@lucide/svelte/icons/check';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
@@ -9,6 +10,9 @@
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { Textarea } from '@nahu/admin-kit/components/ui/textarea/index.js';
 	import { formatETB } from '@nahu/admin-kit/global';
+	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
 	import SubjectLink from './SubjectLink.svelte';
 	import { columns as approvalColumns } from './columns';
 	import { m } from '$lib/paraglide/messages.js';
@@ -24,26 +28,13 @@
 
 	/** The request being worked on, so only its buttons show as busy. */
 	let busy = $state<number | null>(null);
-	const when = (v: Date | string) =>
-		new Date(v).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' });
 </script>
 
-<svelte:head>
-	<title>{m.purchasing_approvals_title()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.purchasing_approvals_title()}</h1>
-		<p class="text-muted-foreground">
-			{m.purchasing_approvals_intro()}
-		</p>
-	</div>
+	<PageHeader title={m.purchasing_approvals_title()} description={m.purchasing_approvals_intro()} />
 
 	{#if data.pending.length === 0}
-		<p class="rounded-lg border p-6 text-center text-muted-foreground">
-			{m.purchasing_nothing_waiting()}
-		</p>
+		<Notice tone="info">{m.purchasing_nothing_waiting()}</Notice>
 	{:else}
 		<div class="grid gap-4 lg:grid-cols-2">
 			{#each data.pending as r (r.id)}
@@ -57,7 +48,7 @@
 						<Card.Description>
 							{m.purchasing_asked_by_when({
 								who: r.requestedBy ?? m.purchasing_someone(),
-								when: when(r.requestedAt)
+								when: ethiopianDateTime(r.requestedAt)
 							})}
 						</Card.Description>
 					</Card.Header>
@@ -117,9 +108,8 @@
 	{/if}
 
 	{#if data.history.length}
-		<div class="flex flex-col gap-2">
-			<h2 class="text-lg font-semibold">{m.purchasing_decided()}</h2>
+		<PageSection title={m.purchasing_decided()}>
 			<DataTable data={data.history} {columns} fileName={m.purchasing_approvals_title()} />
-		</div>
+		</PageSection>
 	{/if}
 </div>

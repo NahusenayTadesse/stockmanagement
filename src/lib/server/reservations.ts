@@ -12,7 +12,6 @@ import { and, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	item,
-	itemUnit,
 	kitComponent,
 	location,
 	organization,
@@ -23,7 +22,8 @@ import {
 	stockReservation,
 	uom
 } from '$lib/server/db/schema';
-import { round4 } from '$lib/server/stock/math';
+import { round4 } from '$lib/money';
+import { factorIn, packsOf } from '$lib/server/units';
 
 type Reader = Pick<typeof db, 'select'>;
 type Writer = Pick<typeof db, 'select' | 'insert' | 'delete'>;
@@ -158,15 +158,11 @@ export async function baseNeeds(
 			})
 			.from(item)
 			.where(and(eq(item.orgId, orgId), inArray(item.id, allIds))),
-		reader
-			.select()
-			.from(itemUnit)
-			.where(and(inArray(itemUnit.itemId, allIds), isNull(itemUnit.deletedAt)))
+		packsOf(reader, allIds)
 	]);
 	const factor = (itemId: number, uomId: number) => {
 		const it = items.find((i) => i.id === itemId);
-		if (!it || uomId === it.baseUomId) return 1;
-		return units.find((u) => u.itemId === itemId && u.uomId === uomId)?.factor ?? 1;
+		return it ? (factorIn(units, it, uomId) ?? 1) : 1;
 	};
 	const add = (itemId: number, q: number) => out.set(itemId, round4((out.get(itemId) ?? 0) + q));
 

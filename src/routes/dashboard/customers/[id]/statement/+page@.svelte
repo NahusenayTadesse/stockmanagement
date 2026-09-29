@@ -1,6 +1,10 @@
 <script lang="ts">
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import { column, moneyCell, moneyColumn, RIGHT } from '$lib/table';
+	import { ethiopianDay } from '$lib/format';
 	import PrintSheet from '@nahu/admin-kit/components/PrintSheet.svelte';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB } from '@nahu/admin-kit/global';
 	import { fileUrl } from '@nahu/admin-kit/files';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -8,7 +12,67 @@
 
 	const c = $derived(data.customer);
 	const s = $derived(data.statement);
-	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
+	const day = ethiopianDay;
+
+	/** A line of the account, or what was owed when the period began (`kind: 'forward'`). */
+	type Entry = Omit<(typeof s.lines)[number], 'kind'> & {
+		kind: (typeof s.lines)[number]['kind'] | 'forward';
+	};
+	const entries = $derived<Entry[]>([
+		...(data.from
+			? [
+					{
+						kind: 'forward' as const,
+						id: 0,
+						date: data.from,
+						label: m.sales_brought_forward(),
+						reference: null,
+						debit: 0,
+						credit: 0,
+						balance: s.broughtForward
+					}
+				]
+			: []),
+		...s.lines
+	]);
+	const columns: ColumnDef<Entry>[] = [
+		column<Entry>('date', m.common_date, ({ row: { original: e } }) => day(e.date)),
+		column<Entry>('label', m.sales_details, ({ row: { original: e } }) =>
+			[e.kind === 'sale' ? m.sales_purchase_label({ label: e.label }) : e.label, e.reference]
+				.filter(Boolean)
+				.join(' · ')
+		),
+		column<Entry>(
+			'debit',
+			m.sales_purchases,
+			({ row: { original: e } }) => (e.debit ? formatETB(e.debit) : ''),
+			RIGHT
+		),
+		column<Entry>(
+			'credit',
+			m.sales_payments,
+			({ row: { original: e } }) => (e.credit ? formatETB(e.credit) : ''),
+			RIGHT
+		),
+		moneyColumn<Entry>('balance', m.sales_balance)
+	];
+
+	type Open = (typeof s.open)[number];
+	/** Each unpaid purchase says what it is in its cells, so the list needs no header row. */
+	const openColumns: ColumnDef<Open>[] = [
+		{ id: 'number', cell: ({ row: { original: o } }) => o.number ?? `#${o.id}` },
+		{
+			id: 'bought',
+			cell: ({ row: { original: o } }) => m.sales_bought_on({ date: day(o.docDate) })
+		},
+		{
+			id: 'due',
+			cell: ({ row: { original: o } }) =>
+				m.sales_due_date({ date: day(o.dueDate) }) +
+				(o.daysOverdue > 0 ? m.sales_days_late_dash({ days: o.daysOverdue }) : '')
+		},
+		{ accessorKey: 'remaining', cell: moneyCell, meta: { align: 'right' } }
+	];
 </script>
 
 <svelte:head>
@@ -61,59 +125,12 @@
 		</dd>
 	</dl>
 
-	<table class="w-full border-collapse text-sm">
-		<thead>
-			<tr class="border-b-2 text-left">
-				<th class="py-1 pr-2">{m.common_date()}</th>
-				<th class="py-1 pr-2">{m.sales_details()}</th>
-				<th class="py-1 pr-2 text-right">{m.sales_purchases()}</th>
-				<th class="py-1 pr-2 text-right">{m.sales_payments()}</th>
-				<th class="py-1 text-right">{m.sales_balance()}</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#if data.from}
-				<tr class="border-b">
-					<td class="py-1 pr-2">{day(data.from)}</td>
-					<td class="py-1 pr-2" colspan="3">{m.sales_brought_forward()}</td>
-					<td class="py-1 text-right">{formatETB(s.broughtForward)}</td>
-				</tr>
-			{/if}
-			{#each s.lines as e (`${e.kind}-${e.id}`)}
-				<tr class="border-b align-top">
-					<td class="py-1 pr-2">{day(e.date)}</td>
-					<td class="py-1 pr-2">
-						{e.kind === 'sale' ? m.sales_purchase_label({ label: e.label }) : e.label}{e.reference
-							? ` · ${e.reference}`
-							: ''}
-					</td>
-					<td class="py-1 pr-2 text-right">{e.debit ? formatETB(e.debit) : ''}</td>
-					<td class="py-1 pr-2 text-right">{e.credit ? formatETB(e.credit) : ''}</td>
-					<td class="py-1 text-right">{formatETB(e.balance)}</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+	<DataTable variant="print" data={entries} {columns} />
 
 	{#if s.open.length}
 		<section class="flex flex-col gap-1 text-sm">
 			<h2 class="font-semibold">{m.sales_unpaid_purchases()}</h2>
-			<table class="w-full border-collapse">
-				<tbody>
-					{#each s.open as o (o.id)}
-						<tr class="border-b">
-							<td class="py-1 pr-2">{o.number ?? `#${o.id}`}</td>
-							<td class="py-1 pr-2">{m.sales_bought_on({ date: day(o.docDate) })}</td>
-							<td class="py-1 pr-2">
-								{m.sales_due_date({ date: day(o.dueDate) })}{o.daysOverdue > 0
-									? m.sales_days_late_dash({ days: o.daysOverdue })
-									: ''}
-							</td>
-							<td class="py-1 text-right">{formatETB(o.remaining)}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
+			<DataTable variant="print" data={s.open} columns={openColumns} />
 		</section>
 	{/if}
 

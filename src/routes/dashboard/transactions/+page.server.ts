@@ -20,6 +20,7 @@ import {
 	transactionTotals
 } from '$lib/server/transactions';
 import { transactionAdd } from '$lib/schemas/transactions';
+import { invalidForm } from '$lib/server/actions';
 import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -57,9 +58,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'transactions.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(transactionAdd));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 
 		let id: number;
 		try {

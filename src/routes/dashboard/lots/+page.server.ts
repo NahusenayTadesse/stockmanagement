@@ -9,6 +9,7 @@ import { lot } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { lotRows } from '$lib/server/stock/queries';
 import { lotEdit } from '$lib/schemas/stock';
+import { invalidForm } from '$lib/server/actions';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -35,9 +36,7 @@ export const actions: Actions = {
 	edit: async (event) => {
 		requirePermission(event.locals, 'lots.manage');
 		const form = await superValidate(event.request, zod4(lotEdit));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 
 		const result = await db
 			.update(lot)

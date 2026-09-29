@@ -5,71 +5,81 @@
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { qty } from '$lib/format';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import { renderSnippet } from '@nahu/admin-kit/components/ui/data-table/index.js';
 
 	/**
 	 * An item's minimum and maximum per location. At or below the minimum, the reorder screen
 	 * suggests ordering up to the maximum. Saving a location that already has levels changes them.
 	 */
+	type Rule = {
+		id: number;
+		locationId: number;
+		location: string;
+		branch: string;
+		minQuantity: number;
+		maxQuantity: number | null;
+	};
 	let {
 		rules,
 		locations,
 		unit,
 		readonly = false
 	}: {
-		rules: {
-			id: number;
-			locationId: number;
-			location: string;
-			branch: string;
-			minQuantity: number;
-			maxQuantity: number | null;
-		}[];
+		rules: Rule[];
 		locations: { value: number; name: string }[];
 		unit: string | undefined;
 		readonly?: boolean;
 	} = $props();
+
+	const columns = $derived<ColumnDef<Rule>[]>([
+		{
+			accessorKey: 'location',
+			header: m.common_location(),
+			cell: ({ row }) => `${row.original.branch} · ${row.original.location}`
+		},
+		{
+			accessorKey: 'minQuantity',
+			meta: { align: 'right' },
+			header: m.stock_minimum(),
+			cell: ({ row }) => qty(row.original.minQuantity, unit ?? '')
+		},
+		{
+			accessorKey: 'maxQuantity',
+			meta: { align: 'right' },
+			header: m.stock_maximum(),
+			cell: ({ row }) =>
+				row.original.maxQuantity === null
+					? m.stock_twice_minimum()
+					: qty(row.original.maxQuantity, unit ?? '')
+		},
+		...(readonly
+			? []
+			: [
+					{
+						id: 'remove',
+						header: m.stock_remove(),
+						cell: ({ row }) => renderSnippet(removeCell, row.original)
+					} satisfies ColumnDef<Rule>
+				])
+	]);
 </script>
 
+{#snippet removeCell(r: Rule)}
+	<form method="POST" action="?/deleteRule" use:enhance>
+		<input type="hidden" name="id" value={r.id} />
+		<Button
+			type="submit"
+			variant="ghost"
+			size="icon"
+			aria-label={m.stock_remove_levels_at({ location: r.location })}><Trash2 /></Button
+		>
+	</form>
+{/snippet}
+
 {#if rules.length}
-	<div class="overflow-x-auto rounded-md border">
-		<table class="w-full text-sm">
-			<thead class="bg-muted/50 text-left">
-				<tr>
-					<th class="px-3 py-2">{m.common_location()}</th>
-					<th class="px-3 py-2 text-right">{m.stock_minimum()}</th>
-					<th class="px-3 py-2 text-right">{m.stock_maximum()}</th>
-					{#if !readonly}<th class="w-10 px-3 py-2"
-							><span class="sr-only">{m.stock_remove()}</span></th
-						>{/if}
-				</tr>
-			</thead>
-			<tbody>
-				{#each rules as r (r.id)}
-					<tr class="border-t">
-						<td class="px-3 py-2">{r.branch} · {r.location}</td>
-						<td class="px-3 py-2 text-right">{qty(r.minQuantity, unit ?? '')}</td>
-						<td class="px-3 py-2 text-right">
-							{r.maxQuantity === null ? m.stock_twice_minimum() : qty(r.maxQuantity, unit ?? '')}
-						</td>
-						{#if !readonly}
-							<td class="px-3 py-2">
-								<form method="POST" action="?/deleteRule" use:enhance>
-									<input type="hidden" name="id" value={r.id} />
-									<Button
-										type="submit"
-										variant="ghost"
-										size="icon"
-										aria-label={m.stock_remove_levels_at({ location: r.location })}
-										><Trash2 /></Button
-									>
-								</form>
-							</td>
-						{/if}
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	<DataTable variant="compact" data={rules} {columns} />
 {:else}
 	<p class="text-muted-foreground">
 		{m.stock_no_levels()}

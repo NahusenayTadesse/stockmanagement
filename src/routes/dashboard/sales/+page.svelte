@@ -1,18 +1,28 @@
 <script lang="ts">
-	import { longText, NAME_LENGTH } from '$lib/cells';
-	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
+	import {
+		dateCell,
+		longText,
+		moneyCell,
+		NAME_LENGTH,
+		sortable,
+		documentStatusCell,
+		textColumn
+	} from '$lib/table';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import FilterBar from '$lib/components/filters/FilterBar.svelte';
+	import DateRangeFields from '$lib/components/filters/DateRangeFields.svelte';
+	import DatePresets from '$lib/components/filters/DatePresets.svelte';
 	import { resolve } from '$app/paths';
 	import Calculator from '@lucide/svelte/icons/calculator';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import type { ColumnDef } from '@tanstack/table-core';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { formatETB } from '@nahu/admin-kit/global';
-	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
-	import { DOCUMENT_STATUS_LABELS, EINVOICE_STATUS_LABELS } from '$lib/format';
+	import { EINVOICE_STATUS_LABELS } from '$lib/format';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
@@ -20,10 +30,10 @@
 	const f = $derived(data.filters);
 
 	const columns: ColumnDef<Row>[] = [
-		{ accessorKey: 'docDate', header: m.common_date(), cell: (i) => ethiopianDate(i.getValue()) },
+		{ accessorKey: 'docDate', header: sortable(m.common_date), cell: dateCell },
 		{
 			accessorKey: 'number',
-			header: m.sales_number(),
+			header: sortable(m.sales_number),
 			cell: ({ row }) =>
 				renderComponent(DataTableLinks, {
 					id: row.original.id,
@@ -31,24 +41,39 @@
 					entity: 'document'
 				})
 		},
-		{ accessorKey: 'kind', header: m.sales_kind() },
-		{ accessorKey: 'buyer', header: m.sales_customer(), cell: longText(NAME_LENGTH) },
-		{ accessorKey: 'channel', header: m.sales_where() },
+		textColumn<Row>('kind', m.sales_kind),
+		{ accessorKey: 'buyer', header: sortable(m.sales_customer), cell: longText(NAME_LENGTH) },
+		textColumn<Row>('channel', m.sales_where),
 		{
 			accessorKey: 'total',
-			header: m.common_total(),
-			cell: (i) => formatETB(Number(i.getValue()))
+			header: sortable(m.common_total),
+			cell: moneyCell,
+			meta: { align: 'right' }
 		},
-		{ accessorKey: 'paid', header: m.sales_paid(), cell: (i) => formatETB(Number(i.getValue())) },
+		{
+			accessorKey: 'paid',
+			header: sortable(m.sales_paid),
+			cell: moneyCell,
+			meta: { align: 'right' }
+		},
 		{
 			accessorKey: 'balance',
-			header: m.sales_on_account(),
+			meta: { align: 'right' },
+			header: sortable(m.sales_on_account),
 			cell: (i) => (Number(i.getValue()) ? formatETB(Number(i.getValue())) : '—')
 		},
-		{ accessorKey: 'fsNumber', header: m.sales_fs_no(), cell: (i) => i.getValue() ?? '—' },
+		{
+			accessorKey: 'fsNumber',
+			get header() {
+				return m.sales_fs_no();
+			},
+			cell: (i) => i.getValue() ?? '—'
+		},
 		{
 			accessorKey: 'einvoiceStatus',
-			header: m.sales_einvoice(),
+			get header() {
+				return m.sales_einvoice();
+			},
 			cell: (i) => {
 				const v = i.getValue() as string | null;
 				return v ? (EINVOICE_STATUS_LABELS[v] ?? v) : '—';
@@ -56,9 +81,10 @@
 		},
 		{
 			accessorKey: 'status',
-			header: m.common_status(),
-			cell: (i) =>
-				DOCUMENT_STATUS_LABELS[i.getValue() as keyof typeof DOCUMENT_STATUS_LABELS] ?? i.getValue()
+			get header() {
+				return m.common_status();
+			},
+			cell: ({ row }) => documentStatusCell(row.original.status)
 		},
 		{
 			id: 'invoice',
@@ -76,38 +102,26 @@
 	];
 </script>
 
-<svelte:head>
-	<title>{m.sales_register_title()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-4">
-	<div class="flex flex-wrap items-start justify-between gap-2">
-		<div>
-			<h1 class="text-2xl font-semibold">{m.sales_register_heading()}</h1>
-			<p class="text-muted-foreground">{m.sales_register_intro()}</p>
-		</div>
-		<div class="flex gap-2">
+	<PageHeader
+		title={m.sales_register_heading()}
+		tabTitle={m.sales_register_title()}
+		description={m.sales_register_intro()}
+	>
+		{#snippet actions()}
 			<Button href={resolve('/dashboard/sales/quotes')} variant="outline"
 				><FileText /> {m.nav_proformas()}</Button
 			>
 			<Button href={resolve('/dashboard/pos')}><Calculator /> {m.sales_channel_till()}</Button>
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
-	<div class="flex flex-wrap items-end gap-2">
-		{#each data.presets as p (p.key)}
-			<Button
-				size="sm"
-				href="?from={p.from}&to={p.to}"
-				variant={p.from === f.from && p.to === f.to ? 'default' : 'outline'}>{p.label}</Button
-			>
-		{/each}
-		<form method="GET" class="flex items-end gap-2">
-			<DateInput name="from" value={f.from} />
-			<DateInput name="to" value={f.to} />
-			<Button type="submit" size="sm" variant="outline">{m.sales_show()}</Button>
-		</form>
-	</div>
+	<FilterBar submitLabel={m.sales_show()}>
+		<DateRangeFields from={f.from} to={f.to} />
+		{#snippet after()}
+			<DatePresets presets={data.presets} from={f.from} to={f.to} />
+		{/snippet}
+	</FilterBar>
 
 	<div class="grid gap-4 sm:grid-cols-4">
 		<StatCard
@@ -153,6 +167,7 @@
 	<DataTable
 		data={data.sales}
 		{columns}
+		variant="list"
 		fileName={m.sales_file_range({ from: f.from, to: f.to })}
 		facetKeys={['kind', 'channel', 'status']}
 	/>

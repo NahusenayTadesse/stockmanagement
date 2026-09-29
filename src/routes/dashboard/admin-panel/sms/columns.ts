@@ -2,12 +2,9 @@ import type { ColumnDef } from '@tanstack/table-core';
 import type { PageData } from './$types';
 import { m } from '$lib/paraglide/messages.js';
 import { labels } from '$lib/format';
-import { longText } from '$lib/cells';
+import { dateTimeCell, longText, statusCell } from '$lib/table';
 
 type Row = PageData['log'][number];
-
-const when = (v: unknown) =>
-	v ? new Date(v as string).toLocaleString('en-GB', { timeZone: 'Africa/Addis_Ababa' }) : '';
 
 export const STATUS_TEXT: Record<Row['status'], string> = labels({
 	sent: m.admin_sms_st_sent,
@@ -15,6 +12,14 @@ export const STATUS_TEXT: Record<Row['status'], string> = labels({
 	failed: m.admin_sms_st_failed,
 	skipped: m.admin_sms_st_skipped
 });
+
+/** The badge colour for each: sent is done, test mode waits, failed is red, skipped is grey. */
+const STATUS_TONE: Record<Row['status'], string> = {
+	sent: 'completed',
+	dry_run: 'pending',
+	failed: 'cancelled',
+	skipped: 'skipped'
+};
 
 /** What each message was for, as the log shows it. Unknown kinds show as stored. */
 const KIND_TEXT: Record<string, string> = labels({
@@ -36,7 +41,7 @@ export const columns: ColumnDef<Row>[] = [
 		get header() {
 			return m.admin_sms_col_when();
 		},
-		cell: (i) => when(i.getValue())
+		cell: dateTimeCell
 	},
 	{
 		accessorKey: 'phone',
@@ -64,7 +69,14 @@ export const columns: ColumnDef<Row>[] = [
 			return m.common_status();
 		},
 		cell: ({ row }) =>
-			STATUS_TEXT[row.original.status] + (row.original.error ? `: ${row.original.error}` : '')
+			statusCell(STATUS_TONE[row.original.status], STATUS_TEXT[row.original.status])
+	},
+	{
+		accessorKey: 'error',
+		get header() {
+			return m.admin_sms_col_error();
+		},
+		cell: longText()
 	},
 	{
 		accessorKey: 'body',

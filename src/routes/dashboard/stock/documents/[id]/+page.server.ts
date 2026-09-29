@@ -3,7 +3,7 @@ import { error, fail } from '@sveltejs/kit';
 import { DOCUMENT_STATUS_LABELS } from '$lib/format';
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { childActions, childCrud, WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
@@ -47,8 +47,8 @@ import {
 import { ApprovalRequired, postDocument, StockError } from '$lib/server/stock/post';
 import { receiveTransfer } from '$lib/server/stock/transit';
 import {
+	approvalState,
 	closePendingFor,
-	lastDecision,
 	pendingFor,
 	requestApproval,
 	withdrawApproval
@@ -67,6 +67,7 @@ import { redirect, setFlash } from 'sveltekit-flash-message/server';
 import { paymentActions, paymentSection } from '$lib/server/stock/payment';
 import { customerStatement } from '$lib/server/credit';
 import { documentHeader, lineAdd, lineEdit } from '$lib/schemas/stock';
+import { attempt, attemptForm, flashDone, invalidForm } from '$lib/server/actions';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const lines = childCrud({
@@ -406,10 +407,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// Maker-checker on adjustments: what is waiting, or why it was turned down.
 	const approval =
 		doc.type === 'adjustment' && doc.status === 'draft'
-			? {
-					pending: await pendingFor(orgId, { kind: 'adjustment', documentId: doc.id }),
-					last: await lastDecision(orgId, { kind: 'adjustment', documentId: doc.id })
-				}
+			? await approvalState(orgId, { kind: 'adjustment', documentId: doc.id })
 			: null;
 
 	return {
@@ -463,9 +461,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'stock.draft');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(documentHeader));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 		const doc = await orgDocument(orgId, Number(event.params.id));
 		await inViewersBranches(event.locals, doc);
 		if (doc.status !== 'draft') {
@@ -477,7 +473,7 @@ export const actions: Actions = {
 				? { supplierId: doc.supplierId, customerId: doc.customerId, party: doc.party }
 				: {};
 
-		try {
+		return attemptForm(form, async () => {
 			// The type stays what it was: the lines were entered for it.
 			const values = {
 				...(await headerValues(
@@ -495,19 +491,8 @@ export const actions: Actions = {
 			if (values.exchangeRate !== doc.exchangeRate || values.currency !== doc.currency) {
 				await recostForeignLines(doc.id, values.currency ? values.exchangeRate : null);
 			}
-		} catch (err) {
-			if (err instanceof WriteRefused) {
-				if (err.field)
-					setError(
-						form,
-						err.field as 'toLocationId' | 'supplierId' | 'customerId' | 'exchangeRate',
-						err.message
-					);
-				return message(form, { type: 'error', text: err.message }, { status: 400 });
-			}
-			throw err;
-		}
-		return message(form, { type: 'success', text: m.common_saved() });
+			return m.common_saved();
+		});
 	},
 
 	/** Posts the draft: the moment stock changes. All lines or none. */
@@ -517,84 +502,84 @@ export const actions: Actions = {
 		const documentId = Number(event.params.id);
 		await inViewersBranches(event.locals, await orgDocument(orgId, documentId));
 
-		try {
-			const { number, status, warnings } = await db.transaction((tx) =>
-				postDocument(tx, {
-					orgId,
-					documentId,
-					userId: event.locals.user?.id,
-					allowOverLimit: hasPermission(event.locals, 'customers.credit')
-				})
-			);
+		// Something other than a refusal went wrong: nothing was posted, and the person is told so.
+		let broke = false;
+		const answer = await attempt(event, async () => {
+			let posted;
+			try {
+				posted = await db.transaction((tx) =>
+					postDocument(tx, {
+						orgId,
+						documentId,
+						userId: event.locals.user?.id,
+						allowOverLimit: hasPermission(event.locals, 'customers.credit')
+					})
+				);
+			} catch (err) {
+				// Over the business's limits: not refused, but it waits for someone else.
+				if (err instanceof ApprovalRequired) {
+					await requestApproval({
+						orgId,
+						userId: event.locals.user?.id,
+						subject: { kind: 'adjustment', documentId },
+						refusal: err
+					});
+					return m.stock_sent_for_approval({ reason: err.reason });
+				}
+				if (err instanceof StockError) throw err;
+				console.error('posting failed', err);
+				broke = true;
+				return null;
+			}
+			const { number, status, warnings } = posted;
 			// Fiscal receipt and e-invoice, when set up: after the commit, never undoing it.
 			const { notes, failed } = await afterSale(orgId, documentId, {
 				userId: event.locals.user?.id
 			});
 			// A transfer on its way: the receiving branch (and the alert numbers) are told.
 			if (status === 'in_transit') await smsTransferDispatched(orgId, documentId);
-			setFlash(
-				{
-					type: failed || warnings.length ? 'error' : 'success',
-					message: [
-						status === 'in_transit'
-							? m.stock_dispatched_as({ number })
-							: m.stock_posted_as({ number }),
-						...warnings,
-						...notes
-					].join(' · ')
-				},
-				event.cookies
-			);
-			return { posted: number };
-		} catch (err) {
-			// Over the business's limits: not refused, but it waits for someone else.
-			if (err instanceof ApprovalRequired) {
-				await requestApproval({
-					orgId,
-					userId: event.locals.user?.id,
-					subject: { kind: 'adjustment', documentId },
-					refusal: err
-				});
-				setFlash(
-					{
-						type: 'success',
-						message: m.stock_sent_for_approval({ reason: err.reason })
-					},
-					event.cookies
-				);
-				return { awaitingApproval: true };
+			const text = [
+				status === 'in_transit' ? m.stock_dispatched_as({ number }) : m.stock_posted_as({ number }),
+				...warnings,
+				...notes
+			].join(' · ');
+			// Posted, but something wants attention (a short shelf life, a device that did not print).
+			if (failed || warnings.length) {
+				setFlash({ type: 'error', message: text }, event.cookies);
+				return null;
 			}
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { stockError: err.message, lineId: err.lineId ?? null });
-			}
-			console.error('posting failed', err);
+			return text;
+		});
+		if (broke) {
 			setFlash({ type: 'error', message: m.stock_posting_failed() }, event.cookies);
 			return fail(500);
 		}
+		return answer;
 	},
 
 	/** A draft return of what is left on this sale or receipt, opened for the storekeeper. */
 	startReturn: async (event) => {
 		requirePermission(event.locals, 'stock.draft');
 		const orgId = orgIdOf(event.locals);
-		let id: number;
-		try {
-			id = await db.transaction((tx) =>
-				createReturn(tx, {
-					orgId,
-					documentId: Number(event.params.id),
-					date: localToday(),
-					userId: event.locals.user?.id
-				})
-			);
-		} catch (err) {
-			if (err instanceof ReturnError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { stockError: err.message });
+		let id = 0;
+		const answer = await attempt(event, async () => {
+			try {
+				id = await db.transaction((tx) =>
+					createReturn(tx, {
+						orgId,
+						documentId: Number(event.params.id),
+						date: localToday(),
+						userId: event.locals.user?.id
+					})
+				);
+			} catch (err) {
+				// Nothing left to return, a draft already open: a refusal like any other.
+				if (err instanceof ReturnError) throw new StockError(err.message);
+				throw err;
 			}
-			throw err;
-		}
+			return null;
+		});
+		if (!id) return answer;
 		redirect(
 			`/dashboard/stock/documents/${id}`,
 			{
@@ -644,8 +629,8 @@ export const actions: Actions = {
 				}
 			}
 		});
-		setFlash({ type: 'success', message: m.stock_return_saved() }, event.cookies);
-		return { saved: true };
+		flashDone(event, m.stock_return_saved());
+		return { done: true };
 	},
 
 	/** Prints the fiscal receipt on the branch's device (or retries a failed one). */
@@ -729,7 +714,7 @@ export const actions: Actions = {
 								.filter(Boolean)
 			};
 		});
-		try {
+		return attempt(event, async () => {
 			const { lost } = await db.transaction((tx) =>
 				receiveTransfer(tx, {
 					orgId,
@@ -739,25 +724,19 @@ export const actions: Actions = {
 					note: String(data.get('note') ?? '').trim() || null
 				})
 			);
+			if (!lost.length) return m.stock_received_in_full();
+			// Received, but not all of it: that wants attention.
 			setFlash(
-				lost.length
-					? {
-							type: 'error',
-							message: m.stock_received_lost({
-								lost: lost.map((l) => `${l.quantity} ${l.item}`).join(', ')
-							})
-						}
-					: { type: 'success', message: m.stock_received_in_full() },
+				{
+					type: 'error',
+					message: m.stock_received_lost({
+						lost: lost.map((l) => `${l.quantity} ${l.item}`).join(', ')
+					})
+				},
 				event.cookies
 			);
-			return { received: true };
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { stockError: err.message, lineId: err.lineId ?? null });
-			}
-			throw err;
-		}
+			return null;
+		});
 	},
 
 	/** The requester takes back an adjustment waiting for approval, to change it. */
@@ -767,19 +746,12 @@ export const actions: Actions = {
 		const doc = await orgDocument(orgId, Number(event.params.id));
 		const pending = await pendingFor(orgId, { kind: 'adjustment', documentId: doc.id });
 		if (!pending) return fail(409);
-		try {
+		return attempt(event, async () => {
 			await db.transaction((tx) =>
 				withdrawApproval(tx, { orgId, requestId: pending.id, userId: event.locals.user!.id })
 			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409);
-			}
-			throw err;
-		}
-		setFlash({ type: 'success', message: m.stock_approval_withdrawn() }, event.cookies);
-		return { withdrawn: true };
+			return m.stock_approval_withdrawn();
+		});
 	},
 
 	/** A draft that will not be posted. Kept, not deleted, so its number range has no mystery gaps. */
@@ -803,7 +775,7 @@ export const actions: Actions = {
 		if (doc.type === 'adjustment') {
 			await closePendingFor(doc.orgId, { kind: 'adjustment', documentId: doc.id });
 		}
-		setFlash({ type: 'success', message: m.stock_draft_cancelled() }, event.cookies);
-		return { cancelled: true };
+		flashDone(event, m.stock_draft_cancelled());
+		return { done: true };
 	}
 };

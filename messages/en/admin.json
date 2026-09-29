@@ -102,11 +102,9 @@
 	"admin_home_expiry": "Expiry",
 	"admin_home_expiry_desc": "Lots with stock that have expired or will soon.",
 	"admin_home_nothing_expiring": "Nothing is close to expiring.",
-	"admin_home_lot": "Lot {lot}",
 	"admin_home_reorder": "Reorder",
 	"admin_home_reorder_desc": "Items at or below their reorder level.",
 	"admin_home_nothing_reorder": "Nothing needs reordering.",
-	"admin_home_reorder_at": "/ reorder at {level}",
 	"admin_home_latest": "Latest documents",
 	"admin_home_no_docs_before": "No documents yet. Start with a",
 	"admin_home_no_docs_link": "goods receipt",
@@ -577,9 +575,13 @@
 	"admin_imp_fix_first": "Fix first",
 	"admin_imp_update": "Update",
 	"admin_imp_add": "Add",
-	"admin_imp_showing": "Showing {shown} of {total} rows, problems first.",
 	"admin_imp_fix_rows": "Fix the rows marked “Fix first” in your spreadsheet and preview it again. Nothing is imported while any row has a problem.",
 	"admin_imp_importing": "Importing…",
 	"admin_imp_import_n": "Import {count} rows",
-	"admin_imp_no_template": "No such template"
+	"admin_imp_no_template": "No such template",
+	"admin_fd_col_device": "Device",
+	"admin_fd_col_status": "Last check",
+	"admin_fd_col_checked": "Checked",
+	"admin_fd_col_z": "Last Z report",
+	"admin_sms_col_error": "Error"
 }

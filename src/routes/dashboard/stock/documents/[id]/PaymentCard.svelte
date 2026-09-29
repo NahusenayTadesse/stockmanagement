@@ -8,10 +8,9 @@
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { fileUrl } from '@nahu/admin-kit/files';
-	import { formatEthiopianDate } from '@nahu/admin-kit/global';
 	import type { PageData } from './$types';
 	import PaymentForms from './PaymentForms.svelte';
-	import { signed } from '../../../transactions/columns';
+	import { ethiopianDay, signedAmount } from '$lib/format';
 
 	let { pay, canManage }: { pay: PageData['pay']; canManage: boolean } = $props();
 
@@ -33,10 +32,10 @@
 							: ''}"
 						href={resolve('/dashboard/transactions/[id]', { id: String(p.id) })}
 					>
-						{signed(p.direction, p.amount)}
+						{signedAmount(p.direction, p.amount)}
 					</a>
 					<p class="text-sm text-muted-foreground">
-						{formatEthiopianDate(new Date(`${p.occurredOn}T12:00:00+03:00`))}
+						{ethiopianDay(p.occurredOn)}
 						{#if p.method}· {p.method}{/if}
 						{#if p.party}· {p.party}{/if}
 					</p>
@@ -76,7 +75,7 @@
 									? 'text-muted-foreground line-through'
 									: ''}"
 								href={resolve('/dashboard/transactions/[id]', { id: String(o.id) })}
-								>{signed(o.direction, o.amount)}</a
+								>{signedAmount(o.direction, o.amount)}</a
 							>
 							<span class="text-muted-foreground"
 								>{o.method ? ` · ${o.method}` : ''}{o.reference ? ` · ${o.reference}` : ''}</span

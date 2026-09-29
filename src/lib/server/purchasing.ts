@@ -2,13 +2,12 @@
  * Purchase orders: what was ordered, what has arrived, what is still due. Deliveries are ordinary
  * goods receipts pointing back at the order; everything here is worked out from them.
  */
-import { error } from '@sveltejs/kit';
+
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	branch,
 	item,
-	itemUnit,
 	location,
 	organization,
 	purchaseOrder,
@@ -24,22 +23,19 @@ import {
 import { addLocalDays, localToday } from '@nahu/admin-kit/time';
 import { reservedByLocation } from '$lib/server/reservations';
 import { qualified } from '$lib/server/db/sql';
-import { round4 } from '$lib/server/stock/math';
+
 import { ApprovalRequired, issueNumber, StockError, type Tx } from '$lib/server/stock/post';
 import { m } from '$lib/paraglide/messages.js';
 import { PO_STATUS_LABELS } from '$lib/schemas/purchasing';
+import { cents, round4 } from '$lib/money';
+import { factorIn, packsOf } from '$lib/server/units';
+import { daysBetween } from '$lib/server/days';
+import { orgRowOr404 } from '$lib/server/org';
 
 type Writer = typeof db | Tx;
 
 export async function orgOrder(orgId: number, id: number, reader: Writer = db) {
-	const [row] = await reader
-		.select()
-		.from(purchaseOrder)
-		.where(
-			and(eq(purchaseOrder.id, id), eq(purchaseOrder.orgId, orgId), isNull(purchaseOrder.deletedAt))
-		);
-	if (!row) error(404, m.purchasing_po_not_found());
-	return row;
+	return orgRowOr404(purchaseOrder, orgId, id, m.purchasing_po_not_found, reader);
 }
 
 /** Quantity delivered against an order line, in the line's own unit, by posted receipts only. */
@@ -86,7 +82,7 @@ export async function orderLines(orgId: number, orderId: number, reader: Writer 
 			...r,
 			received,
 			due: Math.max(0, round4(r.quantity - received)),
-			value: Math.round(r.quantity * (r.unitPrice ?? 0) * 100) / 100
+			value: cents(r.quantity * (r.unitPrice ?? 0))
 		};
 	});
 }
@@ -154,7 +150,7 @@ export async function orderList(orgId: number) {
 	return rows.map((r) => ({
 		...r,
 		lines: Number(r.lines),
-		value: Math.round(Number(r.value) * 100) / 100,
+		value: cents(Number(r.value)),
 		receipts: Number(r.receipts)
 	}));
 }
@@ -190,19 +186,11 @@ export async function onOrderByItem(
 		);
 
 	const itemIds = [...new Set(rows.map((r) => r.itemId))];
-	const factors = itemIds.length
-		? await reader
-				.select()
-				.from(itemUnit)
-				.where(and(inArray(itemUnit.itemId, itemIds), isNull(itemUnit.deletedAt)))
-		: [];
+	const factors = await packsOf(reader, itemIds);
 
 	const out = new Map<number, number>();
 	for (const r of rows) {
-		const factor =
-			r.uomId === r.baseUomId
-				? 1
-				: (factors.find((f) => f.itemId === r.itemId && f.uomId === r.uomId)?.factor ?? 1);
+		const factor = factorIn(factors, { id: r.itemId, baseUomId: r.baseUomId }, r.uomId) ?? 1;
 		const due = Math.max(0, r.quantity - Number(r.received)) * factor;
 		out.set(r.itemId, round4((out.get(r.itemId) ?? 0) + due));
 	}
@@ -258,7 +246,7 @@ export async function markOrdered(
 			.select({ limit: organization.approveOrdersOver })
 			.from(organization)
 			.where(eq(organization.id, input.orgId));
-		const value = Math.round(lines.reduce((s, l) => s + l.value, 0) * 100) / 100;
+		const value = cents(lines.reduce((s, l) => s + l.value, 0));
 		if (org?.limit != null && value >= org.limit) {
 			throw new ApprovalRequired(
 				'purchase_order',
@@ -474,7 +462,6 @@ export async function reorderSuggestions(
 		}
 		return round4(sum);
 	};
-	const DAY = 86_400_000;
 
 	const out = [];
 	for (const it of items) {
@@ -489,7 +476,7 @@ export async function reorderSuggestions(
 		// Usage per day, over the window — or since the item first moved here, if that is sooner
 		// (but never less than two weeks, so one early sale does not look like a trend).
 		const u = usage.find((x) => x.itemId === it.id);
-		const known = u?.first ? Math.round((Date.parse(today) - Date.parse(u.first)) / DAY) : 0;
+		const known = u?.first ? daysBetween(u.first, today) : 0;
 		const window = Math.min(days, Math.max(14, known));
 		const perDay = u ? Math.max(0, Number(u.used)) / window : 0;
 		const usagePerDay = Math.round(perDay * 1000) / 1000;
@@ -604,7 +591,7 @@ export async function ordersFromReorder(
 					itemId: it.id,
 					uomId: it.baseUomId,
 					quantity: round4(l.quantity),
-					unitPrice: it.avgCost ? Math.round(it.avgCost * 100) / 100 : null
+					unitPrice: it.avgCost ? cents(it.avgCost) : null
 				};
 			})
 		);

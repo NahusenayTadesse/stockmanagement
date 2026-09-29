@@ -7,7 +7,7 @@
  * units, and a quantity difference could not say which unit is missing.
  */
 import { m } from '$lib/paraglide/messages.js';
-import { error } from '@sveltejs/kit';
+
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
@@ -26,7 +26,9 @@ import {
 	uom
 } from '$lib/server/db/schema';
 import { ApprovalRequired, postDocument, StockError, type Tx } from '$lib/server/stock/post';
-import { round4 } from '$lib/server/stock/math';
+
+import { cents, round4 } from '$lib/money';
+import { orgRowOr404 } from '$lib/server/org';
 
 type Writer = typeof db | Tx;
 
@@ -41,12 +43,7 @@ function countStatus(status: string) {
 }
 
 export async function orgCount(orgId: number, id: number, reader: Writer = db) {
-	const [row] = await reader
-		.select()
-		.from(stockCount)
-		.where(and(eq(stockCount.id, id), eq(stockCount.orgId, orgId), isNull(stockCount.deletedAt)));
-	if (!row) error(404, m.stock_count_not_found());
-	return row;
+	return orgRowOr404(stockCount, orgId, id, m.stock_count_not_found, reader);
 }
 
 /** Opens a count and takes the snapshot, in one transaction. Returns its id. */
@@ -161,7 +158,7 @@ export async function countLines(orgId: number, countId: number, reader: Writer 
 		return {
 			...r,
 			variance,
-			varianceValue: variance === null ? null : Math.round(variance * r.avgCost * 100) / 100
+			varianceValue: variance === null ? null : cents(variance * r.avgCost)
 		};
 	});
 }
@@ -309,8 +306,7 @@ export async function postCount(
 			.select({ limit: organization.approveCountsOver })
 			.from(organization)
 			.where(eq(organization.id, orgId));
-		const value =
-			Math.round(differences.reduce((s, d) => s + Math.abs(d.varianceValue ?? 0), 0) * 100) / 100;
+		const value = cents(differences.reduce((s, d) => s + Math.abs(d.varianceValue ?? 0), 0));
 		if (org?.limit != null && value >= org.limit) {
 			throw new ApprovalRequired(
 				'count',

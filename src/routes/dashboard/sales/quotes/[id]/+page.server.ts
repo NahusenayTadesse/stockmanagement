@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { and, eq, isNull } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { message, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect, setFlash } from 'sveltekit-flash-message/server';
 import { childActions, childCrud, WriteRefused } from '@nahu/admin-kit/server/childCrud';
@@ -12,7 +12,6 @@ import {
 	customer,
 	item,
 	itemUnit,
-	location,
 	organization,
 	quote,
 	quoteLine,
@@ -20,16 +19,17 @@ import {
 } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { locationOptions, saleItemOptions, unitOptions } from '$lib/server/options';
-import { checkCustomer, customerChoices } from '$lib/server/customers';
+import { customerChoices } from '$lib/server/customers';
 import { discountPercent, priceFor } from '$lib/server/pricing';
 import { convertQuote, numberQuote, orgQuote, quoteEditable, quoteLines } from '$lib/server/quotes';
 import { sendMail } from '$lib/server/mail';
-import { StockError } from '$lib/server/stock/post';
+import { attempt, attemptForm, invalidForm } from '$lib/server/actions';
 import { quoteHeader, quoteLineAdd, quoteLineEdit } from '$lib/schemas/quotes';
 import { releaseQuote, reservationsOfQuote, reserveQuote } from '$lib/server/reservations';
 import { smsQuote } from '$lib/server/sms';
 import { canText, textAction, typedNumber } from '$lib/server/smsActions';
 import { m } from '$lib/paraglide/messages.js';
+import { checkHeader, headerValues } from '../header.server';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 /**
@@ -206,26 +206,27 @@ async function setStatus(
 	const orgId = orgIdOf(event.locals);
 	const q = await orgQuote(orgId, Number(event.params.id));
 	if (!quoteEditable(q.status)) return fail(409);
-	await db.transaction(async (tx) => {
-		if (status !== 'cancelled') await numberQuote(tx, orgId, q.id);
-		await tx
-			.update(quote)
-			.set({
-				status,
-				...(status === 'sent' && { sentAt: new Date() }),
-				updatedBy: event.locals.user?.id
-			})
-			.where(eq(quote.id, q.id));
-		// Accepted: the stock is held for the buyer (when the business reserves stock). Anything
-		// else lets it go again.
-		if (status === 'accepted') {
-			await reserveQuote(tx, { orgId, quoteId: q.id, userId: event.locals.user?.id });
-		} else {
-			await releaseQuote(tx, q.id);
-		}
+	return attempt(event, async () => {
+		await db.transaction(async (tx) => {
+			if (status !== 'cancelled') await numberQuote(tx, orgId, q.id);
+			await tx
+				.update(quote)
+				.set({
+					status,
+					...(status === 'sent' && { sentAt: new Date() }),
+					updatedBy: event.locals.user?.id
+				})
+				.where(eq(quote.id, q.id));
+			// Accepted: the stock is held for the buyer (when the business reserves stock). Anything
+			// else lets it go again.
+			if (status === 'accepted') {
+				await reserveQuote(tx, { orgId, quoteId: q.id, userId: event.locals.user?.id });
+			} else {
+				await releaseQuote(tx, q.id);
+			}
+		});
+		return text;
 	});
-	setFlash({ type: 'success', message: text }, event.cookies);
-	return { done: true };
 }
 
 /** An accepted proforma changed: hold what it now says, where it now says. */
@@ -267,51 +268,24 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'sales.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(quoteHeader));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 		const q = await orgQuote(orgId, Number(event.params.id));
 		if (!quoteEditable(q.status)) {
 			return message(form, { type: 'error', text: m.sales_quote_locked() }, { status: 409 });
 		}
-		if (form.data.customerId && !(await checkCustomer(orgId, form.data.customerId))) {
-			setError(form, 'customerId', m.sales_err_choose_customer());
-			return message(form, { type: 'error', text: m.sales_err_choose_customer() }, { status: 400 });
-		}
-		let branchId = q.branchId;
-		if (form.data.locationId) {
-			const [loc] = await db
-				.select({ branchId: location.branchId })
-				.from(location)
-				.where(and(eq(location.id, form.data.locationId), eq(location.orgId, orgId)));
-			if (!loc) {
-				setError(form, 'locationId', m.sales_err_choose_location());
-				return message(
-					form,
-					{ type: 'error', text: m.sales_err_choose_location() },
-					{ status: 400 }
-				);
-			}
-			branchId = loc.branchId;
-		}
-		await db
-			.update(quote)
-			.set({
-				branchId: q.number ? q.branchId : branchId,
-				customerId: form.data.customerId || null,
-				buyerName: form.data.customerId ? null : form.data.buyerName || null,
-				buyerTin: form.data.buyerTin || null,
-				buyerPhone: form.data.buyerPhone || null,
-				locationId: form.data.locationId || null,
-				quoteDate: form.data.quoteDate,
-				validUntil: form.data.validUntil || null,
-				reference: form.data.reference || null,
-				note: form.data.note || null,
-				terms: form.data.terms || null,
-				updatedBy: event.locals.user?.id
-			})
-			.where(eq(quote.id, q.id));
-		await reheld(event);
-		return message(form, { type: 'success', text: m.common_saved() });
+		return attemptForm(form, async () => {
+			const branchId = (await checkHeader(orgId, form.data)) ?? q.branchId;
+			await db
+				.update(quote)
+				.set({
+					branchId: q.number ? q.branchId : branchId,
+					...headerValues(form.data),
+					updatedBy: event.locals.user?.id
+				})
+				.where(eq(quote.id, q.id));
+			await reheld(event);
+			return m.common_saved();
+		});
 	},
 
 	markSent: (event) => setStatus(event, 'sent', m.sales_marked_sent()),
@@ -392,8 +366,8 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'stock.draft');
 		const orgId = orgIdOf(event.locals);
 		const data = await event.request.formData();
-		let docId: number;
-		try {
+		let docId!: number;
+		const converted = await attempt(event, async () => {
 			docId = await db.transaction((tx) =>
 				convertQuote(tx, {
 					orgId,
@@ -403,13 +377,9 @@ export const actions: Actions = {
 					locationId: Number(data.get('locationId')) || undefined
 				})
 			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { error: err.message });
-			}
-			throw err;
-		}
+			return null;
+		});
+		if (!('done' in converted)) return converted;
 		redirect(
 			`/dashboard/stock/documents/${docId}`,
 			{ type: 'success', message: m.sales_sale_drafted_from_quote() },

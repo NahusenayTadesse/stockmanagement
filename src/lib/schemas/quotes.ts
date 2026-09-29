@@ -1,8 +1,7 @@
 import { z } from 'zod/v4';
 import { labels } from '$lib/format';
 import { m } from '$lib/paraglide/messages.js';
-
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.sales_pick_date() });
+import { day, optionalDay } from '$lib/schemas/common';
 
 /** Who and when. A listed customer, or a one-off buyer's name and TIN — both optional. */
 export const quoteHeader = z.object({
@@ -18,10 +17,7 @@ export const quoteHeader = z.object({
 	/** 0 = decide when it becomes a sale. */
 	locationId: z.coerce.number().int().min(0).default(0),
 	quoteDate: day,
-	validUntil: z
-		.string()
-		.regex(/^(\d{4}-\d{2}-\d{2})?$/, { error: () => m.sales_pick_date() })
-		.default(''),
+	validUntil: optionalDay,
 	reference: z.string().trim().max(80).default(''),
 	note: z.string().trim().max(2000).default(''),
 	terms: z.string().trim().max(2000).default('')

@@ -1,5 +1,6 @@
 import { m } from '$lib/paraglide/messages.js';
 import { z } from 'zod/v4';
+import { day } from '$lib/schemas/common';
 
 export const countOpen = z.object({
 	locationId: z.coerce
@@ -9,7 +10,7 @@ export const countOpen = z.object({
 	/** 0 = every item at the location. */
 	categoryId: z.coerce.number().int().min(0).default(0),
 	blind: z.boolean().default(true),
-	countDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.stock_v_count_date() }),
+	countDate: day,
 	note: z.string().trim().max(500).default('')
 });
 

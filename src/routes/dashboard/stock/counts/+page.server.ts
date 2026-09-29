@@ -19,7 +19,7 @@ import { orgIdOf } from '$lib/server/tenant';
 import { branchScope, inScope, scopeWhere } from '$lib/server/scope';
 import { categoryOptions, locationOptions } from '$lib/server/options';
 import { openCount } from '$lib/server/counts';
-import { StockError } from '$lib/server/stock/post';
+import { attemptForm, invalidForm } from '$lib/server/actions';
 import { countOpen } from '$lib/schemas/counts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -79,8 +79,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'stock.draft');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(countOpen));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 
 		// Only a location in the viewer's branches, and never the system's transit locations.
 		const [loc] = await db
@@ -92,26 +91,26 @@ export const actions: Actions = {
 			return message(form, { type: 'error', text: m.stock_err_location_list() }, { status: 400 });
 		}
 
-		let id: number;
-		try {
-			id = await db.transaction((tx) =>
-				openCount(tx, {
-					orgId,
-					locationId: form.data.locationId,
-					categoryId: form.data.categoryId || null,
-					blind: form.data.blind,
-					countDate: form.data.countDate,
-					note: form.data.note || null,
-					userId: event.locals.user?.id
-				})
-			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setError(form, 'locationId', err.message);
-				return message(form, { type: 'error', text: err.message }, { status: 409 });
-			}
-			throw err;
-		}
+		let id = 0;
+		const answer = await attemptForm(
+			form,
+			async () => {
+				id = await db.transaction((tx) =>
+					openCount(tx, {
+						orgId,
+						locationId: form.data.locationId,
+						categoryId: form.data.categoryId || null,
+						blind: form.data.blind,
+						countDate: form.data.countDate,
+						note: form.data.note || null,
+						userId: event.locals.user?.id
+					})
+				);
+				return m.stock_count_opened({ id });
+			},
+			{ field: 'locationId', status: 409 }
+		);
+		if (!id) return answer;
 		redirect(
 			`/dashboard/stock/counts/${id}`,
 			{ type: 'success', message: m.stock_count_opened({ id }) },

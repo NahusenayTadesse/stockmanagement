@@ -3,7 +3,9 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Clock from '@lucide/svelte/icons/clock';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
@@ -57,19 +59,13 @@
 	]);
 </script>
 
-<svelte:head>
-	<title>{m.sales_customers_title()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-center justify-between gap-2">
-		<div>
-			<h1 class="text-2xl font-semibold">
-				{m.sales_customers_heading({ count: data.customers.length })}
-			</h1>
-			<p class="text-muted-foreground">{m.sales_customers_intro()}</p>
-		</div>
-		<div class="flex flex-wrap gap-2">
+	<PageHeader
+		title={m.sales_customers_heading({ count: data.customers.length })}
+		tabTitle={m.sales_customers_title()}
+		description={m.sales_customers_intro()}
+	>
+		{#snippet actions()}
 			<Button href={resolve('/dashboard/customers/credit')} variant="outline"
 				><Clock /> {m.nav_credit()}</Button
 			>
@@ -92,22 +88,22 @@
 					</form>
 				</DialogComp>
 			{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	{#if !data.organization?.sellsToCustomers}
-		<p class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+		<Notice tone="warning">
 			{m.sales_customers_off_before()}
 			<a class="underline" href={resolve('/dashboard/admin-panel/business')}
 				>{m.nav_business_profile()}</a
 			>
 			{m.sales_customers_off_after()}
-		</p>
+		</Notice>
 	{/if}
 
 	<div class="grid gap-4 sm:grid-cols-3">
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
 	</div>
 
-	<DataTable data={data.customers} {columns} fileName={m.sales_customers_title()} />
+	<DataTable data={data.customers} {columns} variant="list" fileName={m.sales_customers_title()} />
 </div>

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
@@ -10,25 +9,35 @@
 	import Printer from '@lucide/svelte/icons/printer';
 	import Send from '@lucide/svelte/icons/send';
 	import X from '@lucide/svelte/icons/x';
+	import type { ColumnDef } from '@tanstack/table-core';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import type { LookupField } from '@nahu/admin-kit/components/lookup/types';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
-	import * as AlertDialog from '@nahu/admin-kit/components/ui/alert-dialog/index.js';
-	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
-	import { Button, buttonVariants } from '@nahu/admin-kit/components/ui/button/index.js';
+	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
+	import ConfirmAction from '@nahu/admin-kit/components/ConfirmAction.svelte';
+	import SingleTable from '@nahu/admin-kit/components/SingleTable.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
+	import type { Stat } from '@nahu/admin-kit/components/reports/types';
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
-	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB } from '@nahu/admin-kit/global';
+	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 	import {
 		orderHeader,
 		orderLineAdd,
 		orderLineEdit,
+		PO_BADGE,
 		PO_STATUS_LABELS
 	} from '$lib/schemas/purchasing';
-	import { DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
+	import { qty } from '$lib/format';
+	import { longText, moneyCell } from '$lib/table';
 	import OrderHeaderFields from '../OrderHeaderFields.svelte';
+	import { documentColumns } from '$lib/table';
 	import ApprovalBanner from '$lib/components/ApprovalBanner.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -81,7 +90,6 @@
 	];
 	const options = $derived({ itemId: data.items, uomId: data.units });
 
-	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
 	const submit = () => {
 		busy = true;
 		return async ({ update }: { update: () => Promise<void> }) => {
@@ -89,45 +97,105 @@
 			busy = false;
 		};
 	};
+
+	const fullyReceived = $derived(
+		data.lines.rows.filter((l) => l.due === 0 && l.received > 0).length
+	);
+	const stats = $derived<Stat[]>([
+		{
+			key: 'value',
+			label: m.purchasing_order_value(),
+			value: data.total,
+			format: 'money',
+			group: 'order'
+		},
+		{
+			key: 'received',
+			label: m.purchasing_lines_fully_received(),
+			value: fullyReceived,
+			format: 'count',
+			group: 'order',
+			hint: m.purchasing_of_lines({ count: data.lines.rows.length })
+		}
+	]);
+
+	const details = $derived([
+		{
+			name: m.purchasing_supplier_contact(),
+			value: data.details.supplierPhone,
+			kind: 'phone' as const
+		},
+		{ name: m.common_email(), value: data.details.supplierEmail ?? m.purchasing_no_email() },
+		...(order.reference ? [{ name: m.common_reference(), value: order.reference }] : []),
+		...(order.note ? [{ name: m.common_note(), value: order.note, long: 120 }] : []),
+		{ name: m.common_prepared_by(), value: data.createdBy ?? '—' }
+	]);
+
+	type LineRow = (typeof data.lines.rows)[number];
+	const lineColumns: ColumnDef<LineRow>[] = [
+		{ accessorKey: 'item', header: m.common_item(), footer: m.purchasing_mail_total() },
+		{ accessorKey: 'note', header: m.common_note(), cell: longText() },
+		{
+			accessorKey: 'quantity',
+			meta: { align: 'right' },
+			header: m.purchasing_col_ordered_qty(),
+			cell: ({ row }) => qty(row.original.quantity, row.original.unit)
+		},
+		{
+			accessorKey: 'received',
+			meta: { align: 'right' },
+			header: m.purchasing_col_received(),
+			cell: ({ row }) => qty(row.original.received, row.original.unit)
+		},
+		{
+			accessorKey: 'due',
+			meta: { align: 'right' },
+			header: m.purchasing_col_still_due(),
+			cell: ({ row }) => (row.original.due > 0 ? qty(row.original.due, row.original.unit) : '—')
+		},
+		{
+			accessorKey: 'unitPrice',
+			header: m.common_price(),
+			cell: moneyCell,
+			meta: { align: 'right' }
+		},
+		{
+			accessorKey: 'value',
+			meta: { align: 'right' },
+			header: m.purchasing_col_amount(),
+			cell: moneyCell,
+			footer: () => formatETB(data.total)
+		}
+	];
+
+	const receiptColumns = documentColumns<(typeof data.receipts)[number]>(
+		m.purchasing_deliveries(),
+		(id) => m.purchasing_draft_receipt({ id })
+	);
 </script>
 
-<svelte:head>
-	<title>{order.number ?? m.purchasing_draft_order_title({ id: order.id })}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">{m.purchasing_po()}</p>
-			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{order.number ?? m.purchasing_draft_number({ id: order.id })}
-				<Badge
-					variant={order.status === 'received' || order.status === 'closed'
-						? 'default'
-						: order.status === 'cancelled'
-							? 'destructive'
-							: 'secondary'}
-				>
-					{PO_STATUS_LABELS[order.status]}
-				</Badge>
-			</h1>
-			<p class="text-muted-foreground">
-				<a
-					class="underline-offset-4 hover:underline"
-					href={resolve('/dashboard/suppliers/[id]', { id: String(order.supplierId) })}
-					>{data.details.supplier}</a
-				>
-				· {m.purchasing_po_deliver_to({ place: data.details.location })} · {m.purchasing_po_ordered_on(
-					{
-						date: day(order.orderDate)
-					}
-				)}{order.expectedDate
-					? ` · ${m.purchasing_po_expected_on({ date: day(order.expectedDate) })}`
-					: ''}
-			</p>
-		</div>
-
-		<div class="flex flex-wrap gap-2">
+	<PageHeader
+		eyebrow={m.purchasing_po()}
+		title={order.number ?? m.purchasing_draft_number({ id: order.id })}
+		tabTitle={order.number ?? m.purchasing_draft_order_title({ id: order.id })}
+	>
+		{#snippet badges()}
+			<Statuses status={PO_BADGE[order.status]} label={PO_STATUS_LABELS[order.status]} />
+		{/snippet}
+		<p class="text-muted-foreground">
+			<a
+				class="underline-offset-4 hover:underline"
+				href={resolve('/dashboard/suppliers/[id]', { id: String(order.supplierId) })}
+				>{data.details.supplier}</a
+			>
+			· {m.purchasing_po_deliver_to({ place: data.details.location })} · {m.purchasing_po_ordered_on(
+				{ date: ethiopianDate(order.orderDate) }
+			)}{order.expectedDate
+				? ` · ${m.purchasing_po_expected_on({ date: ethiopianDate(order.expectedDate) })}`
+				: ''}
+		</p>
+		{#snippet actions()}
 			{#if isDraft && data.canManage}
 				<DialogComp
 					bind:open={editOpen}
@@ -162,33 +230,16 @@
 			{/if}
 
 			{#if isDraft && data.canManage && !data.approval.pending}
-				<AlertDialog.Root>
-					<AlertDialog.Trigger
-						class={buttonVariants({ variant: 'default' })}
-						disabled={!data.lines.rows.length}
-					>
-						<Send />
-						{m.purchasing_mark_ordered()}
-					</AlertDialog.Trigger>
-					<AlertDialog.Content>
-						<AlertDialog.Header>
-							<AlertDialog.Title>{m.purchasing_place_order_q()}</AlertDialog.Title>
-							<AlertDialog.Description>
-								{m.purchasing_place_order_desc({ supplier: data.details.supplier })}
-							</AlertDialog.Description>
-						</AlertDialog.Header>
-						<AlertDialog.Footer>
-							<AlertDialog.Cancel>{m.purchasing_not_yet()}</AlertDialog.Cancel>
-							<form method="POST" action="?/markOrdered" use:enhance={submit}>
-								<AlertDialog.Action type="submit" disabled={busy}>
-									{#if busy}<LoadingBtn
-											name={m.purchasing_ordering()}
-										/>{:else}{m.purchasing_mark_ordered()}{/if}
-								</AlertDialog.Action>
-							</form>
-						</AlertDialog.Footer>
-					</AlertDialog.Content>
-				</AlertDialog.Root>
+				<ConfirmAction
+					action="?/markOrdered"
+					label={m.purchasing_mark_ordered()}
+					title={m.purchasing_place_order_q()}
+					description={m.purchasing_place_order_desc({ supplier: data.details.supplier })}
+					busyLabel={m.purchasing_ordering()}
+					cancelLabel={m.purchasing_not_yet()}
+					icon={Send}
+					disabled={!data.lines.rows.length}
+				/>
 			{/if}
 
 			{#if !isDraft && order.status !== 'cancelled'}
@@ -223,25 +274,15 @@
 			{/if}
 
 			{#if isOpen && data.canManage}
-				<AlertDialog.Root>
-					<AlertDialog.Trigger class={buttonVariants({ variant: 'outline' })}
-						><X /> {m.purchasing_close_order()}</AlertDialog.Trigger
-					>
-					<AlertDialog.Content>
-						<AlertDialog.Header>
-							<AlertDialog.Title>{m.purchasing_close_order_q()}</AlertDialog.Title>
-							<AlertDialog.Description>
-								{m.purchasing_close_order_desc()}
-							</AlertDialog.Description>
-						</AlertDialog.Header>
-						<AlertDialog.Footer>
-							<AlertDialog.Cancel>{m.purchasing_keep_open()}</AlertDialog.Cancel>
-							<form method="POST" action="?/close" use:enhance>
-								<AlertDialog.Action type="submit">{m.purchasing_close_order()}</AlertDialog.Action>
-							</form>
-						</AlertDialog.Footer>
-					</AlertDialog.Content>
-				</AlertDialog.Root>
+				<ConfirmAction
+					action="?/close"
+					label={m.purchasing_close_order()}
+					title={m.purchasing_close_order_q()}
+					description={m.purchasing_close_order_desc()}
+					cancelLabel={m.purchasing_keep_open()}
+					icon={X}
+					variant="outline"
+				/>
 			{/if}
 
 			{#if isOpen && anyDue && data.canReceive}
@@ -251,52 +292,19 @@
 					>
 				</form>
 			{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	<ApprovalBanner approval={data.approval} />
 
-	<div class="grid gap-4 sm:grid-cols-3">
-		<div class="rounded-lg border p-4">
-			<p class="text-sm text-muted-foreground">{m.purchasing_order_value()}</p>
-			<p class="text-2xl font-semibold">{formatETB(data.total)}</p>
-		</div>
-		<div class="rounded-lg border p-4">
-			<p class="text-sm text-muted-foreground">{m.purchasing_lines_fully_received()}</p>
-			<p class="text-2xl font-semibold">
-				{data.lines.rows.filter((l) => l.due === 0 && l.received > 0).length} / {data.lines.rows
-					.length}
-			</p>
-		</div>
-		<div class="rounded-lg border p-4">
-			<p class="text-sm text-muted-foreground">{m.purchasing_supplier_contact()}</p>
-			<p class="font-medium">{data.details.supplierPhone}</p>
-			<p class="text-sm text-muted-foreground">
-				{data.details.supplierEmail ?? m.purchasing_no_email()}
-			</p>
-		</div>
+	<div class="grid gap-4 lg:grid-cols-3">
+		{#each stats as stat (stat.key)}<StatCard {stat} />{/each}
+		<Card.Root>
+			<Card.Content><SingleTable singleTable={details} /></Card.Content>
+		</Card.Root>
 	</div>
 
-	{#if order.reference || order.note}
-		<Card.Root>
-			<Card.Content class="flex flex-col gap-1 text-sm">
-				{#if order.reference}<p>
-						<strong>{m.purchasing_reference_label()}</strong>
-						{order.reference}
-					</p>{/if}
-				{#if order.note}<p>
-						<strong>{m.purchasing_note_label()}</strong>
-						<BigText text={order.note} max={120} />
-					</p>{/if}
-				<p class="text-muted-foreground">
-					{m.purchasing_prepared_by({ name: data.createdBy ?? '—' })}
-				</p>
-			</Card.Content>
-		</Card.Root>
-	{/if}
-
-	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">{m.purchasing_lines()}</h2>
+	<PageSection title={m.purchasing_lines()}>
 		{#if isDraft}
 			<LookupSection
 				config={{ entity: m.purchasing_entity_line(), plural: m.purchasing_lines(), fields }}
@@ -310,64 +318,18 @@
 				readonly={!data.canManage}
 			/>
 		{:else}
-			<div class="overflow-x-auto rounded-md border">
-				<table class="w-full text-sm">
-					<thead class="bg-muted/50 text-left">
-						<tr>
-							<th class="px-3 py-2">{m.common_item()}</th>
-							<th class="px-3 py-2 text-right">{m.purchasing_col_ordered_qty()}</th>
-							<th class="px-3 py-2 text-right">{m.purchasing_col_received()}</th>
-							<th class="px-3 py-2 text-right">{m.purchasing_col_still_due()}</th>
-							<th class="px-3 py-2 text-right">{m.common_price()}</th>
-							<th class="px-3 py-2 text-right">{m.purchasing_col_amount()}</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each data.lines.rows as line (line.id)}
-							<tr class="border-t">
-								<td class="px-3 py-2">
-									{line.item}
-									{#if line.note}<p class="text-xs text-muted-foreground">
-											<BigText text={line.note} />
-										</p>{/if}
-								</td>
-								<td class="px-3 py-2 text-right">{qty(line.quantity, line.unit)}</td>
-								<td class="px-3 py-2 text-right">{qty(line.received, line.unit)}</td>
-								<td
-									class="px-3 py-2 text-right font-medium {line.due > 0 && isOpen
-										? 'text-amber-600'
-										: ''}">{line.due > 0 ? qty(line.due, line.unit) : '—'}</td
-								>
-								<td class="px-3 py-2 text-right"
-									>{line.unitPrice == null ? '—' : formatETB(line.unitPrice)}</td
-								>
-								<td class="px-3 py-2 text-right">{formatETB(line.value)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
+			<DataTable
+				variant="compact"
+				data={data.lines.rows}
+				columns={lineColumns}
+				fileName={order.number ?? ''}
+			/>
 		{/if}
-	</section>
+	</PageSection>
 
 	{#if data.receipts.length}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.purchasing_deliveries()}</h2>
-			<ul class="flex flex-col divide-y rounded-md border">
-				{#each data.receipts as r (r.id)}
-					<li class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-						<a
-							class="font-medium underline-offset-4 hover:underline"
-							href={resolve('/dashboard/stock/documents/[id]', { id: String(r.id) })}
-							>{r.number ?? m.purchasing_draft_receipt({ id: r.id })}</a
-						>
-						<span class="text-muted-foreground">{day(r.docDate)}</span>
-						<Badge variant={r.status === 'posted' ? 'default' : 'secondary'}
-							>{DOCUMENT_STATUS_LABELS[r.status]}</Badge
-						>
-					</li>
-				{/each}
-			</ul>
-		</section>
+		<PageSection title={m.purchasing_deliveries()}>
+			<DataTable variant="compact" data={data.receipts} columns={receiptColumns} />
+		</PageSection>
 	{/if}
 </div>

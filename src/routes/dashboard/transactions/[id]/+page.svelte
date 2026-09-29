@@ -8,6 +8,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash from '@lucide/svelte/icons/trash';
 	import SingleTable from '@nahu/admin-kit/components/SingleTable.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
@@ -18,18 +19,16 @@
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { fileUrl } from '@nahu/admin-kit/files';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
 	import TransactionFields from '$lib/components/TransactionFields.svelte';
-	import { DOCUMENT_LABELS } from '$lib/format';
+	import { DOCUMENT_LABELS, DOCUMENT_STATUS_LABELS, ethiopianDay, signedAmount } from '$lib/format';
 	import {
 		attachmentAdd,
 		PURPOSE_LABELS,
 		transactionEdit,
 		voidSchema
 	} from '$lib/schemas/transactions';
-	import { signed } from '../columns';
-	import { DOCUMENT_STATUS_LABELS } from '$lib/format';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
@@ -77,7 +76,7 @@
 		[
 			{
 				name: m.common_date(),
-				value: formatEthiopianDate(new Date(`${txn.occurredOn}T12:00:00+03:00`))
+				value: ethiopianDay(txn.occurredOn)
 			},
 			{
 				name: m.sales_money(),
@@ -87,7 +86,8 @@
 			{ name: m.sales_for(), value: PURPOSE_LABELS[txn.purpose] },
 			{
 				name: txn.direction === 'in' ? m.sales_received_from_label() : m.sales_paid_to(),
-				value: txn.party ?? '—'
+				value: txn.party ?? '—',
+				long: 60
 			},
 			txn.customerId && {
 				name: m.sales_customer(),
@@ -100,7 +100,7 @@
 				value: `${formatETB(txn.withheld)}${txn.withholdingReceipt ? m.sales_receipt_part({ number: txn.withholdingReceipt }) : m.sales_no_receipt_yet()}`
 			},
 			{ name: m.sales_receipt_invoice_no(), value: txn.receiptNumber ?? '—' },
-			{ name: m.common_note(), value: txn.description ?? '—' },
+			{ name: m.common_note(), value: txn.description ?? '—', long: 120 },
 			{ name: m.common_branch(), value: data.names.branch ?? m.sales_whole_business() },
 			{
 				name: m.sales_recorded(),
@@ -116,49 +116,36 @@
 					who: data.names.verifiedBy ?? '—'
 				})
 			},
-			txn.voidReason && { name: m.sales_voided_because(), value: txn.voidReason }
-		].filter(Boolean) as { name: string; value: string; href?: string }[]
+			txn.voidReason && { name: m.sales_voided_because(), value: txn.voidReason, long: 120 }
+		].filter(Boolean) as { name: string; value: string; href?: string; long?: number }[]
 	);
 
 	const isImage = (mime: string | null) => Boolean(mime?.startsWith('image/'));
 	const kb = (bytes: number | null) => (bytes ? `${Math.max(1, Math.round(bytes / 1024))} KB` : '');
 </script>
 
-<svelte:head>
-	<title>{m.sales_transaction_number({ id: txn.id })}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">{m.sales_transaction_number({ id: txn.id })}</p>
-			<h1
-				class="flex items-center gap-2 text-2xl font-semibold {txn.status === 'void'
-					? 'text-muted-foreground line-through'
-					: txn.direction === 'in'
-						? 'text-emerald-700 dark:text-emerald-400'
-						: ''}"
+	<PageHeader
+		title={signedAmount(txn.direction, txn.amount)}
+		eyebrow={m.sales_transaction_number({ id: txn.id })}
+		tabTitle={m.sales_transaction_number({ id: txn.id })}
+	>
+		{#snippet badges()}
+			<Badge
+				variant={txn.status === 'verified'
+					? 'default'
+					: txn.status === 'void'
+						? 'destructive'
+						: 'secondary'}
 			>
-				{signed(txn.direction, txn.amount)}
-			</h1>
-			<div>
-				<Badge
-					variant={txn.status === 'verified'
-						? 'default'
-						: txn.status === 'void'
-							? 'destructive'
-							: 'secondary'}
-				>
-					{txn.status === 'recorded'
-						? m.sales_not_yet_verified_badge()
-						: txn.status === 'void'
-							? m.sales_tx_status_void()
-							: m.sales_tx_status_verified()}
-				</Badge>
-			</div>
-		</div>
-
-		<div class="flex flex-wrap gap-2">
+				{txn.status === 'recorded'
+					? m.sales_not_yet_verified_badge()
+					: txn.status === 'void'
+						? m.sales_tx_status_void()
+						: m.sales_tx_status_verified()}
+			</Badge>
+		{/snippet}
+		{#snippet actions()}
 			{#if data.canManage && open}
 				<DialogComp
 					bind:open={editOpen}
@@ -227,8 +214,8 @@
 					</form>
 				</DialogComp>
 			{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>

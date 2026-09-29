@@ -1,17 +1,17 @@
-import { error, fail } from '@sveltejs/kit';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { error } from '@sveltejs/kit';
+import { and, eq, inArray } from 'drizzle-orm';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
-import { redirect, setFlash } from 'sveltekit-flash-message/server';
+import { redirect } from 'sveltekit-flash-message/server';
 import { childActions, childCrud } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
-import { item, location, requisition, requisitionLine, uom } from '$lib/server/db/schema';
+import { item, requisition, requisitionLine, uom } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { itemOptions, locationOptions, unitOptions } from '$lib/server/options';
 import { orderLineValues } from '$lib/server/orderLines';
-import { branchScope, inScope, requireBranch } from '$lib/server/scope';
+import { branchScope, requireBranch } from '$lib/server/scope';
 import {
 	cancelRequisition,
 	decideRequisition,
@@ -26,6 +26,8 @@ import {
 } from '$lib/server/requisitions';
 import { StockError } from '$lib/server/stock/post';
 import { smsRequisitionSubmitted } from '$lib/server/sms';
+import { attempt, attemptForm, invalidForm } from '$lib/server/actions';
+import { pickedStore } from '$lib/server/checks';
 import { m } from '$lib/paraglide/messages.js';
 import {
 	requisitionHeader,
@@ -142,21 +144,6 @@ export const load: PageServerLoad = async (event) => {
 	};
 };
 
-/** Runs a change, turning refusals into a flash message. */
-async function attempt(event: RequestEvent, run: () => Promise<string>) {
-	try {
-		const text = await run();
-		setFlash({ type: 'success', message: text }, event.cookies);
-		return { done: true };
-	} catch (err) {
-		if (err instanceof StockError) {
-			setFlash({ type: 'error', message: err.message }, event.cookies);
-			return fail(409, { refused: err.message });
-		}
-		throw err;
-	}
-}
-
 export const actions: Actions = {
 	...childActions({ Line: lines }, draftOwner),
 
@@ -164,48 +151,32 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'requisitions.request');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(requisitionHeader));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
+		if (!form.valid) return invalidForm(form);
 		const req = await mine(event);
-		if (req.status !== 'draft') {
-			return message(
-				form,
-				{ type: 'error', text: m.purchasing_only_draft_changes() },
-				{ status: 409 }
+
+		return attemptForm(form, async () => {
+			if (req.status !== 'draft') throw new StockError(m.purchasing_only_draft_changes());
+			const loc = await pickedStore(
+				event.locals,
+				orgId,
+				form.data.locationId,
+				m.purchasing_v_store_from_list(),
+				{ noTransit: true }
 			);
-		}
-		const [loc] = await db
-			.select({ id: location.id, branchId: location.branchId, kind: location.kind })
-			.from(location)
-			.where(
-				and(
-					eq(location.id, form.data.locationId),
-					eq(location.orgId, orgId),
-					isNull(location.deletedAt)
-				)
-			);
-		if (!loc || loc.kind === 'transit' || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setError(form, 'locationId', m.purchasing_v_store_from_list());
-			return message(
-				form,
-				{ type: 'error', text: m.purchasing_v_store_from_list() },
-				{ status: 400 }
-			);
-		}
-		await db
-			.update(requisition)
-			.set({
-				department: form.data.department,
-				locationId: loc.id,
-				branchId: loc.branchId,
-				requestDate: form.data.requestDate,
-				neededBy: form.data.neededBy || null,
-				note: form.data.note || null,
-				updatedBy: event.locals.user?.id
-			})
-			.where(eq(requisition.id, req.id));
-		return message(form, { type: 'success', text: m.common_saved() });
+			await db
+				.update(requisition)
+				.set({
+					department: form.data.department,
+					locationId: loc.id,
+					branchId: loc.branchId,
+					requestDate: form.data.requestDate,
+					neededBy: form.data.neededBy || null,
+					note: form.data.note || null,
+					updatedBy: event.locals.user?.id
+				})
+				.where(eq(requisition.id, req.id));
+			return m.common_saved();
+		});
 	},
 
 	/** Sent for approval: it gets its number and its lines are fixed. */
@@ -273,9 +244,8 @@ export const actions: Actions = {
 	issue: async (event) => {
 		requirePermission(event.locals, 'stock.draft');
 		const req = await mine(event);
-		let documentId: number;
-		try {
-			documentId = await db.transaction((tx) =>
+		return attempt(event, async () => {
+			const documentId = await db.transaction((tx) =>
 				issueFromRequisition(tx, {
 					orgId: req.orgId,
 					requisitionId: req.id,
@@ -283,18 +253,12 @@ export const actions: Actions = {
 					userId: event.locals.user?.id
 				})
 			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { refused: err.message });
-			}
-			throw err;
-		}
-		redirect(
-			`/dashboard/stock/documents/${documentId}`,
-			{ type: 'success', message: m.purchasing_req_issue_drafted() },
-			event.cookies
-		);
+			redirect(
+				`/dashboard/stock/documents/${documentId}`,
+				{ type: 'success', message: m.purchasing_req_issue_drafted() },
+				event.cookies
+			);
+		});
 	},
 
 	cancel: async (event) => {

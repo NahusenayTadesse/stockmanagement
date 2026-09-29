@@ -1,38 +1,34 @@
 <script lang="ts">
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
-	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
+	import SettingsLookup from '../SettingsLookup.svelte';
 	import { add, edit } from './schema';
 
 	let { data } = $props();
 	const lists = $derived(data.rows as { id: number; name: string }[]);
 </script>
 
-<div class="flex flex-col gap-6">
-	<LookupPage
-		{data}
-		schemas={{ add, edit }}
-		config={{
-			entity: m.admin_pl_entity(),
-			plural: m.admin_pl_plural(),
-			fields: [
-				{
-					name: 'name',
-					label: m.common_name(),
-					type: 'text',
-					placeholder: m.admin_pl_name_placeholder()
-				},
-				{ name: 'note', label: m.common_note(), type: 'text', required: false, long: true },
-				{ name: 'status', label: m.common_status(), type: 'boolean' }
-			]
-		}}
-	/>
+<SettingsLookup
+	{data}
+	schemas={{ add, edit }}
+	config={{
+		entity: m.admin_pl_entity(),
+		plural: m.admin_pl_plural(),
+		fields: [
+			{
+				name: 'name',
+				label: m.common_name(),
+				type: 'text',
+				placeholder: m.admin_pl_name_placeholder()
+			},
+			{ name: 'note', label: m.common_note(), type: 'text', required: false, long: true },
+			{ name: 'status', label: m.common_status(), type: 'boolean' }
+		]
+	}}
+>
 	{#if lists.length}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-lg font-semibold">{m.admin_pl_prices()}</h2>
-			<p class="text-sm text-muted-foreground">
-				{m.admin_pl_prices_intro()}
-			</p>
+		<PageSection title={m.admin_pl_prices()} hint={m.admin_pl_prices_intro()}>
 			<ul class="flex flex-wrap gap-2">
 				{#each lists as l (l.id)}
 					<li>
@@ -44,6 +40,6 @@
 					</li>
 				{/each}
 			</ul>
-		</section>
+		</PageSection>
 	{/if}
-</div>
+</SettingsLookup>

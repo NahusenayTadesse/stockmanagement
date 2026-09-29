@@ -5,13 +5,14 @@
 import { m } from '$lib/paraglide/messages.js';
 import type { RequestEvent } from '@sveltejs/kit';
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { childActions, childCrud, WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
 import { item, kitComponent } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
+import { attemptForm, invalidForm } from '$lib/server/actions';
 import {
 	checkComponent,
 	createVariant,
@@ -108,28 +109,23 @@ export const productActions = {
 	addVariant: async (event: RequestEvent) => {
 		requirePermission(event.locals, 'items.manage');
 		const form = await superValidate(event.request, zod4(variantAdd));
-		if (!form.valid) {
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
-		}
-		try {
-			await createVariant(
-				orgIdOf(event.locals),
-				Number(event.params.id),
-				form.data,
-				event.locals.user?.id
-			);
-		} catch (err) {
-			if (err instanceof WriteRefused) {
+		if (!form.valid) return invalidForm(form);
+		return attemptForm(form, async () => {
+			try {
+				await createVariant(
+					orgIdOf(event.locals),
+					Number(event.params.id),
+					form.data,
+					event.locals.user?.id
+				);
+			} catch (err) {
 				// A clash of the barcode is reported against the barcode field.
-				const field = err.field === 'code' ? 'barcode' : err.field;
-				if (field) setError(form, field as 'sku', err.message);
-				return message(form, { type: 'error', text: err.message }, { status: 400 });
+				if (err instanceof WriteRefused && err.field === 'code') {
+					throw new WriteRefused('barcode', err.message);
+				}
+				throw err;
 			}
-			throw err;
-		}
-		return message(form, {
-			type: 'success',
-			text: m.stock_variant_added({ label: form.data.variantLabel })
+			return m.stock_variant_added({ label: form.data.variantLabel });
 		});
 	}
 };

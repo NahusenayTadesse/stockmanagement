@@ -1,6 +1,4 @@
-import { fail } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
-import { setFlash } from 'sveltekit-flash-message/server';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { db } from '$lib/server/db';
 import { branch, location } from '$lib/server/db/schema';
@@ -9,6 +7,7 @@ import { belongsToOrg, branchOptions } from '$lib/server/options';
 import { add, edit } from './schema';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 import { m } from '$lib/paraglide/messages.js';
+import { refuseAction } from '$lib/server/actions';
 
 /**
  * Transit locations are made by the system, one per branch, to hold transfers on the road. They
@@ -66,10 +65,7 @@ export const actions: Actions = {
 	add: crud.actions.add,
 	edit: crud.actions.edit,
 	delete: async (event) => {
-		if (await isTransit(event)) {
-			setFlash({ type: 'error', message: TRANSIT() }, event.cookies);
-			return fail(409, { refused: TRANSIT() });
-		}
+		if (await isTransit(event)) return refuseAction(event, TRANSIT());
 		return crud.actions.delete(event);
 	}
 };

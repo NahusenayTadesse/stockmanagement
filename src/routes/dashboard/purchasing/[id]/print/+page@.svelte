@@ -1,15 +1,42 @@
 <script lang="ts">
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
+	import {
+		column,
+		indexColumn,
+		joined,
+		moneyColumn,
+		quantityColumn,
+		stackedCell,
+		RIGHT
+	} from '$lib/table';
 	import PrintSheet from '@nahu/admin-kit/components/PrintSheet.svelte';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB } from '@nahu/admin-kit/global';
 	import { fileUrl } from '@nahu/admin-kit/files';
-	import { qty } from '$lib/format';
+	import { printedDay } from '$lib/format';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
 	const order = $derived(data.order);
 	const total = $derived(data.lines.reduce((s, l) => s + l.value, 0));
-	const day = (d: string) => `${formatEthiopianDate(new Date(`${d}T12:00:00+03:00`))} (${d})`;
+	const day = printedDay;
+
+	type Line = (typeof data.lines)[number];
+	const columns: ColumnDef<Line>[] = [
+		indexColumn<Line>(),
+		column<Line>('item', m.common_item, ({ row: { original: l } }) =>
+			stackedCell(l.item, joined(l.sku, l.note))
+		),
+		quantityColumn<Line>('quantity', m.common_quantity),
+		moneyColumn<Line>('unitPrice', m.purchasing_mail_col_unit_price),
+		column<Line>(
+			'value',
+			m.purchasing_col_amount,
+			({ row: { original: l } }) => (l.unitPrice == null ? '' : formatETB(l.value)),
+			RIGHT
+		)
+	];
 </script>
 
 <svelte:head>
@@ -63,40 +90,12 @@
 		{/if}
 	</dl>
 
-	<table class="w-full border-collapse text-sm">
-		<thead>
-			<tr class="border-b-2 text-left">
-				<th class="py-1 pr-2">#</th>
-				<th class="py-1 pr-2">{m.common_item()}</th>
-				<th class="py-1 pr-2 text-right">{m.common_quantity()}</th>
-				<th class="py-1 pr-2 text-right">{m.purchasing_mail_col_unit_price()}</th>
-				<th class="py-1 text-right">{m.purchasing_col_amount()}</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each data.lines as line, i (line.id)}
-				<tr class="border-b align-top">
-					<td class="py-1 pr-2">{i + 1}</td>
-					<td class="py-1 pr-2">
-						{line.item}<br /><span class="text-xs"
-							>{line.sku}{line.note ? ` · ${line.note}` : ''}</span
-						>
-					</td>
-					<td class="py-1 pr-2 text-right">{qty(line.quantity, line.unit)}</td>
-					<td class="py-1 pr-2 text-right"
-						>{line.unitPrice == null ? '' : formatETB(line.unitPrice)}</td
-					>
-					<td class="py-1 text-right">{line.unitPrice == null ? '' : formatETB(line.value)}</td>
-				</tr>
-			{/each}
-		</tbody>
-		<tfoot>
-			<tr class="font-semibold">
-				<td colspan="4" class="py-1 pr-2 text-right">{m.common_total()}</td>
-				<td class="py-1 text-right">{formatETB(total)}</td>
-			</tr>
-		</tfoot>
-	</table>
+	<DataTable
+		variant="print"
+		data={data.lines}
+		{columns}
+		summary={[{ label: m.common_total(), value: formatETB(total), strong: true }]}
+	/>
 
 	{#if order.note}<p class="text-sm whitespace-pre-line">
 			{m.purchasing_print_note({ note: order.note })}

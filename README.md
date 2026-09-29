@@ -326,7 +326,7 @@ The first request after a boot seeds the `permissions` table from the route rule
   tables and prints stay on the Ethiopian calendar as before.
 - **Long free text** (notes, reasons, addresses, descriptions, messages, names typed in freely)
   is shown with the admin-kit's `BigText`: the first characters (15 by default; 24 for names via
-  `longText(NAME_LENGTH)` in `src/lib/cells.ts`; 120 in detail cards) and a "…" button that
+  `longText(NAME_LENGTH)` in `src/lib/table.ts`; 120 in detail cards) and a "…" button that
   opens the rest. Table columns use `longText()`; lookup fields of type `textarea`, or marked
   `long`, get it from the kit; detail rows take `long: <characters>`. Printed documents always
   show the full text.
@@ -334,6 +334,23 @@ The first request after a boot seeds the `permissions` table from the route rule
   throws; without SMTP settings nothing is sent and the app carries on. Password reset uses it:
   "Forgot your password?" → a one-hour, single-use link → `/reset-password`; every session of
   that user ends and they get a "your password was changed" email.
+- **One way to do each thing.** Repeated pieces live in one place, and pages use them:
+  - Tables are all the kit's `DataTable`, by `variant`: `list` (a page's list), `compact` (a
+    table inside a page), `sheet` (inputs in a form), `print` (a paper document's lines, with
+    `summary` for the tax lines). Columns are built from `src/lib/table.ts` — `column`,
+    `moneyColumn`, `quantityColumn`, `dateColumn`, `linkColumn`, `indexColumn`, cells like
+    `documentStatusCell`, `activeCell`, `stackedCell`, and `taxSummary`. Amounts and quantities
+    are right-aligned (`meta: RIGHT`). Build on `column(key, label, cell, meta)` by passing
+    arguments, never by spreading it: its header is a getter, read in the viewer's language.
+  - Pages use the kit's `PageHeader`, `PageSection`, `Notice`, `ConfirmAction`, `SingleTable`;
+    the app's own shared components are in `src/lib/components` (filters, `DatePresets`,
+    `PostButton`, `StatCard`, `StackedText`).
+  - Words and figures: `src/lib/format.ts` (labels, `qty`, `signedAmount`, `ethiopianDay`,
+    `printedDay`), `src/lib/money.ts` (`cents`, `round4`).
+  - Server actions answer through `src/lib/server/actions.ts` (`attempt`, `attemptForm`,
+    `invalidForm`, `refuseForm`, `refuseAction`, `refusal`, `flashDone`); pickers are checked by
+    `src/lib/server/checks.ts`; units, days and the organization row by `units.ts`, `days.ts`,
+    `org.ts`.
 - **Correlated subqueries** in a select list must reference the outer table with `qualified()`
   (`src/lib/server/db/sql.ts`): Drizzle leaves columns unqualified there when a query has no
   joins, and the comparison silently matches the subquery's own column.

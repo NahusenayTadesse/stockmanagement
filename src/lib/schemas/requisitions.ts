@@ -1,8 +1,7 @@
 import { z } from 'zod/v4';
 import { m } from '$lib/paraglide/messages.js';
 import { labels } from '$lib/format';
-
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.purchasing_v_pick_date() });
+import { day, optionalDay } from '$lib/schemas/common';
 
 export const requisitionHeader = z.object({
 	department: z
@@ -16,10 +15,7 @@ export const requisitionHeader = z.object({
 		.int()
 		.positive({ error: () => m.purchasing_v_choose_store() }),
 	requestDate: day,
-	neededBy: z
-		.string()
-		.regex(/^(\d{4}-\d{2}-\d{2})?$/, { error: () => m.purchasing_v_pick_date() })
-		.default(''),
+	neededBy: optionalDay,
 	note: z.string().trim().max(2000).default('')
 });
 

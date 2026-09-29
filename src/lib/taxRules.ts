@@ -2,6 +2,7 @@
  * The tax arithmetic, shared by the server (posting, reports) and the till's live preview, so
  * the total a cashier sees is the total that posts. See `$lib/server/tax` for the rules in words.
  */
+import { cents } from '$lib/money';
 
 export type TaxBasis = {
 	vatRegistered: boolean;
@@ -22,8 +23,6 @@ export function saleTotRate(settings: TaxBasis, itemTotRate: number | null) {
 	if (settings.vatRegistered || settings.totRate === null) return null;
 	return itemTotRate ?? settings.totRate;
 }
-
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 /** A line's money: before tax, VAT and TOT (each rounded per line, as on the paper), and total. */
 export function lineAmounts(

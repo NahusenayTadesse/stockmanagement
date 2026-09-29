@@ -16,7 +16,6 @@
  */
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
-import { formatEthiopianDate } from '@nahu/admin-kit/global';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import {
@@ -44,6 +43,8 @@ import { expiryWatch } from '$lib/server/expiry';
 import { quoteLines } from '$lib/server/quotes';
 import { formatEthPhone } from '$lib/phone';
 import { m } from '$lib/paraglide/messages.js';
+import { amountText, round4 } from '$lib/money';
+import { ethiopianDay } from '$lib/format';
 
 export { formatEthPhone };
 
@@ -68,10 +69,9 @@ export function capSms(text: string, limit = SMS_LIMIT) {
 	return (boundary > limit - 40 ? clipped.slice(0, boundary) : clipped).trimEnd() + '…';
 }
 
-const birr = (n: number) =>
-	`${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`;
-const qty = (n: number) => String(Math.round(n * 10000) / 10000);
-const ethDate = (day: string) => formatEthiopianDate(new Date(`${day}T12:00:00+03:00`));
+const birr = (n: number) => `${amountText(n)} ETB`;
+const qty = (n: number) => String(round4(n));
+const ethDate = ethiopianDay;
 const origin = () => env.ORIGIN || '';
 
 /**

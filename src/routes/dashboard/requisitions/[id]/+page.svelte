@@ -12,7 +12,12 @@
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import type { LookupField } from '@nahu/admin-kit/components/lookup/types';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
-	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
+	import { renderSnippet } from '@nahu/admin-kit/components/ui/data-table/index.js';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
 	import { Textarea } from '@nahu/admin-kit/components/ui/textarea/index.js';
@@ -21,15 +26,19 @@
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
+	import type { ColumnDef } from '@tanstack/table-core';
 	import {
+		REQUISITION_BADGE,
 		REQUISITION_STATUS_LABELS,
 		requisitionHeader,
 		requisitionLineAdd,
 		requisitionLineEdit
 	} from '$lib/schemas/requisitions';
-	import { DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
+	import { qty } from '$lib/format';
 	import { m } from '$lib/paraglide/messages.js';
 	import RequisitionHeaderFields from '../RequisitionHeaderFields.svelte';
+	import { documentColumns } from '$lib/table';
 
 	let { data } = $props();
 
@@ -74,7 +83,6 @@
 	];
 	const options = $derived({ itemId: data.items, uomId: data.units });
 
-	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
 	const submit = () => {
 		busy = true;
 		return async ({ update }: { update: () => Promise<void> }) => {
@@ -82,38 +90,104 @@
 			busy = false;
 		};
 	};
+
+	type LineRow = (typeof data.lines.rows)[number];
+	const asked: ColumnDef<LineRow> = {
+		accessorKey: 'quantity',
+		meta: { align: 'right' },
+		header: m.purchasing_col_asked(),
+		cell: ({ row }) => qty(row.original.quantity, row.original.unit)
+	};
+	const inStore: ColumnDef<LineRow> = {
+		accessorKey: 'onHand',
+		meta: { align: 'right' },
+		header: m.purchasing_col_in_store(),
+		cell: ({ row }) => qty(row.original.onHand, row.original.baseUnit)
+	};
+	const itemColumn: ColumnDef<LineRow> = {
+		accessorKey: 'item',
+		header: m.common_item(),
+		cell: ({ row }) => renderSnippet(itemCell, row.original)
+	};
+	/** What was asked, what was allowed, and what the store holds. */
+	const lineColumns: ColumnDef<LineRow>[] = [
+		itemColumn,
+		asked,
+		{
+			accessorKey: 'approvedQuantity',
+			header: m.purchasing_col_approved(),
+			cell: ({ row }) => renderSnippet(approvedCell, row.original)
+		},
+		inStore
+	];
+	/** The approver's sheet: how much of each line to allow. */
+	const approveColumns: ColumnDef<LineRow>[] = [
+		itemColumn,
+		asked,
+		inStore,
+		{
+			id: 'approve',
+			header: m.purchasing_col_approve(),
+			cell: ({ row }) => renderSnippet(approveCell, row.original)
+		}
+	];
+	const issueColumns = documentColumns<(typeof data.issues)[number]>(
+		m.purchasing_issued_heading(),
+		(id) => m.purchasing_draft_issue({ id })
+	);
 </script>
 
-<svelte:head>
-	<title>{req.number ?? m.purchasing_draft_requisition({ id: req.id })}</title>
-</svelte:head>
+{#snippet itemCell(line: LineRow)}
+	{line.item}
+	{#if line.note}<p class="text-xs text-muted-foreground"><BigText text={line.note} /></p>{/if}
+{/snippet}
+
+{#snippet approvedCell(line: LineRow)}
+	<span
+		class={line.approvedQuantity !== null && line.approvedQuantity < line.quantity
+			? 'font-medium text-amber-600'
+			: ''}
+	>
+		{line.approvedQuantity === null ? '—' : qty(line.approvedQuantity, line.unit)}
+	</span>
+{/snippet}
+
+{#snippet approveCell(line: LineRow)}
+	<div class="flex items-center gap-1">
+		<Input
+			type="number"
+			name="qty_{line.id}"
+			value={line.quantity}
+			min="0"
+			max={line.quantity}
+			step="any"
+			class="w-28 text-right"
+			aria-label={m.purchasing_approve_how_much({ item: line.item })}
+		/>
+		<span class="text-muted-foreground">{line.unit}</span>
+	</div>
+{/snippet}
 
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">{m.purchasing_requisition()}</p>
-			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{req.number ?? m.purchasing_draft_number({ id: req.id })}
-				<Badge
-					variant={req.status === 'rejected' || req.status === 'cancelled'
-						? 'destructive'
-						: req.status === 'approved' || req.status === 'issued'
-							? 'default'
-							: 'secondary'}
-				>
-					{REQUISITION_STATUS_LABELS[req.status]}
-				</Badge>
-			</h1>
-			<p class="text-muted-foreground">
-				<strong>{req.department}</strong>
-				{m.purchasing_req_asks({ place: `${data.details.location} (${data.details.branch})` })} ·
-				{day(req.requestDate)}{req.neededBy
-					? ` · ${m.purchasing_req_needed_by({ date: day(req.neededBy) })}`
-					: ''}
-			</p>
-		</div>
-
-		<div class="flex flex-wrap gap-2">
+	<PageHeader
+		eyebrow={m.purchasing_requisition()}
+		title={req.number ?? m.purchasing_draft_number({ id: req.id })}
+		tabTitle={req.number ?? m.purchasing_draft_requisition({ id: req.id })}
+	>
+		{#snippet badges()}
+			<Statuses
+				status={REQUISITION_BADGE[req.status]}
+				label={REQUISITION_STATUS_LABELS[req.status]}
+			/>
+		{/snippet}
+		<p class="text-muted-foreground">
+			<strong>{req.department}</strong>
+			{m.purchasing_req_asks({ place: `${data.details.location} (${data.details.branch})` })} ·
+			{ethiopianDate(req.requestDate)}{req.neededBy
+				? ` · ${m.purchasing_req_needed_by({ date: ethiopianDate(req.neededBy) })}`
+				: ''}
+		</p>
+		{#snippet actions()}
 			{#if isDraft && data.canRequest}
 				<DialogComp
 					bind:open={editOpen}
@@ -178,32 +252,26 @@
 					</form>
 				{/if}
 			{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	{#if req.status === 'submitted' && data.isAsker}
-		<p class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950">
-			{m.purchasing_req_waiting_own()}
-		</p>
+		<Notice tone="warning">{m.purchasing_req_waiting_own()}</Notice>
 	{/if}
 
 	{#if req.decidedAt}
-		<Card.Root>
-			<Card.Content class="flex flex-col gap-1 text-sm">
-				<p>
-					<strong
-						>{req.status === 'rejected'
-							? m.purchasing_rejected_word()
-							: m.purchasing_approved_word()}</strong
-					>
-					{m.purchasing_decided_by({
-						who: data.details.decidedBy ?? '—',
-						date: formatEthiopianDate(new Date(req.decidedAt))
-					})}
-				</p>
-				{#if req.decisionNote}<p><BigText text={req.decisionNote} max={120} /></p>{/if}
-			</Card.Content>
-		</Card.Root>
+		<Notice tone={req.status === 'rejected' ? 'danger' : 'success'}>
+			<strong
+				>{req.status === 'rejected'
+					? m.purchasing_rejected_word()
+					: m.purchasing_approved_word()}</strong
+			>
+			{m.purchasing_decided_by({
+				who: data.details.decidedBy ?? '—',
+				date: formatEthiopianDate(new Date(req.decidedAt))
+			})}
+			{#if req.decisionNote}<p><BigText text={req.decisionNote} max={120} /></p>{/if}
+		</Notice>
 	{/if}
 
 	{#if req.note}
@@ -223,8 +291,7 @@
 		</Card.Root>
 	{/if}
 
-	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">{m.purchasing_what_asked()}</h2>
+	<PageSection title={m.purchasing_what_asked()}>
 		{#if isDraft}
 			<LookupSection
 				config={{ entity: m.purchasing_entity_line(), plural: m.purchasing_lines(), fields }}
@@ -242,47 +309,7 @@
 				<p class="text-sm text-muted-foreground">
 					{m.purchasing_approve_hint()}
 				</p>
-				<div class="overflow-x-auto rounded-md border">
-					<table class="w-full text-sm">
-						<thead class="bg-muted/50 text-left">
-							<tr>
-								<th class="px-3 py-2">{m.common_item()}</th>
-								<th class="px-3 py-2 text-right">{m.purchasing_col_asked()}</th>
-								<th class="px-3 py-2 text-right">{m.purchasing_col_in_store()}</th>
-								<th class="px-3 py-2 text-right">{m.purchasing_col_approve()}</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each data.lines.rows as line (line.id)}
-								<tr class="border-t">
-									<td class="px-3 py-2">
-										{line.item}
-										{#if line.note}<p class="text-xs text-muted-foreground">
-												<BigText text={line.note} />
-											</p>{/if}
-									</td>
-									<td class="px-3 py-2 text-right">{qty(line.quantity, line.unit)}</td>
-									<td class="px-3 py-2 text-right">{qty(line.onHand, line.baseUnit)}</td>
-									<td class="px-3 py-2">
-										<div class="flex items-center justify-end gap-1">
-											<Input
-												type="number"
-												name="qty_{line.id}"
-												value={line.quantity}
-												min="0"
-												max={line.quantity}
-												step="any"
-												class="w-28 text-right"
-												aria-label={m.purchasing_approve_how_much({ item: line.item })}
-											/>
-											<span class="text-muted-foreground">{line.unit}</span>
-										</div>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
+				<DataTable variant="sheet" data={data.lines.rows} columns={approveColumns} />
 				<label class="flex flex-col gap-1 text-sm">
 					{m.purchasing_note_reject()}
 					<Textarea name="note" rows={2} placeholder={m.purchasing_note_reject_ph()} />
@@ -299,61 +326,18 @@
 				</div>
 			</form>
 		{:else}
-			<div class="overflow-x-auto rounded-md border">
-				<table class="w-full text-sm">
-					<thead class="bg-muted/50 text-left">
-						<tr>
-							<th class="px-3 py-2">{m.common_item()}</th>
-							<th class="px-3 py-2 text-right">{m.purchasing_col_asked()}</th>
-							<th class="px-3 py-2 text-right">{m.purchasing_col_approved()}</th>
-							<th class="px-3 py-2 text-right">{m.purchasing_col_in_store()}</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each data.lines.rows as line (line.id)}
-							<tr class="border-t">
-								<td class="px-3 py-2">
-									{line.item}
-									{#if line.note}<p class="text-xs text-muted-foreground">
-											<BigText text={line.note} />
-										</p>{/if}
-								</td>
-								<td class="px-3 py-2 text-right">{qty(line.quantity, line.unit)}</td>
-								<td
-									class="px-3 py-2 text-right {line.approvedQuantity !== null &&
-									line.approvedQuantity < line.quantity
-										? 'font-medium text-amber-600'
-										: ''}"
-								>
-									{line.approvedQuantity === null ? '—' : qty(line.approvedQuantity, line.unit)}
-								</td>
-								<td class="px-3 py-2 text-right">{qty(line.onHand, line.baseUnit)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
+			<DataTable
+				variant="compact"
+				data={data.lines.rows}
+				columns={lineColumns}
+				fileName={req.number ?? ''}
+			/>
 		{/if}
-	</section>
+	</PageSection>
 
 	{#if data.issues.length}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.purchasing_issued_heading()}</h2>
-			<ul class="flex flex-col divide-y rounded-md border">
-				{#each data.issues as doc (doc.id)}
-					<li class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-						<a
-							class="font-medium underline-offset-4 hover:underline"
-							href={resolve('/dashboard/stock/documents/[id]', { id: String(doc.id) })}
-							>{doc.number ?? m.purchasing_draft_issue({ id: doc.id })}</a
-						>
-						<span class="text-muted-foreground">{day(doc.docDate)}</span>
-						<Badge variant={doc.status === 'posted' ? 'default' : 'secondary'}
-							>{DOCUMENT_STATUS_LABELS[doc.status]}</Badge
-						>
-					</li>
-				{/each}
-			</ul>
-		</section>
+		<PageSection title={m.purchasing_issued_heading()}>
+			<DataTable variant="compact" data={data.issues} columns={issueColumns} />
+		</PageSection>
 	{/if}
 </div>

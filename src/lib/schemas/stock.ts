@@ -1,8 +1,7 @@
 import { m } from '$lib/paraglide/messages.js';
 import { z } from 'zod/v4';
 import { ADJUSTMENT_REASONS, DOCUMENT_TYPES, LOT_STATUSES } from '$lib/constants';
-
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => m.stock_v_date() });
+import { day, optionalDay } from '$lib/schemas/common';
 
 export const documentHeader = z.object({
 	type: z.enum(DOCUMENT_TYPES).default('receipt'),
@@ -50,10 +49,7 @@ export const lineAdd = z.object({
 	/** 0 means first-expiry-first-out. */
 	lotId: z.coerce.number().int().min(0).default(0),
 	lotNumber: z.string().trim().max(60).default(''),
-	expiryDate: z
-		.string()
-		.regex(/^(\d{4}-\d{2}-\d{2})?$/, { error: () => m.stock_v_date() })
-		.default(''),
+	expiryDate: optionalDay,
 	serials: z.string().max(5000).default('')
 });
 export const lineEdit = lineAdd.extend({ id: z.coerce.number() });

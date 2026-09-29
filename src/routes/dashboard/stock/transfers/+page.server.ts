@@ -14,6 +14,7 @@ import {
 	user
 } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
+import { daysBetween } from '$lib/server/days';
 import { branchScope, scopeWhere } from '$lib/server/scope';
 import type { PageServerLoad } from './$types';
 
@@ -124,14 +125,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 				)
 		: [];
 
-	const days = (from: string) =>
-		Math.max(0, Math.round((Date.parse(today) - Date.parse(from)) / 86_400_000));
-
 	return {
 		onTheRoad: onTheRoad.map((t) => ({
 			...t,
 			lines: Number(t.lines),
-			days: days(t.docDate)
+			days: Math.max(0, daysBetween(t.docDate, today))
 		})),
 		short: received
 			.map((r) => {

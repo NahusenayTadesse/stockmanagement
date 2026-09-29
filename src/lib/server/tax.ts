@@ -30,6 +30,7 @@ import {
 } from '$lib/server/db/schema';
 import { isNull } from 'drizzle-orm';
 import { lineAmounts, saleTotRate, saleVatRate } from '$lib/taxRules';
+import { cents } from '$lib/money';
 
 type Reader = Pick<typeof db, 'select'>;
 
@@ -69,8 +70,6 @@ export { lineAmounts, saleTotRate, saleVatRate };
 export function purchaseVatRate(settings: TaxSettings, supplierVat: boolean, taxCode: TaxCode) {
 	return supplierVat && taxCode === 'standard' ? settings.vatRate : 0;
 }
-
-const cents = (n: number) => Math.round(n * 100) / 100;
 
 /** The price a line is valued at: sales and customer returns by price, the rest by cost. */
 const priceSql = sql`CASE WHEN ${stockDocument.type} IN ('issue', 'sales_return') THEN ${stockDocumentLine.unitPrice} ELSE ${stockDocumentLine.unitCost} END`;

@@ -25,6 +25,7 @@ import {
 import { StockError, type Tx } from '$lib/server/stock/post';
 import { loadGrant } from '$lib/server/permissions';
 import { sendMail } from '$lib/server/mail';
+import { daysBetween } from '$lib/server/days';
 
 export type ExpiryBand = 'expired' | 'soon' | 'later';
 
@@ -87,10 +88,7 @@ export async function expiryWatch(
 	return rows.map((r) => {
 		const expiry = r.expiryDate!;
 		const band: ExpiryBand = expiry < today ? 'expired' : expiry <= soon ? 'soon' : 'later';
-		const days = Math.round(
-			(new Date(`${expiry}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) /
-				86_400_000
-		);
+		const days = daysBetween(today, expiry);
 		return {
 			...r,
 			value: Number(r.value),

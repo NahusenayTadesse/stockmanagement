@@ -1,10 +1,11 @@
-import { error, fail } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { redirect } from 'sveltekit-flash-message/server';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
 import { orgIdOf } from '$lib/server/tenant';
 import { closeShift, shiftSummary } from '$lib/server/pos';
-import { StockError } from '$lib/server/stock/post';
+import { attempt } from '$lib/server/actions';
+import { cents } from '$lib/money';
 import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -35,21 +36,24 @@ export const actions: Actions = {
 		await allowed(event.locals, summary.shift.userId);
 		const data = await event.request.formData();
 		const counted = Number(data.get('countedCash'));
-		try {
-			await db.transaction((tx) =>
-				closeShift(tx, {
-					orgId,
-					shiftId: summary.shift.id,
-					userId: event.locals.user!.id,
-					countedCash: counted,
-					note: String(data.get('note') ?? '').slice(0, 255)
-				})
-			);
-		} catch (err) {
-			if (err instanceof StockError) return fail(400, { error: err.message });
-			throw err;
-		}
-		const diff = Math.round((counted - summary.expectedCash) * 100) / 100;
+		const closed = await attempt(
+			event,
+			async () => {
+				await db.transaction((tx) =>
+					closeShift(tx, {
+						orgId,
+						shiftId: summary.shift.id,
+						userId: event.locals.user!.id,
+						countedCash: counted,
+						note: String(data.get('note') ?? '').slice(0, 255)
+					})
+				);
+				return null;
+			},
+			{ status: 400 }
+		);
+		if (!('done' in closed)) return closed;
+		const diff = cents(counted - summary.expectedCash);
 		redirect(
 			`/dashboard/pos/shifts/${summary.shift.id}`,
 			{

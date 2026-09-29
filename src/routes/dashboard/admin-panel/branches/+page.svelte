@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
+	import SettingsLookup from '../SettingsLookup.svelte';
 	import { add, edit } from './schema';
 
 	let { data } = $props();
 </script>
 
-<LookupPage
+<SettingsLookup
 	{data}
 	schemas={{ add, edit }}
 	config={{

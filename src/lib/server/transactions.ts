@@ -1,8 +1,8 @@
 /**
  * Money: recording it, checking it, listing it. Every query is filtered by the business first.
  */
-import { error } from '@sveltejs/kit';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
+
+import { and, asc, desc, eq, gte, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { m } from '$lib/paraglide/messages.js';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import { saveUploadedFile } from '@nahu/admin-kit/server/files';
@@ -14,7 +14,6 @@ import {
 	branch,
 	customer,
 	item,
-	itemUnit,
 	organization,
 	paymentMethod,
 	stockDocument,
@@ -24,9 +23,13 @@ import {
 	transactions,
 	user
 } from '$lib/server/db/schema';
-import { ethiopianFiscalYear, round4 } from '$lib/server/stock/math';
+import { ethiopianFiscalYear } from '$lib/server/stock/math';
 import { TRANSACTION_DIRECTIONS, TRANSACTION_PURPOSES, TRANSACTION_STATUSES } from '$lib/constants';
 import type { Tx } from '$lib/server/stock/post';
+import { cents, round4 } from '$lib/money';
+import { factorIn, packsOf } from '$lib/server/units';
+import { orgRowOr404 } from '$lib/server/org';
+import { dayNoon } from '$lib/format';
 
 type Writer = typeof db | Tx;
 
@@ -56,7 +59,7 @@ const gregorianDay = (g: { year: number; month: number; day: number }) =>
  * business here closes its books — and the fiscal year starts on Hamle 1.
  */
 export function datePresets(today: string) {
-	const eth = getEthiopianYearMonth(new Date(`${today}T12:00:00+03:00`))!;
+	const eth = getEthiopianYearMonth(dayNoon(today))!;
 	const monthStart = gregorianDay(ethiopianRange(eth.month, eth.year).startDate);
 	const fyStart = gregorianDay(ethiopianRange(11, ethiopianFiscalYear(today) - 1).startDate);
 	return [
@@ -170,7 +173,7 @@ export async function transactionTotals(orgId: number, f: TransactionFilters, re
 	return {
 		moneyIn,
 		moneyOut,
-		net: Math.round((moneyIn - moneyOut) * 100) / 100,
+		net: cents(moneyIn - moneyOut),
 		count: Number(row.count),
 		unverified: Number(row.unverified ?? 0)
 	};
@@ -193,14 +196,7 @@ export async function totalsByMethod(orgId: number, f: TransactionFilters) {
 }
 
 export async function orgTransaction(orgId: number, id: number) {
-	const [row] = await db
-		.select()
-		.from(transactions)
-		.where(
-			and(eq(transactions.id, id), eq(transactions.orgId, orgId), isNull(transactions.deletedAt))
-		);
-	if (!row) error(404, m.sales_tx_not_found());
-	return row;
+	return orgRowOr404(transactions, orgId, id, m.sales_tx_not_found);
 }
 
 export async function attachmentsOf(orgId: number, transactionId: number) {
@@ -285,32 +281,21 @@ export async function documentValue(documentId: number): Promise<number> {
 		.where(and(eq(stockDocumentLine.documentId, documentId), isNull(stockDocumentLine.deletedAt)));
 
 	if (doc.type === 'receipt') {
-		return (
-			Math.round(lines.reduce((s, l) => s + Math.abs(l.quantity) * (l.unitCost ?? 0), 0) * 100) /
-			100
-		);
+		return cents(lines.reduce((s, l) => s + Math.abs(l.quantity) * (l.unitCost ?? 0), 0));
 	}
 
 	const itemIds = [...new Set(lines.map((l) => l.itemId))];
-	const factors = itemIds.length
-		? await db
-				.select()
-				.from(itemUnit)
-				.where(and(inArray(itemUnit.itemId, itemIds), isNull(itemUnit.deletedAt)))
-		: [];
+	const factors = await packsOf(db, itemIds);
 	let total = 0;
 	for (const l of lines) {
-		const factor =
-			l.uomId === l.baseUomId
-				? 1
-				: (factors.find((f) => f.itemId === l.itemId && f.uomId === l.uomId)?.factor ?? 1);
+		const factor = factorIn(factors, { id: l.itemId, baseUomId: l.baseUomId }, l.uomId) ?? 1;
 		// The line's own sale price when it has one; otherwise the list price.
 		total +=
 			l.unitPrice !== null
 				? Math.abs(l.quantity) * l.unitPrice
 				: round4(Math.abs(l.quantity) * factor) * (l.salePrice ?? 0);
 	}
-	return Math.round(total * 100) / 100;
+	return cents(total);
 }
 
 // ── Writing ───────────────────────────────────────────────────────────────────────────────────
@@ -398,7 +383,7 @@ export async function checkTransaction(
 
 	return {
 		direction: values.direction as (typeof TRANSACTION_DIRECTIONS)[number],
-		amount: Math.round(Number(values.amount) * 100) / 100,
+		amount: cents(Number(values.amount)),
 		occurredOn: String(values.occurredOn),
 		paymentMethodId: methodId,
 		purpose: values.purpose as (typeof TRANSACTION_PURPOSES)[number],
@@ -408,7 +393,7 @@ export async function checkTransaction(
 		party: String(values.party ?? '') || supplierName || customerName,
 		supplierId,
 		customerId,
-		withheld: Math.round(Number(values.withheld ?? 0) * 100) / 100,
+		withheld: cents(Number(values.withheld ?? 0)),
 		withholdingReceipt: String(values.withholdingReceipt ?? '') || null,
 		description: String(values.description ?? '') || null,
 		branchId

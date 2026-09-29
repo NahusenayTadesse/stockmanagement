@@ -1,23 +1,24 @@
 <script lang="ts">
-	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import { resolve } from '$app/paths';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import SingleTable from '@nahu/admin-kit/components/SingleTable.svelte';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
 	import InputComp from '@nahu/admin-kit/formComponents/InputComp.svelte';
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
-	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
+	import { formatETB } from '@nahu/admin-kit/global';
+	import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 	import SupplierFields from '$lib/components/SupplierFields.svelte';
 	import { supplierEdit } from '$lib/schemas/suppliers';
-	import { DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
+	import { DOCUMENT_STATUS_LABELS, qty, signedAmount } from '$lib/format';
 	import { m } from '$lib/paraglide/messages.js';
-	import { signed } from '../../transactions/columns';
 
 	let { data } = $props();
 	let open = $state(false);
@@ -31,23 +32,15 @@
 	});
 
 	const s = $derived(data.supplier);
-	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
-
-	/**
-	 * Contact details as a plain list rather than the kit's detail table: that table capitalises
-	 * every value, which turns an email address into "Sales@Example.Com". Phone and email are links,
-	 * so a tap on a phone calls or writes to the supplier.
-	 */
+	/** Contact details. The phone can be copied; the email opens a message to the supplier. */
 	const details = $derived([
-		{
-			name: m.common_phone(),
-			value: s.phone || m.purchasing_phone_missing_add(),
-			href: s.phone ? `tel:${s.phone.replace(/[^+0-9]/g, '')}` : null
-		},
+		s.phone
+			? { name: m.common_phone(), value: s.phone, kind: 'phone' as const }
+			: { name: m.common_phone(), value: m.purchasing_phone_missing_add() },
 		{ name: m.common_email(), value: s.email ?? '—', href: s.email ? `mailto:${s.email}` : null },
-		{ name: m.common_address(), value: s.address ?? '—', href: null, long: 60 },
-		{ name: m.purchasing_f_tin(), value: s.tin ?? '—', href: null },
-		{ name: m.purchasing_f_contact_person(), value: s.contactPerson ?? '—', href: null, long: 40 },
+		{ name: m.common_address(), value: s.address ?? '—', long: 60 },
+		{ name: m.purchasing_f_tin(), value: s.tin ?? '—' },
+		{ name: m.purchasing_f_contact_person(), value: s.contactPerson ?? '—', long: 40 },
 		{
 			name: m.purchasing_f_lead_time(),
 			value:
@@ -55,10 +48,9 @@
 					? '—'
 					: s.leadTimeDays === 1
 						? m.purchasing_n_day_one()
-						: m.purchasing_n_days({ n: s.leadTimeDays }),
-			href: null
+						: m.purchasing_n_days({ n: s.leadTimeDays })
 		},
-		{ name: m.common_note(), value: s.note ?? '—', href: null, long: 120 }
+		{ name: m.common_note(), value: s.note ?? '—', long: 120 }
 	]);
 
 	const tiles = $derived<Stat[]>([
@@ -91,53 +83,47 @@
 	]);
 </script>
 
-<svelte:head>
-	<title>{s.name}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">{m.purchasing_supplier()}</p>
-			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{s.name}
-				{#if !s.isActive}<Badge variant="secondary">{m.purchasing_inactive_badge()}</Badge>{/if}
-			</h1>
-		</div>
-		{#if data.canManage}
-			<DialogComp
-				bind:open
-				title={m.purchasing_edit_supplier()}
-				variant="outline"
-				IconComp={Pencil}
-			>
-				<form
-					method="POST"
-					action="?/edit"
-					use:enhance
-					id="edit-supplier"
-					class="flex flex-col gap-4"
+	<PageHeader eyebrow={m.purchasing_supplier()} title={s.name}>
+		{#snippet badges()}
+			{#if !s.isActive}<Badge variant="secondary">{m.purchasing_inactive_badge()}</Badge>{/if}
+		{/snippet}
+		{#snippet actions()}
+			{#if data.canManage}
+				<DialogComp
+					bind:open
+					title={m.purchasing_edit_supplier()}
+					variant="outline"
+					IconComp={Pencil}
 				>
-					<Errors allErrors={$allErrors} />
-					<SupplierFields {form} {errors} />
-					<InputComp
-						{form}
-						{errors}
-						name="status"
-						type="select"
-						label={m.common_status()}
-						items={[
-							{ value: true, name: m.common_active() },
-							{ value: false, name: m.purchasing_status_inactive_hint() }
-						]}
-					/>
-					<Button type="submit" form="edit-supplier">
-						{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.common_save()}{/if}
-					</Button>
-				</form>
-			</DialogComp>
-		{/if}
-	</div>
+					<form
+						method="POST"
+						action="?/edit"
+						use:enhance
+						id="edit-supplier"
+						class="flex flex-col gap-4"
+					>
+						<Errors allErrors={$allErrors} />
+						<SupplierFields {form} {errors} />
+						<InputComp
+							{form}
+							{errors}
+							name="status"
+							type="select"
+							label={m.common_status()}
+							items={[
+								{ value: true, name: m.common_active() },
+								{ value: false, name: m.purchasing_status_inactive_hint() }
+							]}
+						/>
+						<Button type="submit" form="edit-supplier">
+							{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}{m.common_save()}{/if}
+						</Button>
+					</form>
+				</DialogComp>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	<div class="grid gap-4 sm:grid-cols-3">
 		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
@@ -149,23 +135,7 @@
 				<Card.Title>{m.purchasing_contact()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
-				<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
-					{#each details as row (row.name)}
-						<dt class="font-semibold">{row.name}</dt>
-						<dd class="break-words">
-							{#if row.href}
-								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- tel:/mailto:, not a route -->
-								<a class="underline underline-offset-2 hover:no-underline" href={row.href}
-									>{row.value}</a
-								>
-							{:else if 'long' in row}
-								<BigText text={row.value} max={row.long} />
-							{:else}
-								{row.value}
-							{/if}
-						</dd>
-					{/each}
-				</dl>
+				<SingleTable singleTable={details} />
 			</Card.Content>
 		</Card.Root>
 
@@ -214,7 +184,7 @@
 									>{m.purchasing_returned_to_them()}</Badge
 								>{/if}
 							<span class="text-sm text-muted-foreground">
-								{day(d.docDate)} · {formatETB(d.value)}
+								{ethiopianDate(d.docDate)} · {formatETB(d.value)}
 								{#if d.status === 'draft'}<Badge variant="secondary"
 										>{DOCUMENT_STATUS_LABELS.draft}</Badge
 									>{/if}
@@ -244,10 +214,10 @@
 									: ''}"
 								href={resolve('/dashboard/transactions/[id]', { id: String(p.id) })}
 							>
-								{signed(p.direction, p.amount)}
+								{signedAmount(p.direction, p.amount)}
 							</a>
 							<span class="text-sm text-muted-foreground">
-								{day(p.occurredOn)}{p.method ? ` · ${p.method}` : ''}{p.reference
+								{ethiopianDate(p.occurredOn)}{p.method ? ` · ${p.method}` : ''}{p.reference
 									? ` · ${p.reference}`
 									: ''}
 							</span>

@@ -71,11 +71,13 @@
 			extraColumns: [
 				{
 					accessorKey: 'cost',
+					meta: { align: 'right' },
 					header: m.stock_cost(),
 					cell: ({ row }) => formatETB(Number(row.original.cost ?? 0))
 				},
 				{
 					accessorKey: 'onHand',
+					meta: { align: 'right' },
 					header: m.stock_on_hand(),
 					cell: ({ row }) => qty(Number(row.original.onHand ?? 0))
 				}

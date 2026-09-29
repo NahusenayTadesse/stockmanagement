@@ -2,31 +2,18 @@ import { m } from '$lib/paraglide/messages.js';
 import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
-import DataTableSort from '@nahu/admin-kit/components/Table/data-table-sort.svelte';
-import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
-import { ethiopianDate } from '@nahu/admin-kit/tableCells';
-import { signed } from '../../transactions/columns';
-import { DOCUMENT_LABELS, DOCUMENT_STATUS_LABELS } from '$lib/format';
+import { DOCUMENT_LABELS, signedAmount } from '$lib/format';
 import type { PageData } from './$types';
-import { longText, NAME_LENGTH } from '$lib/cells';
+import {
+	dateCell,
+	longText,
+	NAME_LENGTH,
+	sortable,
+	documentStatusCell,
+	textColumn
+} from '$lib/table';
 
 type Row = PageData['documents'][number];
-
-/** A sortable header, named in the viewer's language when the table is drawn. */
-const sortable = (name: () => string) =>
-	(({ column }) =>
-		renderComponent(DataTableSort, {
-			name: name(),
-			onclick: column.getToggleSortingHandler()
-		})) satisfies ColumnDef<Row>['header'];
-
-/** `statuses` colours confirmed/pending/cancelled; map the document's own words onto them. */
-const STATUS_WORD = {
-	posted: 'confirmed',
-	draft: 'pending',
-	in_transit: 'in transit',
-	cancelled: 'cancelled'
-} as const;
 
 export const columns: ColumnDef<Row>[] = [
 	{
@@ -47,22 +34,10 @@ export const columns: ColumnDef<Row>[] = [
 	{
 		accessorKey: 'docDate',
 		header: sortable(m.common_date),
-		cell: (info) => ethiopianDate(info.getValue())
+		cell: dateCell
 	},
-	{
-		accessorKey: 'from',
-		get header() {
-			return m.stock_col_from();
-		},
-		cell: (info) => info.getValue() ?? ''
-	},
-	{
-		accessorKey: 'to',
-		get header() {
-			return m.stock_col_to();
-		},
-		cell: (info) => info.getValue() ?? ''
-	},
+	textColumn('from', m.stock_col_from),
+	textColumn('to', m.stock_col_to),
 	{
 		accessorKey: 'party',
 		get header() {
@@ -70,13 +45,7 @@ export const columns: ColumnDef<Row>[] = [
 		},
 		cell: longText(NAME_LENGTH)
 	},
-	{
-		accessorKey: 'reference',
-		get header() {
-			return m.common_reference();
-		},
-		cell: (info) => info.getValue() ?? ''
-	},
+	textColumn('reference', m.common_reference),
 	{
 		accessorKey: 'lines',
 		get header() {
@@ -85,6 +54,7 @@ export const columns: ColumnDef<Row>[] = [
 	},
 	{
 		accessorKey: 'paymentAmount',
+		meta: { align: 'right' },
 		get header() {
 			return m.stock_col_payment();
 		},
@@ -93,7 +63,7 @@ export const columns: ColumnDef<Row>[] = [
 				? renderComponent(DataTableLinks, {
 						id: row.original.paymentId,
 						name:
-							signed(row.original.paymentDirection, row.original.paymentAmount ?? 0) +
+							signedAmount(row.original.paymentDirection, row.original.paymentAmount ?? 0) +
 							(row.original.paymentStatus === 'void' ? m.stock_void_suffix() : ''),
 						entity: 'transaction'
 					})
@@ -102,17 +72,7 @@ export const columns: ColumnDef<Row>[] = [
 	{
 		accessorKey: 'status',
 		header: sortable(m.common_status),
-		cell: ({ row }) =>
-			renderComponent(Statuses, {
-				status: STATUS_WORD[row.original.status],
-				label: DOCUMENT_STATUS_LABELS[row.original.status]
-			})
+		cell: ({ row }) => documentStatusCell(row.original.status)
 	},
-	{
-		accessorKey: 'createdBy',
-		get header() {
-			return m.stock_col_by();
-		},
-		cell: (info) => info.getValue() ?? ''
-	}
+	textColumn('createdBy', m.stock_col_by)
 ];

@@ -1,17 +1,17 @@
 <script lang="ts">
-	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import ReportChart from '@nahu/admin-kit/components/reports/ReportChart.svelte';
-	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
 	import type { ReportChartData, Stat } from '@nahu/admin-kit/components/reports/types';
-	import { Label } from '@nahu/admin-kit/components/ui/label/index.js';
+	import FilterSelect from '$lib/components/filters/FilterSelect.svelte';
 	import ReportFilterBar from '../ReportFilterBar.svelte';
+	import ReportTable from '../ReportTable.svelte';
+	import StatGrid from '../StatGrid.svelte';
 	import { labels } from '$lib/format';
 	import { CLASS_NAMES, columns } from './columns';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
-	const select = 'h-9 rounded-md border bg-background px-2 text-sm';
 	const used = $derived(data.basis === 'cost');
 	const cols = $derived(columns(data.basis));
 	const HINTS: Record<string, string> = labels({
@@ -64,17 +64,11 @@
 	});
 </script>
 
-<svelte:head>
-	<title>{m.nav_abc()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.nav_abc()}</h1>
-		<p class="text-muted-foreground">
-			{used ? m.reports_abc_intro_used() : m.reports_abc_intro_sales()}
-		</p>
-	</div>
+	<PageHeader
+		title={m.nav_abc()}
+		description={used ? m.reports_abc_intro_used() : m.reports_abc_intro_sales()}
+	/>
 
 	<ReportFilterBar
 		branches={data.branches}
@@ -85,27 +79,29 @@
 		to={data.to}
 	>
 		{#if data.sells}
-			<div class="flex flex-col gap-1">
-				<Label for="basis">{m.reports_abc_rank_by()}</Label>
-				<select id="basis" name="basis" class={select} value={data.basis}>
-					<option value="cost">{m.reports_abc_rank_cost()}</option>
-					<option value="revenue">{m.reports_abc_rank_revenue()}</option>
-				</select>
-			</div>
+			<FilterSelect
+				name="basis"
+				label={m.reports_abc_rank_by()}
+				value={data.basis}
+				options={[
+					{ value: 'cost', name: m.reports_abc_rank_cost() },
+					{ value: 'revenue', name: m.reports_abc_rank_revenue() }
+				]}
+				anyLabel={null}
+			/>
 		{/if}
 	</ReportFilterBar>
 
-	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-		{#each tiles as stat (stat.key)}<StatCard {stat} />{/each}
-	</div>
+	<StatGrid stats={tiles} />
 
 	{#if data.report.total > 0}
 		<ReportChart {chart} />
 	{/if}
 
-	<DataTable
+	<ReportTable
 		data={data.report.rows}
 		columns={cols}
+		variant="list"
 		fileName={m.reports_file_abc({ from: data.from, to: data.to })}
 		facetKeys={['class', 'category']}
 		facetLabels={{ class: m.reports_col_class(), category: m.reports_category() }}

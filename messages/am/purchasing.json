@@ -365,5 +365,6 @@
 	"purchasing_note_reject_required": "ማስታወሻ (ውድቅ ለማድረግ ያስፈልጋል፦ ምን መስተካከል እንዳለበት ይግለጹ)",
 	"purchasing_you_asked": "ይህን የጠየቁት እርስዎ ስለሆኑ ሌላ ሰው ይወስነዋል።",
 	"purchasing_withdraw": "መልስ",
-	"purchasing_decided": "የተወሰኑ"
+	"purchasing_decided": "የተወሰኑ",
+	"purchasing_of_lines": "ከ{count} መስመሮች"
 }

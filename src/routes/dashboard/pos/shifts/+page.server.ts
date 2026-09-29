@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { location, posShift, user } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { branchScope, scopeWhere } from '$lib/server/scope';
+import { cents } from '$lib/money';
 import type { PageServerLoad } from './$types';
 
 /** Till shifts: a cashier sees their own; someone with `pos.manage`, everyone's. */
@@ -39,7 +40,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			...r,
 			difference:
 				r.countedCash !== null && r.expectedCash !== null
-					? Math.round((r.countedCash - r.expectedCash) * 100) / 100
+					? cents(r.countedCash - r.expectedCash)
 					: null
 		})),
 		all

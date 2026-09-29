@@ -6,14 +6,13 @@
  *
  * The person who asked can never approve their own request: that is the point.
  */
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import {
 	approvalRequest,
 	item,
-	itemUnit,
 	stockDocumentLine,
 	purchaseOrder,
 	stockCount,
@@ -28,6 +27,8 @@ import { markOrdered, orderLines } from '$lib/server/purchasing';
 import { smsApprovalWaiting } from '$lib/server/sms';
 import { m } from '$lib/paraglide/messages.js';
 import { ADJUSTMENT_REASONS } from '$lib/format';
+import { cents } from '$lib/money';
+import { factorIn, packsOf } from '$lib/server/units';
 
 /** A request's status as a word in a sentence, in the viewer's language. */
 function stateWord(status: string): string {
@@ -357,25 +358,12 @@ export async function currentValue(
 					isNull(stockDocumentLine.deletedAt)
 				)
 			);
-		const packs = lines.length
-			? await db
-					.select()
-					.from(itemUnit)
-					.where(
-						and(
-							inArray(
-								itemUnit.itemId,
-								lines.map((l) => l.itemId)
-							),
-							isNull(itemUnit.deletedAt)
-						)
-					)
-			: [];
+		const packs = await packsOf(
+			db,
+			lines.map((l) => l.itemId)
+		);
 		for (const l of lines) {
-			const factor =
-				l.uomId === l.baseUomId
-					? 1
-					: (packs.find((p) => p.itemId === l.itemId && p.uomId === l.uomId)?.factor ?? 1);
+			const factor = factorIn(packs, { id: l.itemId, baseUomId: l.baseUomId }, l.uomId) ?? 1;
 			const cost = l.unitCost == null ? l.avgCost : l.unitCost / factor;
 			value += Math.abs(l.quantity * factor) * cost;
 		}
@@ -387,5 +375,5 @@ export async function currentValue(
 	} else if (r.purchaseOrderId) {
 		value = (await orderLines(orgId, r.purchaseOrderId)).reduce((s, l) => s + l.value, 0);
 	}
-	return Math.round(value * 100) / 100;
+	return cents(value);
 }

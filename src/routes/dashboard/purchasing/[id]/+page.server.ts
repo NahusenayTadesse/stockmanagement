@@ -1,21 +1,14 @@
-import { error, fail } from '@sveltejs/kit';
-import { and, eq, isNull } from 'drizzle-orm';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { error } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
+import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
-import { redirect, setFlash } from 'sveltekit-flash-message/server';
+import { redirect } from 'sveltekit-flash-message/server';
 import { childActions, childCrud } from '@nahu/admin-kit/server/childCrud';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
 import { formatETB } from '@nahu/admin-kit/global';
 import { db } from '$lib/server/db';
-import {
-	location,
-	organization,
-	purchaseOrder,
-	purchaseOrderLine,
-	supplier,
-	user
-} from '$lib/server/db/schema';
+import { organization, purchaseOrder, purchaseOrderLine, user } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { itemOptions, locationOptions, supplierOptions, unitOptions } from '$lib/server/options';
 import { sendMail } from '$lib/server/mail';
@@ -30,13 +23,15 @@ import {
 import { orderLineValues } from '$lib/server/orderLines';
 import { ApprovalRequired, StockError } from '$lib/server/stock/post';
 import { approvalState, closePendingFor, requestApproval } from '$lib/server/approvals';
-import { branchScope, inScope, requireBranch } from '$lib/server/scope';
+import { branchScope, requireBranch } from '$lib/server/scope';
 import { orderHeader, orderLineAdd, orderLineEdit } from '$lib/schemas/purchasing';
 import { supplierSchema } from '$lib/schemas/suppliers';
 import { smsOrder } from '$lib/server/sms';
 import { m } from '$lib/paraglide/messages.js';
 import { PO_STATUS_LABELS } from '$lib/schemas/purchasing';
 import { canText, textAction, typedNumber } from '$lib/server/smsActions';
+import { attempt, attemptForm, invalidForm } from '$lib/server/actions';
+import { pickedStore, pickedSupplier } from '$lib/server/checks';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const lines = childCrud({
@@ -133,21 +128,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	};
 };
 
-/** Runs a state change, turning refusals into a flash message. */
-async function attempt(event: RequestEvent, run: () => Promise<string>) {
-	try {
-		const text = await run();
-		setFlash({ type: 'success', message: text }, event.cookies);
-		return { done: true };
-	} catch (err) {
-		if (err instanceof StockError) {
-			setFlash({ type: 'error', message: err.message }, event.cookies);
-			return fail(409, { refused: err.message });
-		}
-		throw err;
-	}
-}
-
 export const actions: Actions = {
 	/** The order, short enough for a text, to the supplier's phone. */
 	sms: async (event) => {
@@ -166,70 +146,38 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'purchasing.manage');
 		const orgId = orgIdOf(event.locals);
 		const form = await superValidate(event.request, zod4(orderHeader));
-		if (!form.valid)
-			return message(form, { type: 'error', text: m.common_check_form() }, { status: 400 });
+		if (!form.valid) return invalidForm(form);
 		const order = await scopedOrder(event);
-		if (order.status !== 'draft') {
-			return message(
-				form,
-				{ type: 'error', text: m.purchasing_po_only_draft_changes() },
-				{ status: 409 }
-			);
-		}
 
-		const [[sup], [loc]] = await Promise.all([
-			db
-				.select({ id: supplier.id })
-				.from(supplier)
-				.where(
-					and(
-						eq(supplier.id, form.data.supplierId),
-						eq(supplier.orgId, orgId),
-						isNull(supplier.deletedAt)
-					)
-				),
-			db
-				.select({ id: location.id, branchId: location.branchId })
-				.from(location)
-				.where(
-					and(
-						eq(location.id, form.data.locationId),
-						eq(location.orgId, orgId),
-						isNull(location.deletedAt)
-					)
-				)
-		]);
-		if (!sup) {
-			setError(form, 'supplierId', m.purchasing_v_supplier_from_list());
-			return message(
-				form,
-				{ type: 'error', text: m.purchasing_v_supplier_from_list() },
-				{ status: 400 }
+		return attemptForm(form, async () => {
+			if (order.status !== 'draft') throw new StockError(m.purchasing_po_only_draft_changes());
+			const sup = await pickedSupplier(
+				orgId,
+				form.data.supplierId,
+				m.purchasing_v_supplier_from_list()
 			);
-		}
-		if (!loc || !inScope(await branchScope(event.locals), loc.branchId)) {
-			setError(form, 'locationId', m.purchasing_v_location_from_list());
-			return message(
-				form,
-				{ type: 'error', text: m.purchasing_v_location_from_list() },
-				{ status: 400 }
+			const loc = await pickedStore(
+				event.locals,
+				orgId,
+				form.data.locationId,
+				m.purchasing_v_location_from_list()
 			);
-		}
 
-		await db
-			.update(purchaseOrder)
-			.set({
-				supplierId: sup.id,
-				locationId: loc.id,
-				branchId: loc.branchId,
-				orderDate: form.data.orderDate,
-				expectedDate: form.data.expectedDate || null,
-				reference: form.data.reference || null,
-				note: form.data.note || null,
-				updatedBy: event.locals.user?.id
-			})
-			.where(eq(purchaseOrder.id, order.id));
-		return message(form, { type: 'success', text: m.common_saved() });
+			await db
+				.update(purchaseOrder)
+				.set({
+					supplierId: sup.id,
+					locationId: loc.id,
+					branchId: loc.branchId,
+					orderDate: form.data.orderDate,
+					expectedDate: form.data.expectedDate || null,
+					reference: form.data.reference || null,
+					note: form.data.note || null,
+					updatedBy: event.locals.user?.id
+				})
+				.where(eq(purchaseOrder.id, order.id));
+			return m.common_saved();
+		});
 	},
 
 	/** Sent to the supplier: the order gets its number and its lines are fixed. */
@@ -237,36 +185,24 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'purchasing.manage');
 		const orgId = orgIdOf(event.locals);
 		const order = await scopedOrder(event);
-		try {
-			const number = await db.transaction((tx) =>
-				markOrdered(tx, { orgId, orderId: order.id, userId: event.locals.user?.id })
-			);
-			setFlash({ type: 'success', message: m.purchasing_po_ordered_as({ number }) }, event.cookies);
-			return { done: true };
-		} catch (err) {
-			// Over the business's limit: it waits for a second person instead.
-			if (err instanceof ApprovalRequired) {
+		return attempt(event, async () => {
+			try {
+				const number = await db.transaction((tx) =>
+					markOrdered(tx, { orgId, orderId: order.id, userId: event.locals.user?.id })
+				);
+				return m.purchasing_po_ordered_as({ number });
+			} catch (err) {
+				// Over the business's limit: it waits for a second person instead.
+				if (!(err instanceof ApprovalRequired)) throw err;
 				await requestApproval({
 					orgId,
 					userId: event.locals.user?.id,
 					subject: { kind: 'purchase_order', purchaseOrderId: order.id },
 					refusal: err
 				});
-				setFlash(
-					{
-						type: 'success',
-						message: m.purchasing_po_sent_for_approval({ reason: err.reason })
-					},
-					event.cookies
-				);
-				return { sentForApproval: true };
+				return m.purchasing_po_sent_for_approval({ reason: err.reason });
 			}
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { refused: err.message });
-			}
-			throw err;
-		}
+		});
 	},
 
 	/** A draft goods receipt for what is still due, opened for the storekeeper to check and post. */
@@ -274,9 +210,8 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'stock.draft');
 		const orgId = orgIdOf(event.locals);
 		await scopedOrder(event);
-		let documentId: number;
-		try {
-			documentId = await db.transaction((tx) =>
+		return attempt(event, async () => {
+			const documentId = await db.transaction((tx) =>
 				receiptFromOrder(tx, {
 					orgId,
 					orderId: Number(event.params.id),
@@ -284,21 +219,12 @@ export const actions: Actions = {
 					userId: event.locals.user?.id
 				})
 			);
-		} catch (err) {
-			if (err instanceof StockError) {
-				setFlash({ type: 'error', message: err.message }, event.cookies);
-				return fail(409, { refused: err.message });
-			}
-			throw err;
-		}
-		redirect(
-			`/dashboard/stock/documents/${documentId}`,
-			{
-				type: 'success',
-				message: m.purchasing_po_receipt_drafted()
-			},
-			event.cookies
-		);
+			redirect(
+				`/dashboard/stock/documents/${documentId}`,
+				{ type: 'success', message: m.purchasing_po_receipt_drafted() },
+				event.cookies
+			);
+		});
 	},
 
 	/** Emails the order to the supplier. */
@@ -306,77 +232,64 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'purchasing.manage');
 		const orgId = orgIdOf(event.locals);
 		await scopedOrder(event);
-		const { order, details, lines } = await orderForSupplier(orgId, Number(event.params.id));
-		if (order.status === 'draft' || order.status === 'cancelled') {
-			setFlash({ type: 'error', message: m.purchasing_po_email_only_placed() }, event.cookies);
-			return fail(409);
-		}
-		if (!details.supplierEmail) {
-			setFlash(
-				{
-					type: 'error',
-					message: m.purchasing_po_supplier_no_email({ supplier: details.supplier })
-				},
-				event.cookies
-			);
-			return fail(400);
-		}
-		const [org] = await db
-			.select({ name: organization.name, tin: organization.tin })
-			.from(organization)
-			.where(eq(organization.id, orgId));
+		return attempt(event, async () => {
+			const { order, details, lines } = await orderForSupplier(orgId, Number(event.params.id));
+			if (order.status === 'draft' || order.status === 'cancelled') {
+				throw new StockError(m.purchasing_po_email_only_placed());
+			}
+			if (!details.supplierEmail) {
+				throw new StockError(m.purchasing_po_supplier_no_email({ supplier: details.supplier }));
+			}
+			const [org] = await db
+				.select({ name: organization.name, tin: organization.tin })
+				.from(organization)
+				.where(eq(organization.id, orgId));
 
-		const total = lines.reduce((s, l) => s + l.value, 0);
-		const sent = await sendMail(
-			details.supplierEmail,
-			{
-				subject: m.purchasing_mail_subject({ number: order.number ?? '', org: org.name }),
-				heading: m.purchasing_mail_heading({ number: order.number ?? '' }),
-				body: [
-					m.purchasing_mail_dear({ supplier: details.supplier }),
-					m.purchasing_mail_intro({
-						org: org.name,
-						place: `${details.location} (${details.branch}${details.branchAddress ? `, ${details.branchAddress}` : ''})`
-					}),
-					...(order.expectedDate ? [m.purchasing_mail_expect({ date: order.expectedDate })] : []),
-					...(order.note ? [order.note] : [])
-				],
-				table: {
-					head: [
-						m.purchasing_mail_col_item(),
-						m.purchasing_mail_col_quantity(),
-						m.purchasing_mail_col_unit_price(),
-						m.purchasing_mail_col_amount()
+			const total = lines.reduce((s, l) => s + l.value, 0);
+			const sent = await sendMail(
+				details.supplierEmail,
+				{
+					subject: m.purchasing_mail_subject({ number: order.number ?? '', org: org.name }),
+					heading: m.purchasing_mail_heading({ number: order.number ?? '' }),
+					body: [
+						m.purchasing_mail_dear({ supplier: details.supplier }),
+						m.purchasing_mail_intro({
+							org: org.name,
+							place: `${details.location} (${details.branch}${details.branchAddress ? `, ${details.branchAddress}` : ''})`
+						}),
+						...(order.expectedDate ? [m.purchasing_mail_expect({ date: order.expectedDate })] : []),
+						...(order.note ? [order.note] : [])
 					],
-					rows: [
-						...lines.map((l) => [
-							l.item,
-							`${l.quantity} ${l.unit}`,
-							l.unitPrice == null ? '' : formatETB(l.unitPrice),
-							l.unitPrice == null ? '' : formatETB(l.value)
-						]),
-						[m.purchasing_mail_total(), '', '', formatETB(total)]
+					table: {
+						head: [
+							m.purchasing_mail_col_item(),
+							m.purchasing_mail_col_quantity(),
+							m.purchasing_mail_col_unit_price(),
+							m.purchasing_mail_col_amount()
+						],
+						rows: [
+							...lines.map((l) => [
+								l.item,
+								`${l.quantity} ${l.unit}`,
+								l.unitPrice == null ? '' : formatETB(l.unitPrice),
+								l.unitPrice == null ? '' : formatETB(l.value)
+							]),
+							[m.purchasing_mail_total(), '', '', formatETB(total)]
+						]
+					},
+					footnote: [
+						org.tin ? `${org.name}, TIN ${org.tin}.` : org.name,
+						details.branchPhone ? m.purchasing_mail_questions({ phone: details.branchPhone }) : '',
+						m.purchasing_mail_quote_number()
 					]
+						.filter(Boolean)
+						.join(' ')
 				},
-				footnote: [
-					org.tin ? `${org.name}, TIN ${org.tin}.` : org.name,
-					details.branchPhone ? m.purchasing_mail_questions({ phone: details.branchPhone }) : '',
-					m.purchasing_mail_quote_number()
-				]
-					.filter(Boolean)
-					.join(' ')
-			},
-			org.name
-		);
-		if (!sent) {
-			setFlash({ type: 'error', message: m.purchasing_mail_failed() }, event.cookies);
-			return fail(502);
-		}
-		setFlash(
-			{ type: 'success', message: m.purchasing_mail_sent({ email: details.supplierEmail }) },
-			event.cookies
-		);
-		return { emailed: true };
+				org.name
+			);
+			if (!sent) throw new StockError(m.purchasing_mail_failed());
+			return m.purchasing_mail_sent({ email: details.supplierEmail });
+		});
 	},
 
 	/** Nothing more is coming: what was delivered stands, the rest is no longer expected. */

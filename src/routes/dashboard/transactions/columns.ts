@@ -1,25 +1,14 @@
 import type { ColumnDef } from '@tanstack/table-core';
 import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
-import DataTableSort from '@nahu/admin-kit/components/Table/data-table-sort.svelte';
-import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
-import { ethiopianDate } from '@nahu/admin-kit/tableCells';
-import { formatETB } from '@nahu/admin-kit/global';
+import { signedAmount } from '$lib/format';
 import { PURPOSE_LABELS } from '$lib/schemas/transactions';
 import { m } from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { PageData } from './$types';
-import { longText, NAME_LENGTH } from '$lib/cells';
+import { dateCell, longText, NAME_LENGTH, sortable, statusCell, textColumn } from '$lib/table';
 
 type Row = PageData['rows'][number];
-
-/** A sortable header, named in the viewer's language when it is drawn. */
-const sortable = (name: () => string) =>
-	(({ column }) =>
-		renderComponent(DataTableSort, {
-			name: name(),
-			onclick: column.getToggleSortingHandler()
-		})) satisfies ColumnDef<Row>['header'];
 
 /** `statuses` colours confirmed/pending/cancelled; a transaction's own words map onto them. */
 export const STATUS_WORD = {
@@ -41,18 +30,7 @@ export const statusText = (status: keyof typeof STATUS_WORD) =>
 				void: m.sales_tx_status_void
 			}[status]();
 
-/** A plain text column, headed in the viewer's language. */
-const text = (key: keyof Row & string, header: () => string): ColumnDef<Row> => ({
-	accessorKey: key,
-	get header() {
-		return header();
-	},
-	cell: (info) => info.getValue() ?? ''
-});
-
-/** "+ ETB 1,200.00" in, "− ETB 1,200.00" out. */
-export const signed = (direction: 'in' | 'out', amount: number) =>
-	`${direction === 'in' ? '+' : '−'} ${formatETB(amount)}`;
+const text = (key: keyof Row & string, label: () => string) => textColumn<Row>(key, label);
 
 export const columns: ColumnDef<Row>[] = [
 	{
@@ -68,14 +46,15 @@ export const columns: ColumnDef<Row>[] = [
 	{
 		accessorKey: 'occurredOn',
 		header: sortable(m.common_date),
-		cell: (info) => ethiopianDate(info.getValue())
+		cell: dateCell
 	},
 	{
 		accessorKey: 'amount',
+		meta: { align: 'right' },
 		header: sortable(m.sales_amount),
 		// A voided row stays listed but must not read like money that moved.
 		cell: ({ row }) =>
-			signed(row.original.direction, row.original.amount) +
+			signedAmount(row.original.direction, row.original.amount) +
 			(row.original.status === 'void' ? m.sales_void_suffix() : '')
 	},
 	{
@@ -106,11 +85,7 @@ export const columns: ColumnDef<Row>[] = [
 	{
 		accessorKey: 'status',
 		header: sortable(m.common_status),
-		cell: ({ row }) =>
-			renderComponent(Statuses, {
-				status: STATUS_WORD[row.original.status],
-				label: statusText(row.original.status)
-			})
+		cell: ({ row }) => statusCell(STATUS_WORD[row.original.status], statusText(row.original.status))
 	},
 	text('branch', m.common_branch),
 	text('recordedBy', m.sales_recorded_by)

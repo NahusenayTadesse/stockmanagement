@@ -1,6 +1,7 @@
 <script lang="ts">
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
+	import type { ColumnDef } from '@tanstack/table-core';
 	import { m } from '$lib/paraglide/messages.js';
-	import { resolve } from '$app/paths';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Save from '@lucide/svelte/icons/save';
@@ -12,7 +13,11 @@
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
+	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import { roleSchema } from '$lib/schemas/users';
+	import { textColumn } from '$lib/table';
+	import { recordLink } from '$lib/table';
+	import PermissionTable from '../../PermissionTable.svelte';
 
 	let { data } = $props();
 
@@ -36,6 +41,16 @@
 			value: data.role.isOwner ? m.admin_roles_all_always() : data.permissionList.length
 		}
 	]);
+
+	type Person = (typeof data.userList)[number];
+	const peopleColumns: ColumnDef<Person>[] = [
+		{
+			accessorKey: 'name',
+			header: () => m.common_name(),
+			cell: ({ row }) => recordLink('user', row.original.id, row.original.name)
+		},
+		textColumn('email', m.common_email)
+	];
 </script>
 
 <svelte:head>
@@ -100,33 +115,20 @@
 </SingleView>
 
 <div class="mt-8 grid gap-8 lg:grid-cols-2">
-	<section>
-		<h2 class="mb-2 text-lg font-semibold">{m.admin_users_permissions()}</h2>
-		<ul class="divide-y rounded-md border">
-			{#each data.permissionList as permission (permission.id)}
-				<li class="px-4 py-2">
-					<p>{permission.description ?? permission.name}</p>
-					<p class="font-mono text-xs text-muted-foreground">{permission.name}</p>
-				</li>
-			{:else}
-				<li class="px-4 py-2 text-muted-foreground">{m.common_none()}</li>
-			{/each}
-		</ul>
-	</section>
-	<section>
-		<h2 class="mb-2 text-lg font-semibold">{m.admin_roles_on_this()}</h2>
-		<ul class="divide-y rounded-md border">
-			{#each data.userList as person (person.id)}
-				<li class="flex justify-between px-4 py-2">
-					<a
-						class="hover:underline"
-						href={resolve('/dashboard/admin-panel/users/[id]', { id: person.id })}>{person.name}</a
-					>
-					<span class="text-sm text-muted-foreground">{person.email}</span>
-				</li>
-			{:else}
-				<li class="px-4 py-2 text-muted-foreground">{m.admin_roles_nobody()}</li>
-			{/each}
-		</ul>
-	</section>
+	<PermissionTable
+		title={m.admin_users_permissions()}
+		permissions={data.permissionList.map((p) => ({
+			key: p.id,
+			words: p.description ?? p.name,
+			code: p.name
+		}))}
+		empty={m.common_none()}
+	/>
+	<PageSection title={m.admin_roles_on_this()}>
+		{#if data.userList.length}
+			<DataTable variant="compact" data={data.userList} columns={peopleColumns} />
+		{:else}
+			<p class="rounded-md border px-4 py-2 text-muted-foreground">{m.admin_roles_nobody()}</p>
+		{/if}
+	</PageSection>
 </div>

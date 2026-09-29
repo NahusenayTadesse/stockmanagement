@@ -12,6 +12,7 @@
 	import Barcode from '@lucide/svelte/icons/barcode';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 
 	let { data } = $props();
 
@@ -144,30 +145,26 @@
 	});
 </script>
 
-<svelte:head>
-	<title>{m.common_items()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-4">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.stock_items_count({ count: data.rows.length })}</h1>
-		<p class="text-muted-foreground">
-			{m.stock_items_intro()}
-		</p>
-	</div>
-	<div class="flex flex-wrap items-center gap-2">
-		<Button variant="outline" size="sm" href={resolve('/dashboard/items/labels')}>
-			<Barcode class="size-4" />
-			{m.stock_print_labels()}
-		</Button>
-		{#if data.canManage && data.withoutBarcode}
-			<form method="POST" action="?/generateBarcodes" use:enhance>
-				<Button type="submit" variant="outline" size="sm">
-					{m.stock_give_barcodes({ count: data.withoutBarcode })}
-				</Button>
-			</form>
-		{/if}
-	</div>
+	<PageHeader
+		title={m.stock_items_count({ count: data.rows.length })}
+		tabTitle={m.common_items()}
+		description={m.stock_items_intro()}
+	>
+		{#snippet actions()}
+			<Button variant="outline" size="sm" href={resolve('/dashboard/items/labels')}>
+				<Barcode class="size-4" />
+				{m.stock_print_labels()}
+			</Button>
+			{#if data.canManage && data.withoutBarcode}
+				<form method="POST" action="?/generateBarcodes" use:enhance>
+					<Button type="submit" variant="outline" size="sm">
+						{m.stock_give_barcodes({ count: data.withoutBarcode })}
+					</Button>
+				</form>
+			{/if}
+		{/snippet}
+	</PageHeader>
 	{#if data.canManage && data.supplierForm}
 		<!-- Outside the item dialog, which is the kit's: the new supplier is then in its picker. -->
 		<QuickSupplier

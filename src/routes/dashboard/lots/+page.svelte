@@ -3,6 +3,7 @@
 	import LookupPage from '@nahu/admin-kit/components/lookup/LookupPage.svelte';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import type { LookupConfig } from '@nahu/admin-kit/components/lookup/types';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import { lotEdit } from '$lib/schemas/stock';
 	import { extraColumns } from './columns';
 
@@ -37,17 +38,8 @@
 	};
 </script>
 
-<svelte:head>
-	<title>{m.stock_lots_title()}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-4">
-	<div>
-		<h1 class="text-2xl font-semibold">{m.stock_lots_title()}</h1>
-		<p class="text-muted-foreground">
-			{m.stock_lots_intro()}
-		</p>
-	</div>
+	<PageHeader title={m.stock_lots_title()} description={m.stock_lots_intro()} />
 
 	{#if data.canManage}
 		<LookupPage {data} {config} schemas={{ edit: lotEdit }} />

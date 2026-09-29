@@ -1,4 +1,3 @@
-import { fail } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
@@ -11,6 +10,7 @@ import { createOrganization } from '$lib/server/seedPermissions';
 import { registerSchema } from '$lib/schemas/auth';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
+import { invalidForm } from '$lib/server/actions';
 
 export const load: PageServerLoad = async (event) => {
 	if (event.locals.user) redirect(302, '/dashboard');
@@ -28,7 +28,7 @@ export const actions: Actions = {
 	 */
 	register: async (event) => {
 		const form = await superValidate(event.request, zod4(registerSchema));
-		if (!form.valid) return fail(400, { form });
+		if (!form.valid) return invalidForm(form);
 
 		const { business, tin, phone, name, email, password } = form.data;
 

@@ -1,4 +1,3 @@
-import { fail } from '@sveltejs/kit';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
@@ -24,7 +23,7 @@ import { sellsToCustomers } from '$lib/server/customers';
 import { priceTable } from '$lib/server/pricing';
 import { checkout, currentShift, heldCarts, holdCart, openShift, takeCart } from '$lib/server/pos';
 import { afterSale } from '$lib/server/afterSale';
-import { StockError } from '$lib/server/stock/post';
+import { attempt, refusal } from '$lib/server/actions';
 import { checkoutPayload } from '$lib/schemas/pos';
 import { smsSettings } from '$lib/server/sms';
 import { m } from '$lib/paraglide/messages.js';
@@ -210,19 +209,22 @@ export const actions: Actions = {
 	openShift: async (event) => {
 		requirePermission(event.locals, 'pos.use');
 		const data = await event.request.formData();
-		try {
-			await db.transaction((tx) =>
-				openShift(tx, {
-					orgId: orgIdOf(event.locals),
-					userId: event.locals.user!.id,
-					locationId: Number(data.get('locationId')),
-					openingFloat: Number(data.get('openingFloat') || 0)
-				})
-			);
-		} catch (err) {
-			if (err instanceof StockError) return fail(400, { error: err.message });
-			throw err;
-		}
+		const opened = await attempt(
+			event,
+			async () => {
+				await db.transaction((tx) =>
+					openShift(tx, {
+						orgId: orgIdOf(event.locals),
+						userId: event.locals.user!.id,
+						locationId: Number(data.get('locationId')),
+						openingFloat: Number(data.get('openingFloat') || 0)
+					})
+				);
+				return null;
+			},
+			{ status: 400 }
+		);
+		if (!('done' in opened)) return opened;
 		return { opened: true };
 	},
 
@@ -237,17 +239,17 @@ export const actions: Actions = {
 				JSON.parse(String((await event.request.formData()).get('payload')))
 			);
 		} catch {
-			return fail(400, { error: m.sales_err_sale_unreadable() });
+			return refusal(m.sales_err_sale_unreadable(), 400);
 		}
 		const shift = await currentShift(orgId, userId);
-		if (!shift) return fail(409, { error: m.sales_err_open_shift_first() });
+		if (!shift) return refusal(m.sales_err_open_shift_first(), 409);
 		const [org] = await db
 			.select({ maxDiscountPercent: organization.maxDiscountPercent })
 			.from(organization)
 			.where(eq(organization.id, orgId));
 
-		let sale;
-		try {
+		let sale!: Awaited<ReturnType<typeof checkout>>;
+		const posted = await attempt(event, async () => {
 			sale = await db.transaction((tx) =>
 				checkout(tx, {
 					orgId,
@@ -263,10 +265,9 @@ export const actions: Actions = {
 					maxDiscountPercent: org.maxDiscountPercent
 				})
 			);
-		} catch (err) {
-			if (err instanceof StockError) return fail(409, { error: err.message });
-			throw err;
-		}
+			return null;
+		});
+		if (!('done' in posted)) return posted;
 		const { notes, failed } = await afterSale(orgId, sale.documentId, {
 			smsTo: payload.smsTo,
 			userId
@@ -283,7 +284,7 @@ export const actions: Actions = {
 		try {
 			cart = JSON.parse(String(data.get('cart')));
 		} catch {
-			return fail(400, { error: m.sales_err_cart_unreadable() });
+			return refusal(m.sales_err_cart_unreadable(), 400);
 		}
 		const shift = await currentShift(orgId, event.locals.user!.id);
 		await holdCart(db, {
@@ -302,7 +303,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'pos.use');
 		const id = Number((await event.request.formData()).get('id'));
 		const row = await db.transaction((tx) => takeCart(tx, orgIdOf(event.locals), id));
-		if (!row) return fail(404, { error: m.sales_err_cart_gone() });
+		if (!row) return refusal(m.sales_err_cart_gone(), 404);
 		return { taken: row.cart };
 	}
 };

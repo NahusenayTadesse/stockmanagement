@@ -8,7 +8,6 @@
 	import Printer from '@lucide/svelte/icons/printer';
 	import X from '@lucide/svelte/icons/x';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import Truck from '@lucide/svelte/icons/truck';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
@@ -16,10 +15,9 @@
 	import type { LookupField } from '@nahu/admin-kit/components/lookup/types';
 	import SingleTable from '@nahu/admin-kit/components/SingleTable.svelte';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
-	import * as AlertDialog from '@nahu/admin-kit/components/ui/alert-dialog/index.js';
 	import { Badge } from '@nahu/admin-kit/components/ui/badge/index.js';
 	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
-	import { Button, buttonVariants } from '@nahu/admin-kit/components/ui/button/index.js';
+	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DialogComp from '@nahu/admin-kit/formComponents/DialogComp.svelte';
 	import LoadingBtn from '@nahu/admin-kit/formComponents/LoadingBtn.svelte';
 	import Errors from '@nahu/admin-kit/formComponents/Errors.svelte';
@@ -31,7 +29,14 @@
 	import { documentHeader, lineAdd, lineEdit } from '$lib/schemas/stock';
 	import DocumentHeaderFields from '../DocumentHeaderFields.svelte';
 	import PaymentCard from './PaymentCard.svelte';
-	import { movementColumns } from './columns';
+	import { movementColumns, returnColumns } from './columns';
+	import ReceiveSheet from './ReceiveSheet.svelte';
+	import ReturnSheet from './ReturnSheet.svelte';
+	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
+	import Notice from '@nahu/admin-kit/components/Notice.svelte';
+	import ConfirmAction from '@nahu/admin-kit/components/ConfirmAction.svelte';
+	import { cents } from '$lib/money';
 
 	let { data } = $props();
 
@@ -41,7 +46,6 @@
 	const type = $derived(doc.type);
 
 	let editOpen = $state(false);
-	let posting = $state(false);
 
 	// svelte-ignore state_referenced_locally
 	const header = createForm(data.headerForm, documentHeader, {
@@ -56,7 +60,7 @@
 	const headerDelayed = header.delayed;
 
 	/** The refusal from the last Post, shown until the lines change. */
-	const stockError = $derived((page.form as { stockError?: string } | null)?.stockError ?? null);
+	const refused = $derived((page.form as { refused?: string } | null)?.refused ?? null);
 
 	const item: LookupField = {
 		name: 'itemId',
@@ -208,9 +212,6 @@
 		}
 	];
 
-	/** Transfers: how many of each line arrived, as typed on the receive sheet. */
-	const arrived = $state<Record<number, number>>({});
-
 	const details = $derived(
 		[
 			{ name: m.common_date(), value: formatEthiopianDate(new Date(doc.docDate)) },
@@ -297,29 +298,24 @@
 	);
 </script>
 
-<svelte:head>
-	<title>{doc.number ?? m.stock_draft_title({ type: DOCUMENT_LABELS[type].toLowerCase() })}</title>
-</svelte:head>
-
 <div class="flex flex-col gap-6">
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<p class="text-sm text-muted-foreground">{DOCUMENT_LABELS[type]}</p>
-			<h1 class="flex items-center gap-2 text-2xl font-semibold">
-				{doc.number ?? m.stock_draft_number({ id: doc.id })}
-				<Badge
-					variant={doc.status === 'posted'
-						? 'default'
-						: doc.status === 'cancelled'
-							? 'destructive'
-							: 'secondary'}
-				>
-					{DOCUMENT_STATUS_LABELS[doc.status]}
-				</Badge>
-			</h1>
-		</div>
-
-		<div class="flex flex-wrap gap-2">
+	<PageHeader
+		eyebrow={DOCUMENT_LABELS[type]}
+		title={doc.number ?? m.stock_draft_number({ id: doc.id })}
+		tabTitle={doc.number ?? m.stock_draft_title({ type: DOCUMENT_LABELS[type].toLowerCase() })}
+	>
+		{#snippet badges()}
+			<Badge
+				variant={doc.status === 'posted'
+					? 'default'
+					: doc.status === 'cancelled'
+						? 'destructive'
+						: 'secondary'}
+			>
+				{DOCUMENT_STATUS_LABELS[doc.status]}
+			</Badge>
+		{/snippet}
+		{#snippet actions()}
 			{#if isDraft && data.canDraft}
 				<DialogComp
 					bind:open={editOpen}
@@ -359,46 +355,16 @@
 				<form method="POST" action="?/cancel" use:enhance>
 					<Button type="submit" variant="outline"><X /> {m.stock_cancel_draft()}</Button>
 				</form>
-
-				<AlertDialog.Root>
-					<AlertDialog.Trigger
-						class={buttonVariants({ variant: 'default' })}
-						disabled={!data.lines.rows.length}
-					>
-						<Check />
-						{m.stock_post()}
-					</AlertDialog.Trigger>
-					<AlertDialog.Content>
-						<AlertDialog.Header>
-							<AlertDialog.Title
-								>{m.stock_post_confirm_title({
-									type: DOCUMENT_LABELS[type].toLowerCase()
-								})}</AlertDialog.Title
-							>
-							<AlertDialog.Description>
-								{m.stock_post_confirm_body()}
-							</AlertDialog.Description>
-						</AlertDialog.Header>
-						<AlertDialog.Footer>
-							<AlertDialog.Cancel>{m.stock_not_yet()}</AlertDialog.Cancel>
-							<form
-								method="POST"
-								action="?/post"
-								use:enhance={() => {
-									posting = true;
-									return async ({ update }) => {
-										await update();
-										posting = false;
-									};
-								}}
-							>
-								<AlertDialog.Action type="submit" disabled={posting}>
-									{#if posting}<LoadingBtn name={m.stock_posting()} />{:else}{m.stock_post()}{/if}
-								</AlertDialog.Action>
-							</form>
-						</AlertDialog.Footer>
-					</AlertDialog.Content>
-				</AlertDialog.Root>
+				<ConfirmAction
+					action="?/post"
+					label={m.stock_post()}
+					icon={Check}
+					title={m.stock_post_confirm_title({ type: DOCUMENT_LABELS[type].toLowerCase() })}
+					description={m.stock_post_confirm_body()}
+					busyLabel={m.stock_posting()}
+					cancelLabel={m.stock_not_yet()}
+					disabled={!data.lines.rows.length}
+				/>
 			{/if}
 
 			{#if data.canReturn && data.canDraft}
@@ -416,19 +382,18 @@
 					{doc.status === 'in_transit' ? m.stock_print_dispatch_note() : m.common_print()}
 				</Button>
 			{/if}
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	{#if isDraft && data.credit}
 		{@const c = data.credit}
-		{@const after = Math.round((c.balance + (data.saleValue ?? 0)) * 100) / 100}
-		<div
-			class="flex flex-col gap-1 rounded-md border p-3 text-sm {c.creditLimit !== null &&
-			after > c.creditLimit
-				? 'border-destructive/50 bg-destructive/10'
+		{@const after = cents(c.balance + (data.saleValue ?? 0))}
+		<Notice
+			tone={c.creditLimit !== null && after > c.creditLimit
+				? 'danger'
 				: c.overdue > 0
-					? 'border-amber-500/40 bg-amber-500/10'
-					: ''}"
+					? 'warning'
+					: 'info'}
 		>
 			<p>
 				<strong>{data.names.customer}</strong>
@@ -448,39 +413,35 @@
 						: m.stock_credit_remain({ amount: formatETB(c.creditLimit - after) })}
 				{/if}
 			</p>
-		</div>
+		</Notice>
 	{/if}
 
 	{#if data.approval?.pending}
 		{@const p = data.approval.pending}
-		<div
-			class="flex flex-wrap items-start justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-		>
-			<p class="flex items-start gap-2">
-				<ShieldCheck class="mt-0.5 size-4 shrink-0" />
-				<span>
-					<strong>{m.stock_waiting_approval()}</strong> — {m.stock_approval_asked_by({
-						who: p.requestedBy ?? m.stock_someone()
-					})}
-					{ethiopianDateTime(p.requestedAt)}: {p.reason}. {m.stock_approval_posted_when()}
-					<a class="underline" href={resolve('/dashboard/approvals')}>{m.nav_approvals()}</a>
-					{m.stock_approval_page_suffix()}
-				</span>
-			</p>
-			{#if data.canDraft}
-				<form method="POST" action="?/withdraw" use:enhance>
-					<Button type="submit" size="sm" variant="outline">{m.stock_withdraw_to_change()}</Button>
-				</form>
-			{/if}
-		</div>
+		<Notice tone="warning" icon={ShieldCheck}>
+			<strong>{m.stock_waiting_approval()}</strong> — {m.stock_approval_asked_by({
+				who: p.requestedBy ?? m.stock_someone()
+			})}
+			{ethiopianDateTime(p.requestedAt)}: {p.reason}. {m.stock_approval_posted_when()}
+			<a class="underline" href={resolve('/dashboard/approvals')}>{m.nav_approvals()}</a>
+			{m.stock_approval_page_suffix()}
+			{#snippet actions()}
+				{#if data.canDraft}
+					<form method="POST" action="?/withdraw" use:enhance>
+						<Button type="submit" size="sm" variant="outline">{m.stock_withdraw_to_change()}</Button
+						>
+					</form>
+				{/if}
+			{/snippet}
+		</Notice>
 	{:else if data.approval?.last?.status === 'rejected'}
 		{@const l = data.approval.last}
-		<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+		<Notice tone="danger">
 			<strong>{m.stock_not_approved()}</strong>
 			{m.stock_not_approved_by({ who: l.decidedBy ?? m.stock_someone() })}{l.decisionNote
 				? `: ${l.decisionNote}`
 				: ''}. {m.stock_change_and_post_again()}
-		</div>
+		</Notice>
 	{/if}
 
 	{#if data.transit}
@@ -500,92 +461,17 @@
 				</Card.Description>
 			</Card.Header>
 			<Card.Content>
-				<form
-					method="POST"
-					action="?/receive"
-					use:enhance={() =>
-						async ({ update }) =>
-							update({ reset: false })}
-					class="flex flex-col gap-3"
-				>
-					<div class="overflow-x-auto rounded-md border">
-						<table class="w-full text-sm">
-							<thead class="bg-muted/50 text-left">
-								<tr>
-									<th class="px-3 py-2">{m.common_item()}</th>
-									<th class="px-3 py-2 text-right">{m.stock_sent()}</th>
-									<th class="px-3 py-2 text-right">{m.stock_arrived()}</th>
-									<th class="px-3 py-2 text-right">{m.stock_missing()}</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each t.lines as l (l.id)}
-									{@const got = t.canReceive ? (arrived[l.id] ?? l.sent) : (l.received ?? l.sent)}
-									<tr class="border-t align-top">
-										<td class="px-3 py-2">{l.item}</td>
-										<td class="px-3 py-2 text-right">{l.sent} {l.unit}</td>
-										<td class="px-3 py-2 text-right">
-											{#if t.canReceive && l.trackSerials}
-												<textarea
-													name="serials_{l.id}"
-													rows={Math.min(6, (l.serials ?? '').split('\n').length)}
-													aria-label={m.stock_serials_arrived_aria({ item: l.item })}
-													class="w-48 rounded-md border bg-background px-2 py-1 font-mono text-xs"
-													>{l.serials}</textarea
-												>
-											{:else if t.canReceive}
-												<input
-													name="qty_{l.id}"
-													type="number"
-													min="0"
-													max={l.sent}
-													step="any"
-													value={l.sent}
-													oninput={(e) => (arrived[l.id] = Number(e.currentTarget.value))}
-													aria-label={m.stock_qty_arrived_aria({ item: l.item })}
-													class="h-9 w-24 rounded-md border bg-background px-2 text-right"
-												/>
-												<span class="ml-1 text-xs text-muted-foreground">{l.unit}</span>
-											{:else}
-												{l.received ?? '—'}
-												{l.unit}
-												{#if l.trackSerials && l.receivedSerials}
-													<div class="font-mono text-xs text-muted-foreground">
-														{l.receivedSerials.split('\n').join(', ')}
-													</div>
-												{/if}
-											{/if}
-										</td>
-										<td
-											class="px-3 py-2 text-right {l.sent - got > 0 && !l.trackSerials
-												? 'text-destructive'
-												: ''}"
-										>
-											{l.trackSerials
-												? ''
-												: `${Math.round((l.sent - got) * 10000) / 10000} ${l.unit}`}
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
-					{#if t.canReceive}
-						<Input name="note" placeholder={m.stock_delivery_note_placeholder()} class="max-w-xl" />
-						<Button type="submit" class="self-start"><Check /> {m.stock_receive()}</Button>
-					{/if}
-				</form>
+				<ReceiveSheet lines={t.lines} canReceive={t.canReceive} />
 			</Card.Content>
 		</Card.Root>
 	{/if}
 
-	{#if stockError && isDraft}
-		<div
-			class="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm"
-		>
-			<CircleAlert class="mt-0.5 size-4 shrink-0 text-destructive" />
-			<p><strong>{m.stock_not_posted()}</strong> {stockError} {m.stock_nothing_changed()}</p>
-		</div>
+	{#if refused && isDraft}
+		<Notice tone="danger">
+			<strong>{m.stock_not_posted()}</strong>
+			{refused}
+			{m.stock_nothing_changed()}
+		</Notice>
 	{/if}
 
 	<div class="grid gap-6 lg:grid-cols-2">
@@ -711,8 +597,7 @@
 		</Card.Root>
 	{/if}
 
-	<section class="flex flex-col gap-2">
-		<h2 class="text-xl font-semibold">{m.stock_lines()}</h2>
+	<PageSection title={m.stock_lines()}>
 		{#if isDraft && type !== 'receipt'}
 			<p class="text-sm text-muted-foreground">
 				{type === 'transfer' ? m.stock_lines_fefo_hint_transfer() : m.stock_lines_fefo_hint()}
@@ -722,80 +607,11 @@
 			<p class="text-sm text-muted-foreground">
 				{type === 'sales_return' ? m.stock_return_hint_sale() : m.stock_return_hint_purchase()}
 			</p>
-			<form
-				method="POST"
-				action="?/saveReturn"
-				use:enhance={() =>
-					async ({ update }) =>
-						update({ reset: false })}
-				class="flex flex-col gap-3"
-			>
-				<div class="overflow-x-auto rounded-md border">
-					<table class="w-full text-sm">
-						<thead class="bg-muted/50 text-left">
-							<tr>
-								<th class="px-3 py-2">{m.common_item()}</th>
-								<th class="px-3 py-2">{m.stock_col_lot()}</th>
-								<th class="px-3 py-2 text-right">{m.stock_returning()}</th>
-								<th class="px-3 py-2 text-right">{m.stock_still_returnable()}</th>
-								<th class="px-3 py-2 text-right"
-									>{type === 'sales_return' ? m.common_price() : m.stock_cost()}</th
-								>
-								<th class="px-3 py-2 text-right">{m.stock_col_value()}</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each data.returnSheet as r (r.id)}
-								<tr class="border-t align-top">
-									<td class="px-3 py-2">{r.item}</td>
-									<td class="px-3 py-2">{r.lot || '—'}</td>
-									<td class="px-3 py-2 text-right">
-										{#if isDraft && data.canDraft}
-											{#if r.serials}
-												<textarea
-													name="serials_{r.id}"
-													rows={Math.min(6, r.serials.split('\n').length)}
-													aria-label={m.stock_serials_back_aria({ item: r.item })}
-													class="w-48 rounded-md border bg-background px-2 py-1 font-mono text-xs"
-													>{r.serials}</textarea
-												>
-											{:else}
-												<input
-													name="qty_{r.id}"
-													type="number"
-													min="0"
-													max={r.left}
-													step="any"
-													value={r.quantity}
-													aria-label={m.stock_qty_back_aria({ item: r.item })}
-													class="h-9 w-24 rounded-md border bg-background px-2 text-right"
-												/>
-											{/if}
-										{:else}
-											{r.quantity}
-										{/if}
-										<span class="ml-1 text-xs text-muted-foreground">{r.unit}</span>
-									</td>
-									<td class="px-3 py-2 text-right text-muted-foreground">{r.left} {r.unit}</td>
-									<td class="px-3 py-2 text-right">{r.price == null ? '—' : formatETB(r.price)}</td>
-									<td class="px-3 py-2 text-right">{formatETB(r.gross)}</td>
-								</tr>
-							{:else}
-								<tr
-									><td colspan="6" class="px-3 py-6 text-center text-muted-foreground"
-										>{m.stock_no_lines_left()}</td
-									></tr
-								>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-				{#if isDraft && data.canDraft && data.returnSheet.length}
-					<Button type="submit" class="self-start" variant="outline"
-						>{m.stock_save_quantities()}</Button
-					>
-				{/if}
-			</form>
+			<ReturnSheet
+				lines={data.returnSheet}
+				editable={isDraft && data.canDraft}
+				isSale={type === 'sales_return'}
+			/>
 		{:else}
 			<LookupSection
 				config={{ entity: m.stock_line(), plural: m.stock_lines(), fields: lineFields }}
@@ -809,14 +625,10 @@
 				readonly={!isDraft || !data.canDraft}
 			/>
 		{/if}
-	</section>
+	</PageSection>
 
 	{#if data.landed && (isDraft || data.landed.rows.length)}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.stock_landed_costs()}</h2>
-			<p class="text-sm text-muted-foreground">
-				{m.stock_landed_hint()}
-			</p>
+		<PageSection title={m.stock_landed_costs()} hint={m.stock_landed_hint()}>
 			<LookupSection
 				config={{
 					entity: m.stock_landed_cost(),
@@ -831,41 +643,24 @@
 				actions={{ add: '?/addCost', edit: '?/editCost', delete: '?/deleteCost' }}
 				readonly={!isDraft || !data.canDraft}
 			/>
-		</section>
+		</PageSection>
 	{/if}
 
 	{#if data.returnsMade.length}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.stock_returns()}</h2>
-			<ul class="flex flex-col divide-y rounded-md border">
-				{#each data.returnsMade as r (r.id)}
-					<li class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-						<a
-							class="font-medium underline-offset-4 hover:underline"
-							href={resolve('/dashboard/stock/documents/[id]', { id: String(r.id) })}
-							>{r.number ?? m.stock_draft_return({ id: r.id })}</a
-						>
-						<Badge variant={r.status === 'posted' ? 'default' : 'secondary'}
-							>{DOCUMENT_STATUS_LABELS[r.status]}</Badge
-						>
-					</li>
-				{/each}
-			</ul>
-		</section>
+		<PageSection title={m.stock_returns()}>
+			<DataTable variant="compact" data={data.returnsMade} columns={returnColumns} />
+		</PageSection>
 	{/if}
 
 	{#if data.movements.length}
-		<section class="flex flex-col gap-2">
-			<h2 class="text-xl font-semibold">{m.stock_what_moved()}</h2>
-			<p class="text-sm text-muted-foreground">
-				{m.stock_what_moved_hint()}
-			</p>
+		<PageSection title={m.stock_what_moved()} hint={m.stock_what_moved_hint()}>
 			<DataTable
 				data={data.movements}
 				columns={movementColumns}
 				fileName={m.stock_movements_file({ number: doc.number ?? '' })}
-				height="auto"
+				variant="compact"
+				search
 			/>
-		</section>
+		</PageSection>
 	{/if}
 </div>
