@@ -8,6 +8,7 @@ import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 import { signed } from '../../transactions/columns';
 import { DOCUMENT_LABELS, DOCUMENT_STATUS_LABELS } from '$lib/format';
 import type { PageData } from './$types';
+import { longText, NAME_LENGTH } from '$lib/cells';
 
 type Row = PageData['documents'][number];
 
@@ -67,7 +68,7 @@ export const columns: ColumnDef<Row>[] = [
 		get header() {
 			return m.stock_col_party();
 		},
-		cell: (info) => info.getValue() ?? ''
+		cell: longText(NAME_LENGTH)
 	},
 	{
 		accessorKey: 'reference',

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Ban from '@lucide/svelte/icons/ban';
@@ -69,7 +70,7 @@
 			picker: 'select',
 			required: false
 		},
-		{ name: 'note', label: m.common_note(), type: 'text', required: false }
+		{ name: 'note', label: m.common_note(), type: 'text', required: false, long: true }
 	];
 	const options = $derived({ itemId: data.items, uomId: data.units });
 
@@ -200,7 +201,7 @@
 						date: formatEthiopianDate(new Date(req.decidedAt))
 					})}
 				</p>
-				{#if req.decisionNote}<p class="whitespace-pre-line">{req.decisionNote}</p>{/if}
+				{#if req.decisionNote}<p><BigText text={req.decisionNote} max={120} /></p>{/if}
 			</Card.Content>
 		</Card.Root>
 	{/if}
@@ -208,9 +209,9 @@
 	{#if req.note}
 		<Card.Root>
 			<Card.Content class="flex flex-col gap-1 text-sm">
-				<p class="whitespace-pre-line">
+				<p>
 					<strong>{m.purchasing_note_label()}</strong>
-					{req.note}
+					<BigText text={req.note} max={120} />
 				</p>
 				<p class="text-muted-foreground">
 					{m.purchasing_written_by({ name: data.details.createdBy ?? '—' })}{data.details
@@ -256,7 +257,9 @@
 								<tr class="border-t">
 									<td class="px-3 py-2">
 										{line.item}
-										{#if line.note}<p class="text-xs text-muted-foreground">{line.note}</p>{/if}
+										{#if line.note}<p class="text-xs text-muted-foreground">
+												<BigText text={line.note} />
+											</p>{/if}
 									</td>
 									<td class="px-3 py-2 text-right">{qty(line.quantity, line.unit)}</td>
 									<td class="px-3 py-2 text-right">{qty(line.onHand, line.baseUnit)}</td>
@@ -311,7 +314,9 @@
 							<tr class="border-t">
 								<td class="px-3 py-2">
 									{line.item}
-									{#if line.note}<p class="text-xs text-muted-foreground">{line.note}</p>{/if}
+									{#if line.note}<p class="text-xs text-muted-foreground">
+											<BigText text={line.note} />
+										</p>{/if}
 								</td>
 								<td class="px-3 py-2 text-right">{qty(line.quantity, line.unit)}</td>
 								<td

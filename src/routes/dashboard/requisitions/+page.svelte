@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { longText, NAME_LENGTH } from '$lib/cells';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { ColumnDef } from '@tanstack/table-core';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
@@ -37,7 +38,11 @@
 					entity: 'requisition'
 				})
 		},
-		{ accessorKey: 'department', header: m.purchasing_col_department() },
+		{
+			accessorKey: 'department',
+			header: m.purchasing_col_department(),
+			cell: longText(NAME_LENGTH)
+		},
 		{
 			accessorKey: 'requestDate',
 			header: m.common_date(),

@@ -180,7 +180,13 @@
 			type: 'select',
 			choices: LANDED_COST_KINDS.map((k) => ({ value: k, name: KIND_NAMES[k] }))
 		},
-		{ name: 'description', label: m.stock_lc_description(), type: 'text', required: false },
+		{
+			name: 'description',
+			label: m.stock_lc_description(),
+			type: 'text',
+			required: false,
+			long: true
+		},
 		{ name: 'amount', label: m.stock_lc_amount(), type: 'money' },
 		{
 			name: 'method',
@@ -239,7 +245,8 @@
 			},
 			doc.party && {
 				name: type === 'sales_return' ? m.stock_returned_by() : m.stock_issued_to(),
-				value: doc.party
+				value: doc.party,
+				long: 60
 			},
 			data.totals &&
 				data.totals.gross > 0 && {
@@ -276,7 +283,7 @@
 				name: m.stock_reason(),
 				value: ADJUSTMENT_REASONS.find((r) => r.value === doc.reason)?.name ?? doc.reason
 			},
-			doc.note && { name: m.common_note(), value: doc.note },
+			doc.note && { name: m.common_note(), value: doc.note, long: 120 },
 			{ name: m.stock_prepared_by(), value: data.names.createdBy ?? '—' },
 			doc.postedAt && {
 				name:
@@ -286,7 +293,7 @@
 					who: data.names.postedBy ?? '—'
 				})
 			}
-		].filter(Boolean) as { name: string; value: string | null; href?: string }[]
+		].filter(Boolean) as { name: string; value: string | null; href?: string; long?: number }[]
 	);
 </script>
 

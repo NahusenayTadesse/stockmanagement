@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { longText, NAME_LENGTH } from '$lib/cells';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { ColumnDef } from '@tanstack/table-core';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
@@ -33,7 +34,7 @@
 					entity: 'quote'
 				})
 		},
-		{ accessorKey: 'buyer', header: m.sales_for() },
+		{ accessorKey: 'buyer', header: m.sales_for(), cell: longText(NAME_LENGTH) },
 		{ accessorKey: 'quoteDate', header: m.common_date(), cell: (i) => ethiopianDate(i.getValue()) },
 		{
 			accessorKey: 'validUntil',

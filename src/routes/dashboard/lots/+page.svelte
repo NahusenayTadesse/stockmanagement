@@ -29,6 +29,7 @@
 				label: m.common_note(),
 				type: 'text',
 				required: false,
+				long: true,
 				placeholder: m.stock_lot_note_placeholder()
 			}
 		],

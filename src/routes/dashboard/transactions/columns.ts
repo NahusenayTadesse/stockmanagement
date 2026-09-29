@@ -9,6 +9,7 @@ import { PURPOSE_LABELS } from '$lib/schemas/transactions';
 import { m } from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { PageData } from './$types';
+import { longText, NAME_LENGTH } from '$lib/cells';
 
 type Row = PageData['rows'][number];
 
@@ -90,7 +91,7 @@ export const columns: ColumnDef<Row>[] = [
 	{
 		accessorKey: 'party',
 		header: sortable(m.sales_from_to),
-		cell: (info) => info.getValue() ?? ''
+		cell: longText(NAME_LENGTH)
 	},
 	text('reference', m.common_reference),
 	text('receiptNumber', m.sales_receipt_no),

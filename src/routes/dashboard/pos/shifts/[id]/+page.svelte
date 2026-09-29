@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import { enhance } from '$app/forms';
 	import Printer from '@lucide/svelte/icons/printer';
 	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
@@ -135,7 +136,9 @@
 						? m.sales_over_by({ amount: formatETB(diff) })
 						: m.sales_short_by({ amount: formatETB(-diff!) })}
 			</p>
-			{#if s.shift.note}<p class="text-muted-foreground">{s.shift.note}</p>{/if}
+			{#if s.shift.note}<p class="text-muted-foreground">
+					<BigText text={s.shift.note} max={120} />
+				</p>{/if}
 		</div>
 	{/if}
 </div>

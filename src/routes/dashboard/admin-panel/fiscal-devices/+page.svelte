@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { enhance } from '$app/forms';
 	import Activity from '@lucide/svelte/icons/activity';
@@ -146,7 +147,7 @@
 						<div>
 							<p class="font-medium">{d.name || m.admin_fd_device_n({ id: d.id })} · {d.branch}</p>
 							<p class="text-xs text-muted-foreground">
-								{d.lastStatus ?? m.admin_fd_not_checked()}{d.lastCheckedAt
+								<BigText text={d.lastStatus ?? m.admin_fd_not_checked()} max={40} />{d.lastCheckedAt
 									? ` · ${ethiopianDateTime(d.lastCheckedAt)}`
 									: ''}{d.lastZReportAt
 									? ` · ${m.admin_fd_last_z({ when: ethiopianDateTime(d.lastZReportAt) })}`

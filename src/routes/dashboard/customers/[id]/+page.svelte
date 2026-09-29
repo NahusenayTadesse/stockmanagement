@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Banknote from '@lucide/svelte/icons/banknote';
@@ -71,7 +72,7 @@
 			href: c.phone ? `tel:${c.phone.replace(/[^+0-9]/g, '')}` : null
 		},
 		{ name: m.common_email(), value: c.email ?? '—', href: c.email ? `mailto:${c.email}` : null },
-		{ name: m.common_address(), value: c.address ?? '—', href: null },
+		{ name: m.common_address(), value: c.address ?? '—', href: null, long: 60 },
 		{ name: 'TIN', value: c.tin ?? '—', href: null },
 		{
 			name: m.sales_credit_label(),
@@ -83,7 +84,7 @@
 						: m.sales_credit_up_to({ amount: formatETB(c.creditLimit), days: c.creditDays }),
 			href: null
 		},
-		{ name: m.common_note(), value: c.note ?? '—', href: null }
+		{ name: m.common_note(), value: c.note ?? '—', href: null, long: 120 }
 	]);
 
 	const tiles = $derived<Stat[]>([
@@ -364,6 +365,8 @@
 								<a class="underline underline-offset-2 hover:no-underline" href={row.href}
 									>{row.value}</a
 								>
+							{:else if 'long' in row}
+								<BigText text={row.value} max={row.long} />
 							{:else}
 								{row.value}
 							{/if}
@@ -443,7 +446,7 @@
 									>{SMS_STATUS[t.status]?.() ?? t.status}{t.error ? `: ${t.error}` : ''}</span
 								>
 							</span>
-							<span>{t.body}</span>
+							<span><BigText text={t.body} max={60} /></span>
 						</li>
 					{/each}
 				</ul>

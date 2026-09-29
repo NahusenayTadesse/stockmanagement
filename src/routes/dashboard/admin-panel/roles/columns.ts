@@ -5,6 +5,7 @@ import DataTableSort from '@nahu/admin-kit/components/Table/data-table-sort.svel
 import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
 import type { PageData } from './$types';
 import { m } from '$lib/paraglide/messages.js';
+import { longText } from '$lib/cells';
 
 type Role = PageData['roleList'][number];
 
@@ -28,7 +29,8 @@ export const columns: ColumnDef<Role>[] = [
 		accessorKey: 'description',
 		get header() {
 			return m.admin_roles_description();
-		}
+		},
+		cell: longText()
 	},
 	{
 		accessorKey: 'status',

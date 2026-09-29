@@ -7,6 +7,7 @@ import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 import { formatETB } from '@nahu/admin-kit/global';
 import { MOVEMENT_LABELS, qty } from '$lib/format';
 import type { PageData } from './$types';
+import { longText, NAME_LENGTH } from '$lib/cells';
 
 type StockRow = PageData['stock'][number];
 type CardRow = PageData['card'][number];
@@ -107,7 +108,7 @@ export const cardColumns: ColumnDef<CardRow>[] = [
 		get header() {
 			return m.stock_from_to();
 		},
-		cell: (info) => info.getValue() ?? ''
+		cell: longText(NAME_LENGTH)
 	},
 	{
 		accessorKey: 'location',

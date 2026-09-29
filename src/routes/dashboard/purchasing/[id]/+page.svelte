@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
@@ -76,7 +77,7 @@
 			type: 'money',
 			required: false
 		},
-		{ name: 'note', label: m.common_note(), type: 'text', required: false }
+		{ name: 'note', label: m.common_note(), type: 'text', required: false, long: true }
 	];
 	const options = $derived({ itemId: data.items, uomId: data.units });
 
@@ -283,9 +284,9 @@
 						<strong>{m.purchasing_reference_label()}</strong>
 						{order.reference}
 					</p>{/if}
-				{#if order.note}<p class="whitespace-pre-line">
+				{#if order.note}<p>
 						<strong>{m.purchasing_note_label()}</strong>
-						{order.note}
+						<BigText text={order.note} max={120} />
 					</p>{/if}
 				<p class="text-muted-foreground">
 					{m.purchasing_prepared_by({ name: data.createdBy ?? '—' })}
@@ -326,7 +327,9 @@
 							<tr class="border-t">
 								<td class="px-3 py-2">
 									{line.item}
-									{#if line.note}<p class="text-xs text-muted-foreground">{line.note}</p>{/if}
+									{#if line.note}<p class="text-xs text-muted-foreground">
+											<BigText text={line.note} />
+										</p>{/if}
 								</td>
 								<td class="px-3 py-2 text-right">{qty(line.quantity, line.unit)}</td>
 								<td class="px-3 py-2 text-right">{qty(line.received, line.unit)}</td>

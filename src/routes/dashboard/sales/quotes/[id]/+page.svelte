@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import SmsDialog from '$lib/components/SmsDialog.svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
@@ -68,7 +69,7 @@
 			required: false
 		},
 		{ name: 'gross', label: m.sales_with_tax(), type: 'money', required: false, inForm: false },
-		{ name: 'note', label: m.common_note(), type: 'text', required: false }
+		{ name: 'note', label: m.common_note(), type: 'text', required: false, long: true }
 	];
 	const day = (d: string) => formatEthiopianDate(new Date(`${d}T12:00:00+03:00`));
 	const buyerName = $derived(data.buyer?.name ?? q.buyerName ?? '—');
@@ -256,13 +257,13 @@
 
 	{#if q.terms || q.note}
 		<div class="flex flex-col gap-1 text-sm">
-			{#if q.terms}<p class="whitespace-pre-line">
+			{#if q.terms}<p>
 					<strong>{m.sales_terms_colon()}</strong>
-					{q.terms}
+					<BigText text={q.terms} max={120} />
 				</p>{/if}
-			{#if q.note}<p class="whitespace-pre-line">
+			{#if q.note}<p>
 					<strong>{m.sales_note_colon()}</strong>
-					{q.note}
+					<BigText text={q.note} max={120} />
 				</p>{/if}
 		</div>
 	{/if}

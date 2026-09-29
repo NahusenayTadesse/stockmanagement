@@ -152,6 +152,7 @@ function buildKitLabels(locale: Locale): KitLabels {
 		noneFound: (what) => m.kit_none_found({ what }, o),
 		selectAll: m.kit_select_all({}, o),
 		ethiopianDate: m.kit_ethiopian_date({}, o),
+		bigTextShowAll: m.kit_big_text_show_all({}, o),
 		dateLocale: m.kit_date_locale({}, o),
 		calendarEthiopian: m.kit_calendar_ethiopian({}, o),
 		calendarGregorian: m.kit_calendar_gregorian({}, o),

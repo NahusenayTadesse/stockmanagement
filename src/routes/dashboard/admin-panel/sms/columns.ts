@@ -2,6 +2,7 @@ import type { ColumnDef } from '@tanstack/table-core';
 import type { PageData } from './$types';
 import { m } from '$lib/paraglide/messages.js';
 import { labels } from '$lib/format';
+import { longText } from '$lib/cells';
 
 type Row = PageData['log'][number];
 
@@ -69,7 +70,8 @@ export const columns: ColumnDef<Row>[] = [
 		accessorKey: 'body',
 		get header() {
 			return m.admin_sms_col_message();
-		}
+		},
+		cell: longText()
 	},
 	{
 		accessorKey: 'units',

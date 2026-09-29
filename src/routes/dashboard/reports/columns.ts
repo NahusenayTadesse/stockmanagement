@@ -6,6 +6,7 @@ import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 import { MOVEMENT_LABELS, qty } from '$lib/format';
 import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
+import { longText, NAME_LENGTH } from '$lib/cells';
 
 const etb = (v: unknown) => formatETB(Number(v));
 
@@ -316,7 +317,8 @@ export const registerColumns: ColumnDef<NonNullable<PageData['vat']>['sales'][nu
 		accessorKey: 'party',
 		get header() {
 			return m.reports_col_party();
-		}
+		},
+		cell: longText(NAME_LENGTH)
 	},
 	{
 		accessorKey: 'tin',
@@ -380,7 +382,8 @@ export const withholdingColumns: ColumnDef<NonNullable<PageData['withholding']>[
 			accessorKey: 'party',
 			get header() {
 				return m.reports_col_paid_to_by();
-			}
+			},
+			cell: longText(NAME_LENGTH)
 		},
 		{
 			accessorKey: 'tin',

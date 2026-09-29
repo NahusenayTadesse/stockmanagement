@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
 	import { resolve } from '$app/paths';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import StatCard from '@nahu/admin-kit/components/reports/StatCard.svelte';
@@ -44,9 +45,9 @@
 			href: s.phone ? `tel:${s.phone.replace(/[^+0-9]/g, '')}` : null
 		},
 		{ name: m.common_email(), value: s.email ?? '—', href: s.email ? `mailto:${s.email}` : null },
-		{ name: m.common_address(), value: s.address ?? '—', href: null },
+		{ name: m.common_address(), value: s.address ?? '—', href: null, long: 60 },
 		{ name: m.purchasing_f_tin(), value: s.tin ?? '—', href: null },
-		{ name: m.purchasing_f_contact_person(), value: s.contactPerson ?? '—', href: null },
+		{ name: m.purchasing_f_contact_person(), value: s.contactPerson ?? '—', href: null, long: 40 },
 		{
 			name: m.purchasing_f_lead_time(),
 			value:
@@ -57,7 +58,7 @@
 						: m.purchasing_n_days({ n: s.leadTimeDays }),
 			href: null
 		},
-		{ name: m.common_note(), value: s.note ?? '—', href: null }
+		{ name: m.common_note(), value: s.note ?? '—', href: null, long: 120 }
 	]);
 
 	const tiles = $derived<Stat[]>([
@@ -157,6 +158,8 @@
 								<a class="underline underline-offset-2 hover:no-underline" href={row.href}
 									>{row.value}</a
 								>
+							{:else if 'long' in row}
+								<BigText text={row.value} max={row.long} />
 							{:else}
 								{row.value}
 							{/if}

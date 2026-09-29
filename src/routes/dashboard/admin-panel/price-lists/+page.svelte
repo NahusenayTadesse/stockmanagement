@@ -22,7 +22,7 @@
 					type: 'text',
 					placeholder: m.admin_pl_name_placeholder()
 				},
-				{ name: 'note', label: m.common_note(), type: 'text', required: false },
+				{ name: 'note', label: m.common_note(), type: 'text', required: false, long: true },
 				{ name: 'status', label: m.common_status(), type: 'boolean' }
 			]
 		}}

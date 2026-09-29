@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { longText, NAME_LENGTH } from '$lib/cells';
 	import DateInput from '@nahu/admin-kit/formComponents/DateInput.svelte';
 	import { resolve } from '$app/paths';
 	import Calculator from '@lucide/svelte/icons/calculator';
@@ -31,7 +32,7 @@
 				})
 		},
 		{ accessorKey: 'kind', header: m.sales_kind() },
-		{ accessorKey: 'buyer', header: m.sales_customer() },
+		{ accessorKey: 'buyer', header: m.sales_customer(), cell: longText(NAME_LENGTH) },
 		{ accessorKey: 'channel', header: m.sales_where() },
 		{
 			accessorKey: 'total',

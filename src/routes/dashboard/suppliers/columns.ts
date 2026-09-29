@@ -7,6 +7,7 @@ import { ethiopianDate } from '@nahu/admin-kit/tableCells';
 import { formatETB } from '@nahu/admin-kit/global';
 import { m } from '$lib/paraglide/messages.js';
 import type { PageData } from './$types';
+import { longText } from '$lib/cells';
 
 type Row = PageData['suppliers'][number];
 
@@ -36,7 +37,7 @@ export const columns = (): ColumnDef<Row>[] => [
 		cell: ({ row }) => row.original.phone || m.purchasing_phone_missing()
 	},
 	{ accessorKey: 'email', header: m.common_email(), cell: (info) => info.getValue() ?? '' },
-	{ accessorKey: 'address', header: m.common_address(), cell: (info) => info.getValue() ?? '' },
+	{ accessorKey: 'address', header: m.common_address(), cell: longText() },
 	{ accessorKey: 'items', header: sortable(m.purchasing_col_items()) },
 	{ accessorKey: 'deliveries', header: sortable(m.purchasing_col_deliveries()) },
 	{

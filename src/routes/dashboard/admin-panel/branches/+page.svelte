@@ -21,7 +21,7 @@
 				placeholder: m.admin_branch_code_placeholder()
 			},
 			{ name: 'phone', label: m.common_phone(), type: 'text', required: false },
-			{ name: 'address', label: m.common_address(), type: 'text', required: false },
+			{ name: 'address', label: m.common_address(), type: 'text', required: false, long: true },
 			{ name: 'status', label: m.common_status(), type: 'boolean' }
 		]
 	}}

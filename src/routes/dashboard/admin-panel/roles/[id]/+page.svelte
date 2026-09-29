@@ -29,7 +29,7 @@
 
 	const details = $derived([
 		{ name: m.common_name(), value: data.role.name },
-		{ name: m.admin_roles_description(), value: data.role.description },
+		{ name: m.admin_roles_description(), value: data.role.description, long: 120 },
 		{ name: m.admin_users_title(), value: data.userList.length },
 		{
 			name: m.admin_users_permissions(),

@@ -324,6 +324,12 @@ The first request after a boot seeds the `permissions` table from the route rule
   `YYYY-MM-DD`** and the database keeps Gregorian dates; the server never receives an Ethiopian
   one. Days that do not exist (ጳጉሜ 7, 31 September) are refused, not moved. Displayed dates in
   tables and prints stay on the Ethiopian calendar as before.
+- **Long free text** (notes, reasons, addresses, descriptions, messages, names typed in freely)
+  is shown with the admin-kit's `BigText`: the first characters (15 by default; 24 for names via
+  `longText(NAME_LENGTH)` in `src/lib/cells.ts`; 120 in detail cards) and a "…" button that
+  opens the rest. Table columns use `longText()`; lookup fields of type `textarea`, or marked
+  `long`, get it from the kit; detail rows take `long: <characters>`. Printed documents always
+  show the full text.
 - **Mail** (`src/lib/server/mail.ts`): nodemailer over SMTP (`SMTP_*` in `.env`). It never
   throws; without SMTP settings nothing is sent and the app carries on. Password reset uses it:
   "Forgot your password?" → a one-hour, single-use link → `/reset-password`; every session of
