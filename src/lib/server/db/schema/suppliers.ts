@@ -27,6 +27,8 @@ export const supplier = mysqlTable(
 		note: varchar('note', { length: 255 }),
 		/** Charges VAT on its invoices: its deliveries carry input VAT. */
 		vatRegistered: boolean('vat_registered').notNull().default(false),
+		/** Days from order to delivery, usually. What the reorder screen plans around. Optional. */
+		leadTimeDays: int('lead_time_days'),
 		...secureFields
 	},
 	(table) => [

@@ -27,6 +27,7 @@
 	} from '$lib/schemas/purchasing';
 	import { qty } from '$lib/format';
 	import OrderHeaderFields from '../OrderHeaderFields.svelte';
+	import ApprovalBanner from '$lib/components/ApprovalBanner.svelte';
 
 	let { data } = $props();
 
@@ -137,7 +138,7 @@
 				</form>
 			{/if}
 
-			{#if isDraft && data.canManage}
+			{#if isDraft && data.canManage && !data.approval.pending}
 				<AlertDialog.Root>
 					<AlertDialog.Trigger
 						class={buttonVariants({ variant: 'default' })}
@@ -217,6 +218,8 @@
 			{/if}
 		</div>
 	</div>
+
+	<ApprovalBanner approval={data.approval} />
 
 	<div class="grid gap-4 sm:grid-cols-3">
 		<div class="rounded-lg border p-4">

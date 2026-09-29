@@ -21,6 +21,16 @@ import Clock from '@lucide/svelte/icons/clock';
 import ShoppingBag from '@lucide/svelte/icons/shopping-bag';
 import Calculator from '@lucide/svelte/icons/calculator';
 import Tags from '@lucide/svelte/icons/tags';
+import Barcode from '@lucide/svelte/icons/barcode';
+import Upload from '@lucide/svelte/icons/upload';
+import Route from '@lucide/svelte/icons/route';
+import ClipboardList from '@lucide/svelte/icons/clipboard-list';
+import ShieldCheck from '@lucide/svelte/icons/shield-check';
+import Snail from '@lucide/svelte/icons/snail';
+import ChartPie from '@lucide/svelte/icons/chart-pie';
+import PackageX from '@lucide/svelte/icons/package-x';
+import ChartLine from '@lucide/svelte/icons/chart-line';
+import ScanSearch from '@lucide/svelte/icons/scan-search';
 import type { Component } from 'svelte';
 import type { IconProps } from '@lucide/svelte';
 import type { NavItem } from '@nahu/admin-kit/navigation';
@@ -28,7 +38,15 @@ import type { NavItem } from '@nahu/admin-kit/navigation';
 /** The sidebar and the search palette. Each entry is shown only if `access` lets the viewer in. */
 export const NAVIGATION: NavItem[] = [
 	{ title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-	{ title: 'Items', url: '/dashboard/items', icon: Package },
+	{
+		title: 'Items',
+		url: '/dashboard/items',
+		icon: Package,
+		items: [
+			{ title: 'Items', url: '/dashboard/items', icon: Package },
+			{ title: 'Labels & barcodes', url: '/dashboard/items/labels', icon: Barcode }
+		]
+	},
 	{
 		title: 'Sales',
 		url: '/dashboard/sales',
@@ -47,6 +65,8 @@ export const NAVIGATION: NavItem[] = [
 		items: [
 			{ title: 'On hand', url: '/dashboard/stock', icon: Warehouse },
 			{ title: 'Documents', url: '/dashboard/stock/documents', icon: FileText },
+			{ title: 'Transfers in transit', url: '/dashboard/stock/transfers', icon: Route },
+			{ title: 'Requisitions', url: '/dashboard/requisitions', icon: ClipboardList },
 			{ title: 'Counts', url: '/dashboard/stock/counts', icon: ClipboardCheck },
 			{ title: 'Expiry follow-up', url: '/dashboard/stock/expiry', icon: TriangleAlert },
 			{ title: 'Lots & expiry', url: '/dashboard/lots', icon: CalendarClock }
@@ -71,8 +91,21 @@ export const NAVIGATION: NavItem[] = [
 			{ title: 'Credit & ageing', url: '/dashboard/customers/credit', icon: Clock }
 		]
 	},
+	{ title: 'Approvals', url: '/dashboard/approvals', icon: ShieldCheck },
 	{ title: 'Transactions', url: '/dashboard/transactions', icon: Banknote },
-	{ title: 'Reports', url: '/dashboard/reports', icon: ChartColumn },
+	{
+		title: 'Reports',
+		url: '/dashboard/reports',
+		icon: ChartColumn,
+		items: [
+			{ title: 'Overview', url: '/dashboard/reports', icon: ChartColumn },
+			{ title: 'Slow & dead stock', url: '/dashboard/reports/slow-moving', icon: Snail },
+			{ title: 'ABC analysis', url: '/dashboard/reports/abc', icon: ChartPie },
+			{ title: 'Stock-outs', url: '/dashboard/reports/stock-outs', icon: PackageX },
+			{ title: 'Stock trend', url: '/dashboard/reports/trend', icon: ChartLine },
+			{ title: 'Serial lookup', url: '/dashboard/reports/serials', icon: ScanSearch }
+		]
+	},
 	{ title: 'Admin panel', url: '/dashboard/admin-panel', icon: Settings }
 ];
 
@@ -118,6 +151,12 @@ export const SETTINGS_SECTIONS: {
 		]
 	},
 	{
+		title: 'Getting started',
+		description: 'Bring in items, suppliers, customers and opening stock from a spreadsheet.',
+		icon: Upload,
+		items: [{ title: 'Import', url: '/dashboard/admin-panel/import', icon: Upload }]
+	},
+	{
 		title: 'People',
 		description: 'Who can sign in, and what each role may do.',
 		icon: Users,
@@ -141,5 +180,6 @@ export const ENTITIES: Record<string, string> = {
 	sale: '/dashboard/sales',
 	shift: '/dashboard/pos/shifts',
 	purchaseOrder: '/dashboard/purchasing',
-	count: '/dashboard/stock/counts'
+	count: '/dashboard/stock/counts',
+	requisition: '/dashboard/requisitions'
 };

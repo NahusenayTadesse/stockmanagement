@@ -16,7 +16,10 @@
 	<div class="flex flex-wrap items-end justify-between gap-2">
 		<div>
 			<h1 class="text-2xl font-semibold">Stock on hand</h1>
-			<p class="text-muted-foreground">By location and lot, valued at average cost.</p>
+			<p class="text-muted-foreground">
+				By location and lot, valued at average cost. Held is promised to accepted proformas and
+				approved requisitions; free is what can still be sold or issued.
+			</p>
 		</div>
 		<p class="text-lg font-semibold">{formatETB(total)}</p>
 	</div>

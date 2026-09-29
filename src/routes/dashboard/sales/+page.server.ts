@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
 import { customer, stockDocument, stockDocumentLine, transactions } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
+import { branchScope, scopeWhere } from '$lib/server/scope';
 import { datePresets } from '$lib/server/transactions';
 import { lineNetSql, lineTotSql, lineVatSql } from '$lib/server/tax';
 import type { PageServerLoad } from './$types';
@@ -14,6 +15,7 @@ const doc = (c: Parameters<typeof qualified>[1]) => qualified(stockDocument, c);
 /** Sales and customer returns — the ones with prices: an internal issue is not a sale. */
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const orgId = orgIdOf(locals);
+	const scope = await branchScope(locals);
 	const today = localToday();
 	let from = isDay(url.searchParams.get('from'))
 		? url.searchParams.get('from')!
@@ -66,7 +68,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				inArray(stockDocument.status, ['draft', 'posted']),
 				gte(stockDocument.docDate, from),
 				lte(stockDocument.docDate, to),
-				isNull(stockDocument.deletedAt)
+				isNull(stockDocument.deletedAt),
+				scopeWhere(scope, stockDocument.branchId)
 			)
 		)
 		.orderBy(desc(stockDocument.docDate), desc(stockDocument.id))

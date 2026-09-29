@@ -25,6 +25,14 @@
 
 	let { data } = $props();
 
+	const ANALYSIS = [
+		{ href: '/dashboard/reports/slow-moving', label: 'Slow & dead stock' },
+		{ href: '/dashboard/reports/abc', label: 'ABC analysis' },
+		{ href: '/dashboard/reports/stock-outs', label: 'Stock-outs' },
+		{ href: '/dashboard/reports/trend', label: 'Stock trend' },
+		{ href: '/dashboard/reports/serials', label: 'Serial lookup' }
+	] as const;
+
 	const f = $derived(data.filters);
 	// svelte-ignore state_referenced_locally
 	let tab = $state(data.tab);
@@ -214,6 +222,15 @@
 			Every table exports to CSV or PDF, and every chart shows its numbers as a table.
 		</p>
 	</div>
+
+	<Card.Root>
+		<Card.Content class="flex flex-wrap items-center gap-2 pt-6">
+			<span class="mr-2 text-sm text-muted-foreground">Stock analysis:</span>
+			{#each ANALYSIS as a (a.href)}
+				<Button href={resolve(a.href)} size="sm" variant="outline">{a.label}</Button>
+			{/each}
+		</Card.Content>
+	</Card.Root>
 
 	<Card.Root>
 		<Card.Content class="flex flex-col gap-4 pt-6">

@@ -2,7 +2,10 @@
  * A building-materials and hardware store with a warehouse and yard at Bole and a shop in
  * Merkato. Shows: bulk units (bags, bars, bundles, rolls, m³), pack conversions, cement lots that
  * expire, an expired lot moved to quarantine, rental equipment tracked by serial number, a
- * service item, items at their reorder level, and drafts waiting to be posted.
+ * service item, items at their reorder level, and drafts waiting to be posted. Also: transfers
+ * that travel (one lost two bags, one is still on the road), drills imported in dollars with
+ * landed costs, a roofing kit, paint colour variants, workshop requisitions, an adjustment
+ * waiting for approval, stock held for an accepted proforma, and staff kept to their branch.
  */
 import {
 	addBranch,
@@ -26,10 +29,14 @@ import {
 	serials,
 	purchaseOrderSeed,
 	receiveOrder,
+	reorderRules,
+	requisitionSeed,
 	stockTake,
 	type Business,
 	type ItemSpec
 } from './helpers';
+import { eq } from 'drizzle-orm';
+import { category, organization } from '$lib/server/db/schema';
 import type { Tx } from '$lib/server/stock/post';
 
 export const HARDWARE = 'Bole Hardware & Building Materials';
@@ -38,6 +45,7 @@ const ITEMS: ItemSpec[] = [
 	// Cement goes off: it is lot-tracked with an expiry date, and warns a month ahead.
 	{
 		sku: 'CEM-OPC-50',
+		weight: 50,
 		name: 'OPC cement 42.5R, 50 kg',
 		nameAm: 'ሲሚንቶ',
 		category: 'Cement & aggregates',
@@ -48,6 +56,7 @@ const ITEMS: ItemSpec[] = [
 	},
 	{
 		sku: 'CEM-PPC-50',
+		weight: 50,
 		name: 'PPC cement 32.5, 50 kg',
 		nameAm: 'ሲሚንቶ',
 		category: 'Cement & aggregates',
@@ -169,6 +178,7 @@ const ITEMS: ItemSpec[] = [
 	},
 	{
 		sku: 'TANK-1000',
+		warranty: 60,
 		name: 'Water tank 1000 L',
 		nameAm: 'የውሃ ታንከር',
 		category: 'Plumbing',
@@ -238,6 +248,7 @@ const ITEMS: ItemSpec[] = [
 	// Rented to contractors, never sold; each machine by its serial number.
 	{
 		sku: 'MIX-350',
+		warranty: 12,
 		name: 'Concrete mixer 350 L, diesel',
 		nameAm: 'ሚክሰር',
 		category: 'Equipment rental',
@@ -252,6 +263,63 @@ const ITEMS: ItemSpec[] = [
 		unit: 'Piece',
 		price: 1500,
 		flags: { stockTracked: false, purchasable: false }
+	},
+	{
+		sku: 'SVC-CUT',
+		name: 'Rebar cutting & bending, per bar',
+		category: 'Services',
+		unit: 'Piece',
+		price: 40,
+		flags: { stockTracked: false, purchasable: false }
+	},
+	// The same paint in other colours: variants, each with its own stock.
+	{
+		sku: 'PNT-EMW-4-CRM',
+		name: 'Emulsion paint, cream, 4 L',
+		nameAm: 'ቀለም',
+		category: 'Paint & finishes',
+		unit: 'Gallon',
+		packs: [['Carton', 4]],
+		price: 1300,
+		variantOf: 'PNT-EMW-4',
+		variant: 'Cream',
+		flags: { trackExpiry: true }
+	},
+	{
+		sku: 'PNT-EMW-4-SKY',
+		name: 'Emulsion paint, sky blue, 4 L',
+		nameAm: 'ቀለም',
+		category: 'Paint & finishes',
+		unit: 'Gallon',
+		packs: [['Carton', 4]],
+		price: 1300,
+		variantOf: 'PNT-EMW-4',
+		variant: 'Sky blue',
+		flags: { trackExpiry: true }
+	},
+	{
+		sku: 'DRL-13',
+		name: 'Hammer drill 13 mm, 750 W',
+		nameAm: 'መብሻ',
+		category: 'Hand tools',
+		unit: 'Piece',
+		price: 12_500,
+		warranty: 12,
+		weight: 2.6,
+		description: 'Imported from Guangzhou; landed cost includes duty, freight and clearing.'
+	},
+	// Sold as one line; the sheets and nails leave the shelf.
+	{
+		sku: 'KIT-ROOF',
+		name: 'Roofing pack: 20 sheets G-32 + 2 kg roofing nails',
+		category: 'Roofing',
+		unit: 'Piece',
+		price: 16_000,
+		kit: [
+			['CIS-G32', 20],
+			['NAIL-RF', 2]
+		],
+		flags: { purchasable: false }
 	}
 ];
 
@@ -278,7 +346,10 @@ const MAIN_SUPPLIER: Record<string, string | undefined> = {
 	'WB-65': 'Merkato Electric Wholesale',
 	'HMR-500': 'Merkato Electric Wholesale',
 	'TAPE-5': 'Merkato Electric Wholesale',
-	'MIX-350': 'Addis Machinery Import'
+	'MIX-350': 'Addis Machinery Import',
+	'PNT-EMW-4-CRM': 'Entoto Roofing & Paints',
+	'PNT-EMW-4-SKY': 'Entoto Roofing & Paints',
+	'DRL-13': 'Guangzhou Tools Export Co.'
 };
 
 export async function seedHardware(tx: Tx): Promise<Business> {
@@ -351,7 +422,8 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 		name: 'Yonas Alemu',
 		email: 'yonas@hardware.example.com',
 		role: 'Storekeeper',
-		branch: 'MRK'
+		branch: 'MRK',
+		only: ['MRK']
 	});
 	await addUser(tx, biz, {
 		key: 'clerk',
@@ -360,6 +432,14 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 		role: 'Clerk',
 		branch: 'BOL'
 	});
+	await addUser(tx, biz, {
+		key: 'workshop',
+		name: 'Biruk Haile',
+		email: 'biruk@hardware.example.com',
+		role: 'Department',
+		branch: 'BOL',
+		only: ['BOL']
+	});
 
 	await addSuppliers(
 		tx,
@@ -367,6 +447,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 		[
 			{
 				name: 'Sheger Cement Factory',
+				leadTimeDays: 3,
 				phone: '+251 11 551 2020',
 				email: 'sales@shegercement.example.com',
 				address: 'Sululta road, Oromia',
@@ -376,6 +457,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			},
 			{
 				name: 'Awash Steel Trading',
+				leadTimeDays: 7,
 				phone: '+251 911 402 118',
 				address: 'Kality, Addis Ababa',
 				tin: '0012005566',
@@ -383,6 +465,7 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			},
 			{
 				name: 'Entoto Roofing & Paints',
+				leadTimeDays: 5,
 				phone: '+251 11 278 3300',
 				email: 'orders@entotopaints.example.com',
 				address: 'Shiro Meda, Addis Ababa',
@@ -391,22 +474,42 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			},
 			{
 				name: 'Merkato Electric Wholesale',
+				leadTimeDays: 2,
 				phone: '+251 912 660 045',
 				address: 'Merkato, Addis Ababa',
 				contactPerson: 'W/ro Hirut',
 				tin: '0045001122',
 				vatRegistered: true
 			},
-			{ name: 'Akaki sand quarry', phone: '+251 913 220 781', address: 'Akaki Kality' },
+			{
+				name: 'Akaki sand quarry',
+				phone: '+251 913 220 781',
+				address: 'Akaki Kality',
+				leadTimeDays: 1
+			},
 			{
 				name: 'Addis Machinery Import',
+				leadTimeDays: 30,
 				phone: '+251 11 467 1919',
 				email: 'info@addismachinery.example.com',
 				address: 'Bole, Addis Ababa',
 				tin: '0012004512',
 				vatRegistered: true
 			},
-			{ name: 'Addis Tile Supply', phone: '+251 911 887 342', address: 'Gerji, Addis Ababa' }
+			{
+				name: 'Addis Tile Supply',
+				phone: '+251 911 887 342',
+				address: 'Gerji, Addis Ababa',
+				leadTimeDays: 5
+			},
+			{
+				name: 'Guangzhou Tools Export Co.',
+				phone: '+86 20 3888 1200',
+				email: 'export@gztools.example.com',
+				address: 'Baiyun District, Guangzhou, China',
+				contactPerson: 'Ms Chen',
+				leadTimeDays: 60
+			}
 		],
 		biz.users.get('owner')!
 	);
@@ -589,8 +692,12 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			date: day(-60),
 			from: 'Bole Warehouse',
 			to: 'Merkato Store',
-			party: 'Driver: Tesfaye, 3-B45678',
-			by: 'manager'
+			driver: 'Tesfaye Mulugeta',
+			plate: '3-B45678',
+			by: 'manager',
+			// Two bags split on the truck: Yonas received 148.
+			arrived: [{ sku: 'CEM-OPC-50', qty: 148 }],
+			receivedBy: 'merkato'
 		},
 		[
 			{ sku: 'CEM-OPC-50', qty: 150 },
@@ -1246,7 +1353,8 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 		name: 'Hiwot Desta',
 		email: 'hiwot@hardware.example.com',
 		role: 'Cashier',
-		branch: 'BOL'
+		branch: 'BOL',
+		only: ['BOL']
 	});
 	const contractors = await addPriceList(
 		tx,
@@ -1356,6 +1464,204 @@ export async function seedHardware(tx: Tx): Promise<Business> {
 			status: 'converted'
 		},
 		[{ sku: 'PNT-OIL-BLK', qty: 4 }]
+	);
+
+	// ── Imports, kits and services ──────────────────────────────────────────────────────────
+	// Drills from Guangzhou, invoiced in dollars; duty, freight and the clearing agent put on top.
+	await document(
+		tx,
+		biz,
+		{
+			type: 'receipt',
+			date: day(-20),
+			to: 'Bole Warehouse',
+			supplier: 'Guangzhou Tools Export Co.',
+			reference: 'GZT-INV-88120 / BL COSU6230',
+			currency: 'USD',
+			rate: 158.5,
+			landed: [
+				{ kind: 'duty', amount: 46_600, description: 'Customs duty and excise, Modjo dry port' },
+				{ kind: 'freight', amount: 12_000, method: 'weight', description: 'Sea freight and rail' },
+				{ kind: 'clearing', amount: 4_500, method: 'quantity', description: 'Clearing agent' }
+			],
+			by: 'manager'
+		},
+		[{ sku: 'DRL-13', qty: 20, foreignCost: 42 }]
+	);
+	await document(
+		tx,
+		biz,
+		{
+			type: 'issue',
+			date: day(-2),
+			from: 'Bole Warehouse',
+			customer: 'Tsehay Real Estate',
+			reference: 'Site 5 roofing',
+			by: 'manager'
+		},
+		[
+			{ sku: 'KIT-ROOF', qty: 2 },
+			{ sku: 'SVC-CUT', qty: 30 },
+			{ sku: 'DEL-AA', qty: 1 }
+		]
+	);
+
+	// ── Transfers on the road ───────────────────────────────────────────────────────────────
+	await document(
+		tx,
+		biz,
+		{
+			type: 'transfer',
+			date: day(0),
+			from: 'Bole Warehouse',
+			to: 'Merkato Store',
+			driver: 'Tesfaye Mulugeta',
+			plate: '3-B45678',
+			by: 'manager',
+			onTheRoad: true
+		},
+		[
+			{ sku: 'CEM-OPC-50', qty: 40 },
+			{ sku: 'PVC-050', qty: 20 }
+		]
+	);
+
+	// ── Planning: per-location levels ───────────────────────────────────────────────────────
+	await reorderRules(tx, biz, [
+		['CEM-OPC-50', 'Merkato Store', 60, 200],
+		['CIS-G32', 'Merkato Store', 40, 120],
+		['PVC-050', 'Merkato Store', 20, 60],
+		['CBL-2.5', 'Merkato Store', 100, 300],
+		['CEM-OPC-50', 'Bole Warehouse', 300, 900]
+	]);
+	await tx
+		.update(category)
+		.set({ minShelfLifeDays: 120 })
+		.where(eq(category.id, biz.categories.get('Paint & finishes')!));
+
+	// ── Requisitions from the workshop ──────────────────────────────────────────────────────
+	await requisitionSeed(
+		tx,
+		biz,
+		{
+			department: 'Workshop',
+			date: day(-10),
+			location: 'Bole Warehouse',
+			by: 'workshop',
+			approver: 'manager',
+			upTo: 'issued',
+			note: 'Truck body repair'
+		},
+		[
+			{ sku: 'TAPE-5', qty: 2 },
+			{ sku: 'HMR-500', qty: 1 }
+		]
+	);
+	await requisitionSeed(
+		tx,
+		biz,
+		{
+			department: 'Site office',
+			date: day(-6),
+			location: 'Bole Warehouse',
+			by: 'workshop',
+			approver: 'owner',
+			upTo: 'rejected',
+			rejectReason: "Office painting is not in this quarter's budget."
+		},
+		[{ sku: 'PNT-OIL-BLK', qty: 4 }]
+	);
+
+	// ── Controls: approvals and reservations ────────────────────────────────────────────────
+	// Dawit turned these on recently: large write-offs and orders need a second person, and
+	// accepted proformas hold their stock.
+	await tx
+		.update(organization)
+		.set({
+			reserveStock: true,
+			approveAdjustmentsOver: 20_000,
+			approveCountsOver: 25_000,
+			approveOrdersOver: 500_000
+		})
+		.where(eq(organization.id, biz.orgId));
+	await document(
+		tx,
+		biz,
+		{
+			type: 'adjustment',
+			date: day(-3),
+			from: 'Bole Warehouse',
+			reason: 'damage',
+			note: 'Rain came through the warehouse roof; 18 bags set hard.',
+			by: 'manager',
+			approvedBy: 'owner'
+		},
+		[{ sku: 'CEM-OPC-50', qty: -18 }]
+	);
+	await document(
+		tx,
+		biz,
+		{
+			type: 'adjustment',
+			date: day(0),
+			from: 'Bole Yard',
+			reason: 'damage',
+			note: 'Bundle bent by the crane while unloading.',
+			by: 'manager',
+			awaitApproval: true
+		},
+		[{ sku: 'RB-16', qty: -12 }]
+	);
+	await requisitionSeed(
+		tx,
+		biz,
+		{
+			department: 'Delivery crew',
+			date: day(-1),
+			neededBy: day(2),
+			location: 'Bole Warehouse',
+			by: 'workshop',
+			approver: 'manager',
+			upTo: 'approved',
+			approve: { 'NAIL-10': 5 }
+		},
+		[
+			{ sku: 'NAIL-10', qty: 10 },
+			{ sku: 'TAPE-5', qty: 2 }
+		]
+	);
+	await requisitionSeed(
+		tx,
+		biz,
+		{
+			department: 'Workshop',
+			date: day(0),
+			location: 'Bole Warehouse',
+			by: 'workshop',
+			upTo: 'submitted'
+		},
+		[
+			{ sku: 'WB-65', qty: 1 },
+			{ sku: 'SW-1G', qty: 4 }
+		]
+	);
+	await proforma(
+		tx,
+		biz,
+		{
+			customer: 'Sisay Construction PLC',
+			date: day(-2),
+			location: 'Bole Warehouse',
+			by: 'manager',
+			reference: 'Summit block C, phase 2',
+			terms: 'Stock held for 14 days from acceptance.',
+			validDays: 14,
+			status: 'accepted'
+		},
+		[
+			{ sku: 'CEM-OPC-50', qty: 100 },
+			{ sku: 'RB-12', qty: 2, unit: 'Bundle' }
+		]
 	);
 
 	// ── Fiscal receipts and e-invoices ───────────────────────────────────────────────────────

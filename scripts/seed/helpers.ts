@@ -12,13 +12,17 @@ import { hashPassword } from 'better-auth/crypto';
 import { addLocalDays, localToday } from '@nahu/admin-kit/time';
 import {
 	account,
+	approvalRequest,
 	barcode,
 	branch,
 	category,
+	costLayer,
 	customer,
 	fiscalDevice,
 	item,
 	itemUnit,
+	kitComponent,
+	landedCost,
 	location,
 	lot,
 	numberSequence,
@@ -32,6 +36,9 @@ import {
 	purchaseOrderLine,
 	quote,
 	quoteLine,
+	reorderRule,
+	requisition,
+	requisitionLine,
 	rolePermissions,
 	roles,
 	serialUnit,
@@ -43,14 +50,25 @@ import {
 	stockDocument,
 	stockDocumentLine,
 	stockMovement,
+	stockReservation,
 	supplier,
 	transactionAttachment,
 	transactions,
 	uom,
-	user
+	user,
+	userBranch
 } from '$lib/server/db/schema';
 import { createOrganization } from '$lib/server/seedPermissions';
-import { postDocument, type Tx } from '$lib/server/stock/post';
+import { ApprovalRequired, postDocument, type Tx } from '$lib/server/stock/post';
+import { receiveTransfer } from '$lib/server/stock/transit';
+import { startFifo } from '$lib/server/stock/ledger';
+import { requestApproval, decideApproval } from '$lib/server/approvals';
+import { reserveQuote } from '$lib/server/reservations';
+import {
+	decideRequisition,
+	issueFromRequisition,
+	submitRequisition
+} from '$lib/server/requisitions';
 import { markOrdered, receiptFromOrder } from '$lib/server/purchasing';
 import { createReturn } from '$lib/server/returns';
 import { submitEinvoice } from '$lib/server/einvoice';
@@ -60,7 +78,7 @@ import { lineAmounts, saleTotRate, saleVatRate, taxSettings } from '$lib/server/
 import { convertQuote, numberQuote } from '$lib/server/quotes';
 import { countLines, openCount, postCount, saveCounts } from '$lib/server/counts';
 import { documentTotals, suggestedWithholding } from '$lib/server/tax';
-import type { DocumentType } from '$lib/constants';
+import type { DocumentType, LANDED_COST_KINDS } from '$lib/constants';
 
 /** Every seeded account signs in with this. */
 export const PASSWORD = 'Secret123!';
@@ -131,8 +149,19 @@ export async function removeBusiness(tx: Tx, ownerEmail: string) {
 			.set({ returnOfLineId: null })
 			.where(eq(stockDocumentLine.orgId, orgId));
 		await tx.update(stockDocument).set({ returnOfId: null }).where(eq(stockDocument.orgId, orgId));
+		// Variants point at their parent item.
+		await tx.update(item).set({ parentItemId: null }).where(eq(item.orgId, orgId));
 
 		for (const table of [
+			approvalRequest,
+			stockReservation,
+			costLayer,
+			landedCost,
+			requisitionLine,
+			requisition,
+			reorderRule,
+			kitComponent,
+			userBranch,
 			stockMovement,
 			stockBalance,
 			numberSequence,
@@ -300,7 +329,15 @@ export async function addCategories(
 export async function addUser(
 	tx: Tx,
 	biz: Business,
-	u: { key: string; name: string; email: string; role: string; branch: string }
+	u: {
+		key: string;
+		name: string;
+		email: string;
+		role: string;
+		branch: string;
+		/** Kept to these branches (by code). Omitted: every branch. */
+		only?: string[];
+	}
 ) {
 	const [role] = await tx
 		.select({ id: roles.id })
@@ -325,6 +362,11 @@ export async function addUser(
 		userId: id,
 		password: await hashPassword(PASSWORD)
 	});
+	for (const code of u.only ?? []) {
+		await tx
+			.insert(userBranch)
+			.values({ orgId: biz.orgId, userId: id, branchId: biz.branches.get(code)! });
+	}
 	biz.users.set(u.key, id);
 }
 
@@ -336,6 +378,8 @@ export type SupplierSpec = {
 	address?: string;
 	tin?: string;
 	contactPerson?: string;
+	/** Days from order to delivery, usually. */
+	leadTimeDays?: number;
 };
 
 export async function addSuppliers(tx: Tx, biz: Business, rows: SupplierSpec[], createdBy: string) {
@@ -397,6 +441,15 @@ export type ItemSpec = {
 	price?: number;
 	reorder?: number;
 	description?: string;
+	/** Months of warranty from the sale. */
+	warranty?: number;
+	/** Kilograms per base unit, for sharing freight by weight. */
+	weight?: number;
+	/** A variant of another item (by SKU, listed earlier), and what tells it apart. */
+	variantOf?: string;
+	variant?: string;
+	/** A kit or recipe: its components per one base unit, `[sku, quantity, unit?]`. */
+	kit?: [string, number, string?][];
 	flags?: Partial<
 		Pick<
 			typeof item.$inferInsert,
@@ -412,6 +465,7 @@ export type ItemSpec = {
 			| 'prescriptionOnly'
 			| 'controlledSubstance'
 			| 'storageCondition'
+			| 'taxCode'
 		>
 	>;
 };
@@ -420,6 +474,8 @@ export async function addItems(tx: Tx, biz: Business, specs: ItemSpec[], created
 	for (const s of specs) {
 		const flags = { ...s.flags };
 		if (flags.trackExpiry) flags.trackLots = true;
+		// A kit has no stock of its own: its components do.
+		if (s.kit) flags.stockTracked = false;
 		if (!s.supplier && flags.stockTracked !== false) {
 			throw new Error(`${biz.name}: ${s.sku} is stock-tracked and needs a main supplier`);
 		}
@@ -437,6 +493,11 @@ export async function addItems(tx: Tx, biz: Business, specs: ItemSpec[], created
 				reorderLevel: s.reorder ?? null,
 				description: s.description,
 				supplierId: s.supplier ? supplierId(biz, s.supplier) : null,
+				warrantyMonths: s.warranty ?? null,
+				weightKg: s.weight ?? null,
+				parentItemId: s.variantOf ? itemId(biz, s.variantOf) : null,
+				variantLabel: s.variant ?? null,
+				isKit: Boolean(s.kit),
 				createdBy,
 				...flags
 			})
@@ -450,6 +511,24 @@ export async function addItems(tx: Tx, biz: Business, specs: ItemSpec[], created
 		}
 		for (const code of s.barcodes ?? []) {
 			await tx.insert(barcode).values({ orgId: biz.orgId, itemId: row.id, code });
+		}
+	}
+
+	// Kit components last: a kit may list items that come after it.
+	for (const s of specs.filter((x) => x.kit)) {
+		for (const [sku, quantity, unit] of s.kit!) {
+			const componentId = itemId(biz, sku);
+			const [c] = await tx
+				.select({ baseUomId: item.baseUomId })
+				.from(item)
+				.where(eq(item.id, componentId));
+			await tx.insert(kitComponent).values({
+				orgId: biz.orgId,
+				kitItemId: itemId(biz, s.sku),
+				componentItemId: componentId,
+				uomId: unit ? unitId(biz, unit) : c.baseUomId,
+				quantity
+			});
 		}
 	}
 }
@@ -467,6 +546,8 @@ export type LineSpec = {
 	unit?: string;
 	/** Per `unit`. */
 	cost?: number;
+	/** Receipts in another currency: the price per `unit` in it; the birr cost follows the rate. */
+	foreignCost?: number;
 	/** Issues: the sale price per `unit`. Defaults to the item's list price. */
 	price?: number;
 	/** Receipts: the lot arriving. */
@@ -496,10 +577,36 @@ export async function document(
 		/** Issues: a listed customer, by name. */
 		customer?: string;
 		reference?: string;
-		reason?: 'count' | 'damage' | 'expiry' | 'found' | 'other';
+		reason?: 'count' | 'damage' | 'expiry' | 'found' | 'opening' | 'other';
 		note?: string;
 		by: string;
 		draft?: boolean;
+		/** Transfers to another branch: who carried it. */
+		driver?: string;
+		plate?: string;
+		/**
+		 * Transfers to another branch arrive in full the same day, unless `onTheRoad` (still in
+		 * transit) or `arrived` says otherwise (what arrived, by SKU; the rest was lost).
+		 */
+		onTheRoad?: boolean;
+		arrived?: { sku: string; qty?: number; serials?: string[] }[];
+		arriveOn?: string;
+		receivedBy?: string;
+		/** Receipts in another currency, with birr per unit of it. */
+		currency?: string;
+		rate?: number;
+		landed?: {
+			kind: (typeof LANDED_COST_KINDS)[number];
+			amount: number;
+			method?: 'value' | 'quantity' | 'weight';
+			description?: string;
+		}[];
+		/**
+		 * An adjustment over the business's approval limit: left waiting for a second person, or
+		 * approved by `approvedBy`. Without either, the seed posts it as a manager would anyway.
+		 */
+		awaitApproval?: boolean;
+		approvedBy?: string;
 	},
 	lines: LineSpec[]
 ) {
@@ -529,9 +636,24 @@ export async function document(
 			reference: head.reference,
 			reason: head.reason,
 			note: head.note,
+			driverName: head.driver ?? null,
+			vehiclePlate: head.plate ?? null,
+			currency: head.currency ?? null,
+			exchangeRate: head.rate ?? null,
 			createdBy: userId
 		})
 		.$returningId();
+
+	for (const c of head.landed ?? []) {
+		await tx.insert(landedCost).values({
+			orgId: biz.orgId,
+			documentId: doc.id,
+			kind: c.kind,
+			amount: c.amount,
+			method: c.method ?? 'value',
+			description: c.description ?? null
+		});
+	}
 
 	for (const l of lines) {
 		const itemId = biz.items.get(l.sku);
@@ -573,7 +695,11 @@ export async function document(
 			itemId,
 			uomId,
 			quantity: l.qty,
-			unitCost: l.cost ?? null,
+			unitCost:
+				l.foreignCost !== undefined && head.rate
+					? Math.round(l.foreignCost * head.rate * 10000) / 10000
+					: (l.cost ?? null),
+			foreignUnitCost: l.foreignCost ?? null,
 			unitPrice,
 			lotId,
 			lotNumber: l.lot ?? null,
@@ -582,15 +708,68 @@ export async function document(
 		});
 	}
 
+	if (head.awaitApproval || head.approvedBy) {
+		// Over the limit: asked for, and — when `approvedBy` — approved (which posts it).
+		try {
+			await tx.transaction((sp) =>
+				postDocument(sp, { orgId: biz.orgId, documentId: doc.id, userId, today: head.date })
+			);
+			throw new Error(`${biz.name}: expected document ${doc.id} to need approval`);
+		} catch (err) {
+			if (!(err instanceof ApprovalRequired)) throw err;
+			const requestId = await requestApproval(
+				{
+					orgId: biz.orgId,
+					userId,
+					subject: { kind: 'adjustment', documentId: doc.id },
+					refusal: err
+				},
+				tx
+			);
+			if (head.approvedBy) {
+				await decideApproval(tx, {
+					orgId: biz.orgId,
+					requestId,
+					userId: biz.users.get(head.approvedBy)!,
+					approve: true,
+					note: 'Checked the damaged stock in the yard.',
+					today: head.date
+				});
+			}
+		}
+		return doc.id;
+	}
+
 	if (!head.draft) {
-		// The seed stands in for a manager, who may take a customer over their limit.
-		await postDocument(tx, {
+		// The seed stands in for a manager, who may take a customer over their limit, and whose
+		// adjustments need nobody's approval.
+		const { status } = await postDocument(tx, {
 			orgId: biz.orgId,
 			documentId: doc.id,
 			userId,
 			today: head.date,
-			allowOverLimit: true
+			allowOverLimit: true,
+			approved: true
 		});
+		// A transfer to another branch arrives, unless it is still on the road.
+		if (status === 'in_transit' && !head.onTheRoad) {
+			const docLines = await tx
+				.select({ id: stockDocumentLine.id, itemId: stockDocumentLine.itemId })
+				.from(stockDocumentLine)
+				.where(eq(stockDocumentLine.documentId, doc.id));
+			const arrivals = (head.arrived ?? []).map((a) => {
+				const line = docLines.find((l) => l.itemId === itemId(biz, a.sku));
+				if (!line) throw new Error(`${biz.name}: ${a.sku} is not on transfer ${doc.id}`);
+				return { lineId: line.id, quantity: a.qty ?? 0, serials: a.serials ?? null };
+			});
+			await receiveTransfer(tx, {
+				orgId: biz.orgId,
+				documentId: doc.id,
+				userId: biz.users.get(head.receivedBy ?? head.by),
+				today: head.arriveOn ?? head.date,
+				arrivals
+			});
+		}
 	}
 	return doc.id;
 }
@@ -845,7 +1024,8 @@ export async function purchaseOrderSeed(
 		});
 	}
 
-	if (!head.draft) await markOrdered(tx, { orgId: biz.orgId, orderId: order.id, userId });
+	if (!head.draft)
+		await markOrdered(tx, { orgId: biz.orgId, orderId: order.id, userId, approved: true });
 	return order.id;
 }
 
@@ -953,7 +1133,8 @@ export async function stockTake(
 		userId
 	);
 
-	if (!head.open) await postCount(tx, { orgId: biz.orgId, countId, userId, today: head.date });
+	if (!head.open)
+		await postCount(tx, { orgId: biz.orgId, countId, userId, today: head.date, approved: true });
 	return countId;
 }
 
@@ -1269,9 +1450,131 @@ export async function proforma(
 				.update(quote)
 				.set({ status, sentAt: new Date(`${head.date}T10:00:00+03:00`) })
 				.where(eq(quote.id, q.id));
+			// Accepted: the stock is held for it, when the business reserves stock.
+			if (status === 'accepted')
+				await reserveQuote(tx, { orgId: biz.orgId, quoteId: q.id, userId });
 		}
 	}
 	return q.id;
+}
+
+/** Per-location reorder levels: `[sku, location, min, max?]`. */
+export async function reorderRules(
+	tx: Tx,
+	biz: Business,
+	rows: [string, string, number, number?][]
+) {
+	for (const [sku, loc, min, max] of rows) {
+		await tx.insert(reorderRule).values({
+			orgId: biz.orgId,
+			itemId: itemId(biz, sku),
+			locationId: biz.locations.get(loc)!,
+			minQuantity: min,
+			maxQuantity: max ?? null
+		});
+	}
+}
+
+/**
+ * A department's requisition, taken as far as `upTo`: submitted, approved (at `approve`
+ * quantities, by `approver`), or issued (the draft issue made and posted).
+ */
+export async function requisitionSeed(
+	tx: Tx,
+	biz: Business,
+	head: {
+		department: string;
+		date: string;
+		neededBy?: string;
+		location: string;
+		by: string;
+		approver?: string;
+		upTo: 'draft' | 'submitted' | 'approved' | 'rejected' | 'issued';
+		/** Approved quantities, by SKU; missing ones are approved in full. */
+		approve?: Record<string, number>;
+		note?: string;
+		rejectReason?: string;
+	},
+	lines: CartSpec[]
+) {
+	const userId = biz.users.get(head.by)!;
+	const locationId = biz.locations.get(head.location)!;
+	const [loc] = await tx
+		.select({ branchId: location.branchId })
+		.from(location)
+		.where(eq(location.id, locationId));
+	const [req] = await tx
+		.insert(requisition)
+		.values({
+			orgId: biz.orgId,
+			branchId: loc.branchId,
+			department: head.department,
+			requestDate: head.date,
+			neededBy: head.neededBy ?? null,
+			locationId,
+			note: head.note ?? null,
+			createdBy: userId
+		})
+		.$returningId();
+	const lineIds = new Map<string, number>();
+	for (const l of lines) {
+		const id = itemId(biz, l.sku);
+		const [it] = await tx.select({ baseUomId: item.baseUomId }).from(item).where(eq(item.id, id));
+		const [row] = await tx
+			.insert(requisitionLine)
+			.values({
+				orgId: biz.orgId,
+				requisitionId: req.id,
+				itemId: id,
+				uomId: l.unit ? unitId(biz, l.unit) : it.baseUomId,
+				quantity: l.qty
+			})
+			.$returningId();
+		lineIds.set(l.sku, row.id);
+	}
+	if (head.upTo === 'draft') return req.id;
+	await submitRequisition(tx, { orgId: biz.orgId, requisitionId: req.id, userId });
+	await tx
+		.update(requisition)
+		.set({ submittedAt: new Date(`${head.date}T09:00:00+03:00`) })
+		.where(eq(requisition.id, req.id));
+	if (head.upTo === 'submitted') return req.id;
+
+	const approver = biz.users.get(head.approver!)!;
+	await decideRequisition(tx, {
+		orgId: biz.orgId,
+		requisitionId: req.id,
+		userId: approver,
+		approve: head.upTo !== 'rejected',
+		note: head.rejectReason ?? null,
+		quantities: new Map(
+			Object.entries(head.approve ?? {}).map(([sku, q]) => [lineIds.get(sku)!, q])
+		)
+	});
+	if (head.upTo !== 'issued') return req.id;
+
+	const issueId = await issueFromRequisition(tx, {
+		orgId: biz.orgId,
+		requisitionId: req.id,
+		date: head.date,
+		userId: approver
+	});
+	await postDocument(tx, {
+		orgId: biz.orgId,
+		documentId: issueId,
+		userId: approver,
+		today: head.date
+	});
+	return req.id;
+}
+
+/** Turns FIFO costing on, as the Business profile does: what is on hand opens the layers. */
+export async function useFifo(tx: Tx, biz: Business, date: string) {
+	await tx
+		.update(organization)
+		.set({ costingMethod: 'fifo' })
+		.where(eq(organization.id, biz.orgId));
+	await startFifo(tx, biz.orgId, date);
 }
 
 /** Puts customers (by name) on a price list. */

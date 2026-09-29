@@ -15,68 +15,73 @@
  *   - the average cost moves only on stock coming in
  *   - a sale or receipt fixes each line's VAT rate; a return is checked against what is left of
  *     the document it returns
+ *   - stock held for an accepted proforma or approved requisition is not issued to anyone else
+ *   - a transfer to another branch goes into transit, and arrives only when that branch receives it
+ *   - adjustments over the business's limits, and write-offs if it says so, wait for approval
+ *   - services are sold without touching stock; a kit or recipe takes its components
+ *   - a delivery with less shelf life left than its category allows is flagged, or refused
  */
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { localToday } from '@nahu/admin-kit/time';
-import type { db } from '$lib/server/db';
 import {
 	branch,
+	category,
 	item,
 	itemUnit,
+	kitComponent,
+	landedCost,
 	location,
 	lot,
 	numberSequence,
+	organization,
+	requisition,
 	serialUnit,
 	stockBalance,
 	supplier,
 	stockDocument,
 	stockDocumentLine,
 	stockMovement,
-	uom,
-	MOVEMENT_KINDS
+	uom
 } from '$lib/server/db/schema';
 import { refreshOrderStatus } from '$lib/server/purchasing';
 import { creditCheck } from '$lib/server/credit';
 import { checkReturn } from '$lib/server/returns';
 import { purchaseVatRate, saleTotRate, saleVatRate, taxSettings } from '$lib/server/tax';
+import { releaseQuote, releaseRequisition, reservedElsewhere } from '$lib/server/reservations';
 import {
 	allocate,
 	DOCUMENT_PREFIX,
 	ethiopianFiscalYear,
 	isExpired,
-	movingAverage,
 	parseSerials,
 	round4,
 	toBase
 } from './math';
+import { ApprovalRequired, StockError } from './errors';
+import {
+	move,
+	valueIn,
+	valueOut,
+	type Context as LedgerContext,
+	type Doc,
+	type Item,
+	type Kind,
+	type Line,
+	type Tx
+} from './ledger';
+import { ensureTransitLocation } from './transit';
 
-export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export { ApprovalRequired, StockError };
+export type { Tx };
 
-/** A refusal the storekeeper can act on. `lineId` points at the line that caused it. */
-export class StockError extends Error {
-	constructor(
-		message: string,
-		readonly lineId?: number
-	) {
-		super(message);
-		this.name = 'StockError';
-	}
-}
-
-type Item = typeof item.$inferSelect;
-type Line = typeof stockDocumentLine.$inferSelect;
-type Doc = typeof stockDocument.$inferSelect;
-type Kind = (typeof MOVEMENT_KINDS)[number];
-
-type Context = {
-	tx: Tx;
-	orgId: number;
-	doc: Doc;
-	userId: string | undefined;
-	today: string;
-	units: Map<number, string>;
-	locationNames: Map<number, string>;
+type Context = LedgerContext & {
+	/** Per item: the least shelf life a delivery may have, from its category. */
+	shelfLife: Map<number, { days: number; refuse: boolean }>;
 };
+
+const DAY = 86_400_000;
+const money = (n: number) =>
+	n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export async function postDocument(
 	tx: Tx,
@@ -87,8 +92,13 @@ export async function postDocument(
 		today?: string;
 		/** The poster may take a customer over their credit limit (`customers.credit`). */
 		allowOverLimit?: boolean;
+		/**
+		 * Already approved, or checked elsewhere: an approver posting it, a count (which has its
+		 * own limit), an opening-stock import. Skips the adjustment approval rules.
+		 */
+		approved?: boolean;
 	}
-): Promise<{ number: string }> {
+): Promise<{ number: string; status: 'posted' | 'in_transit'; warnings: string[] }> {
 	const { orgId, documentId, userId } = options;
 	const today = options.today ?? localToday();
 
@@ -120,6 +130,16 @@ export async function postDocument(
 	const locationById = new Map(locations.map((l) => [l.id, l]));
 	const from = doc.fromLocationId ? locationById.get(doc.fromLocationId) : undefined;
 	const to = doc.toLocationId ? locationById.get(doc.toLocationId) : undefined;
+	const [org] = await tx
+		.select({
+			costing: organization.costingMethod,
+			approveAdjustmentsOver: organization.approveAdjustmentsOver,
+			approveWriteOffs: organization.approveWriteOffs
+		})
+		.from(organization)
+		.where(eq(organization.id, orgId));
+	/** A transfer to another branch: out now, in when that branch says it arrived. */
+	let transitId: number | null = null;
 
 	switch (doc.type) {
 		case 'receipt': {
@@ -153,11 +173,33 @@ export async function postDocument(
 		case 'transfer':
 			if (!from || !to) throw new StockError('Choose both locations for a transfer.');
 			if (from.id === to.id) throw new StockError('A transfer needs two different locations.');
+			if (from.kind === 'transit' || to.kind === 'transit') {
+				throw new StockError('Stock in transit moves only by being received.');
+			}
+			if (from.branchId !== to.branchId) {
+				transitId = await ensureTransitLocation(tx, orgId, to.branchId);
+			}
 			break;
 	}
+	if (from?.kind === 'transit' && doc.type !== 'transfer') {
+		throw new StockError('Stock in transit moves only by being received.');
+	}
+
+	// Kits and recipes leave as their components.
+	const lineItemIds = [...new Set(lines.map((l) => l.itemId))];
+	const components = await tx
+		.select()
+		.from(kitComponent)
+		.where(
+			and(
+				inArray(kitComponent.kitItemId, lineItemIds),
+				eq(kitComponent.orgId, orgId),
+				isNull(kitComponent.deletedAt)
+			)
+		);
 
 	// Items are locked too: posting rewrites their average cost.
-	const itemIds = [...new Set(lines.map((l) => l.itemId))];
+	const itemIds = [...new Set([...lineItemIds, ...components.map((c) => c.componentItemId)])];
 	const items = await tx
 		.select()
 		.from(item)
@@ -169,6 +211,54 @@ export async function postDocument(
 		.select({ itemId: itemUnit.itemId, uomId: itemUnit.uomId, factor: itemUnit.factor })
 		.from(itemUnit)
 		.where(and(inArray(itemUnit.itemId, itemIds), isNull(itemUnit.deletedAt)));
+	const factorOf = (it: Item, uomId: number) =>
+		uomId === it.baseUomId
+			? 1
+			: factors.find((f) => f.itemId === it.id && f.uomId === uomId)?.factor;
+
+	// Receipts: the least shelf life each item's category accepts.
+	const shelfLife = new Map<number, { days: number; refuse: boolean }>();
+	if (doc.type === 'receipt') {
+		const categoryIds = [
+			...new Set(items.map((i) => i.categoryId).filter((id): id is number => !!id))
+		];
+		const rules = categoryIds.length
+			? await tx
+					.select({
+						id: category.id,
+						days: category.minShelfLifeDays,
+						refuse: category.refuseShortShelfLife
+					})
+					.from(category)
+					.where(inArray(category.id, categoryIds))
+			: [];
+		for (const it of items) {
+			const rule = rules.find((r) => r.id === it.categoryId);
+			if (rule?.days) shelfLife.set(it.id, { days: rule.days, refuse: rule.refuse });
+		}
+	}
+
+	// Maker-checker: an adjustment over the limit, or a write-off when the business says so.
+	if (doc.type === 'adjustment' && !options.approved) {
+		let value = 0;
+		for (const line of lines) {
+			const it = itemById.get(line.itemId);
+			const factor = it && factorOf(it, line.uomId);
+			if (!it || !factor) continue;
+			const cost = line.unitCost == null ? it.avgCost : line.unitCost / factor;
+			value += Math.abs(toBase(line.quantity, factor)) * cost;
+		}
+		value = Math.round(value * 100) / 100;
+		const writesOff = lines.some((l) => l.quantity < 0);
+		const limit = org?.approveAdjustmentsOver ?? null;
+		const reason =
+			org?.approveWriteOffs && writesOff
+				? 'it writes stock off'
+				: limit !== null && value >= limit
+					? `it is worth ${money(value)} at cost, over the ${money(limit)} limit`
+					: null;
+		if (reason) throw new ApprovalRequired('adjustment', value, reason);
+	}
 
 	const units = new Map(
 		(await tx.select({ id: uom.id, symbol: uom.symbol }).from(uom).where(eq(uom.orgId, orgId))).map(
@@ -224,27 +314,29 @@ export async function postDocument(
 		if (refused) throw new StockError(refused.message, refused.lineId);
 	}
 
+	// Receipts: freight, duty and the rest shared over the lines, in birr per line.
+	const landed =
+		doc.type === 'receipt' ? await shareLandedCosts(tx, doc.id, lines, itemById, factorOf) : null;
+
 	const ctx: Context = {
 		tx,
 		orgId,
 		doc,
 		userId,
 		today,
+		moveDate: doc.docDate,
+		costing: org?.costing === 'fifo' ? 'fifo' : 'average',
 		units,
-		locationNames: new Map(locations.map((l) => [l.id, l.name]))
+		locationNames: new Map(locations.map((l) => [l.id, l.name])),
+		warnings: [],
+		shelfLife
 	};
 
 	for (const line of lines) {
 		const it = itemById.get(line.itemId);
 		if (!it) throw new StockError('This line names an item that no longer exists.', line.id);
-		if (!it.stockTracked) {
-			throw new StockError(`${it.name} is a service and is not counted in stock.`, line.id);
-		}
 
-		const factor =
-			line.uomId === it.baseUomId
-				? 1
-				: factors.find((f) => f.itemId === it.id && f.uomId === line.uomId)?.factor;
+		const factor = factorOf(it, line.uomId);
 		if (!factor) {
 			throw new StockError(
 				`${it.name} has no conversion for the unit on this line. Add it on the item first.`,
@@ -256,6 +348,20 @@ export async function postDocument(
 		if (quantity === 0) throw new StockError(`The quantity for ${it.name} is zero.`, line.id);
 		if (quantity < 0 && doc.type !== 'adjustment') {
 			throw new StockError(`The quantity for ${it.name} must be positive.`, line.id);
+		}
+
+		// Services and kits have no stock of their own: sold (or returned) without a movement,
+		// except that a kit's components leave the shelf (or come back to it).
+		if (!it.stockTracked) {
+			if (doc.type !== 'issue' && doc.type !== 'sales_return') {
+				throw new StockError(`${it.name} is not stocked, so it cannot be moved.`, line.id);
+			}
+			if (it.isKit && doc.type === 'issue') {
+				await kitOut(ctx, it, line, from!.id, quantity, components, itemById, factorOf);
+			} else if (it.isKit) {
+				await kitBack(ctx, it, line, to!.id, quantity, itemById, factorOf);
+			}
+			continue;
 		}
 
 		const { serials, duplicates } = parseSerials(line.serials);
@@ -273,7 +379,7 @@ export async function postDocument(
 			throw new StockError(`${it.name} is not tracked by serial number.`, line.id);
 		}
 
-		const cost = line.unitCost == null ? it.avgCost : round4(line.unitCost / factor);
+		let cost = line.unitCost == null ? it.avgCost : round4(line.unitCost / factor);
 		// A receipt with no cost came in at the average cost: say so on the line, so what the
 		// supplier is owed can always be read off the document.
 		if (doc.type === 'receipt' && line.unitCost == null) {
@@ -282,6 +388,8 @@ export async function postDocument(
 				.set({ unitCost: round4(cost * factor) })
 				.where(eq(stockDocumentLine.id, line.id));
 		}
+		// What it took to bring it in is part of what it cost.
+		if (landed?.has(line.id)) cost = round4(cost + landed.get(line.id)! / quantity);
 
 		switch (doc.type) {
 			case 'receipt':
@@ -303,7 +411,7 @@ export async function postDocument(
 			case 'transfer':
 				await takeOut(ctx, it, line, from!.id, quantity, serials, 'transfer_out', {
 					allowUnusable: to!.kind === 'quarantine',
-					transferTo: to!.id
+					transferTo: transitId ?? to!.id
 				});
 				break;
 			case 'sales_return':
@@ -322,10 +430,17 @@ export async function postDocument(
 	}
 
 	const number = await nextNumber(tx, doc, orgId);
+	const status = transitId ? 'in_transit' : 'posted';
 
 	await tx
 		.update(stockDocument)
-		.set({ status: 'posted', number, postedAt: new Date(), postedBy: userId ?? null })
+		.set({
+			status,
+			number,
+			postedAt: new Date(),
+			postedBy: userId ?? null,
+			transitLocationId: transitId
+		})
 		.where(eq(stockDocument.id, doc.id));
 
 	// A delivery against an order moves the order along: partly or wholly received.
@@ -333,7 +448,183 @@ export async function postDocument(
 		await refreshOrderStatus(tx, orgId, doc.purchaseOrderId);
 	}
 
-	return { number };
+	// What was held for this sale or issue has now been taken.
+	if (doc.type === 'issue' && doc.quoteId) await releaseQuote(tx, doc.quoteId);
+	if (doc.type === 'issue' && doc.requisitionId) {
+		await releaseRequisition(tx, doc.requisitionId);
+		await tx
+			.update(requisition)
+			.set({ status: 'issued', issueId: doc.id })
+			.where(and(eq(requisition.id, doc.requisitionId), eq(requisition.orgId, orgId)));
+	}
+
+	return { number, status, warnings: ctx.warnings };
+}
+
+/**
+ * A receipt's landed costs, shared over its lines by each cost's method: by value (quantity ×
+ * cost), by quantity (base units), or by weight (base units × the item's weight). In birr per
+ * line; written onto the lines so the receipt shows it. Null when there are none.
+ */
+async function shareLandedCosts(
+	tx: Tx,
+	documentId: number,
+	lines: Line[],
+	itemById: Map<number, Item>,
+	factorOf: (it: Item, uomId: number) => number | undefined
+): Promise<Map<number, number> | null> {
+	const costs = await tx
+		.select()
+		.from(landedCost)
+		.where(and(eq(landedCost.documentId, documentId), isNull(landedCost.deletedAt)));
+
+	const shares = new Map<number, number>(lines.map((l) => [l.id, 0]));
+	for (const c of costs) {
+		const weights = lines.map((l) => {
+			const it = itemById.get(l.itemId)!;
+			const base = toBase(l.quantity, factorOf(it, l.uomId) ?? 1);
+			if (c.method === 'quantity') return base;
+			if (c.method === 'weight') {
+				if (it.weightKg == null) {
+					throw new StockError(
+						`Give ${it.name} a weight on its page, or share the ${c.kind} by value.`,
+						l.id
+					);
+				}
+				return base * it.weightKg;
+			}
+			return l.quantity * (l.unitCost ?? it.avgCost * (factorOf(it, l.uomId) ?? 1));
+		});
+		const total = weights.reduce((s, w) => s + w, 0);
+		if (total <= 0) {
+			throw new StockError(`There is nothing to share the ${c.kind} over. Give the lines costs.`);
+		}
+		// The last line takes the rounding, so the lines add up to the cost exactly.
+		let given = 0;
+		lines.forEach((l, i) => {
+			const part =
+				i === lines.length - 1 ? round4(c.amount - given) : round4((c.amount * weights[i]) / total);
+			given = round4(given + part);
+			shares.set(l.id, round4(shares.get(l.id)! + part));
+		});
+	}
+
+	for (const l of lines) {
+		const share = costs.length ? shares.get(l.id)! : null;
+		if (l.landedCost !== share) {
+			await tx
+				.update(stockDocumentLine)
+				.set({ landedCost: share })
+				.where(eq(stockDocumentLine.id, l.id));
+		}
+	}
+	return costs.length ? shares : null;
+}
+
+/** A kit or recipe sold: each of its components leaves the shelf, on the kit's line. */
+async function kitOut(
+	ctx: Context,
+	kit: Item,
+	line: Line,
+	locationId: number,
+	kitQuantity: number,
+	components: (typeof kitComponent.$inferSelect)[],
+	itemById: Map<number, Item>,
+	factorOf: (it: Item, uomId: number) => number | undefined
+) {
+	const parts = components.filter((c) => c.kitItemId === kit.id);
+	if (!parts.length) {
+		throw new StockError(`${kit.name} has no components. Add them on its page.`, line.id);
+	}
+	for (const c of parts) {
+		const comp = itemById.get(c.componentItemId);
+		if (!comp) throw new StockError(`A component of ${kit.name} no longer exists.`, line.id);
+		if (!comp.stockTracked) continue;
+		if (comp.trackSerials) {
+			throw new StockError(
+				`${comp.name} is tracked by serial number and cannot be part of ${kit.name}.`,
+				line.id
+			);
+		}
+		const factor = factorOf(comp, c.uomId);
+		if (!factor) {
+			throw new StockError(`${comp.name} has no conversion for its unit in ${kit.name}.`, line.id);
+		}
+		const quantity = round4(kitQuantity * c.quantity * factor);
+		if (quantity <= 0) continue;
+		// The line's lot is the kit's (none): components go first-expiry-first-out.
+		await takeOut(ctx, comp, { ...line, lotId: null }, locationId, quantity, [], 'issue');
+	}
+}
+
+/**
+ * A kit or recipe returned: its components come back, in proportion to what was sold, into the
+ * lots they left from, at what they cost when they left.
+ */
+async function kitBack(
+	ctx: Context,
+	kit: Item,
+	line: Line,
+	locationId: number,
+	kitQuantity: number,
+	itemById: Map<number, Item>,
+	factorOf: (it: Item, uomId: number) => number | undefined
+) {
+	const { tx } = ctx;
+	if (!line.returnOfLineId) {
+		throw new StockError(`A returned ${kit.name} must come from the sale it was on.`, line.id);
+	}
+	const [original] = await tx
+		.select({ quantity: stockDocumentLine.quantity, uomId: stockDocumentLine.uomId })
+		.from(stockDocumentLine)
+		.where(eq(stockDocumentLine.id, line.returnOfLineId));
+	const sold = original ? toBase(original.quantity, factorOf(kit, original.uomId) ?? 1) : 0;
+	if (!sold) throw new StockError(`The sale of ${kit.name} being returned was not found.`, line.id);
+
+	const moved = await tx
+		.select({
+			itemId: stockMovement.itemId,
+			lotId: stockMovement.lotId,
+			supplierId: stockMovement.supplierId,
+			quantity: sql<number>`-SUM(${stockMovement.quantity})`,
+			value: sql<number>`-SUM(${stockMovement.quantity} * ${stockMovement.unitCost})`
+		})
+		.from(stockMovement)
+		.where(
+			and(eq(stockMovement.documentLineId, line.returnOfLineId), eq(stockMovement.kind, 'issue'))
+		)
+		.groupBy(stockMovement.itemId, stockMovement.lotId, stockMovement.supplierId);
+
+	const missing = moved.map((m) => m.itemId).filter((id) => !itemById.has(id));
+	if (missing.length) {
+		const more = await tx
+			.select()
+			.from(item)
+			.where(inArray(item.id, [...new Set(missing)]))
+			.for('update');
+		for (const it of more) itemById.set(it.id, it);
+	}
+
+	const share = kitQuantity / sold;
+	for (const m of moved) {
+		const comp = itemById.get(m.itemId)!;
+		const out = Number(m.quantity);
+		const back = round4(out * share);
+		if (back <= 0) continue;
+		const cost = round4(Number(m.value) / out);
+		await valueIn(ctx, comp, back, cost);
+		await move(ctx, {
+			kind: 'sales_return',
+			it: comp,
+			line,
+			locationId,
+			lotId: m.lotId,
+			serialUnitId: null,
+			supplierId: m.supplierId,
+			quantity: back,
+			cost
+		});
+	}
 }
 
 /** Stock arriving: a receipt or a positive adjustment. */
@@ -368,6 +659,16 @@ async function bringIn(
 				line.id
 			);
 		}
+		// A delivery that will not last long enough on the shelf: flagged, or refused.
+		const rule = ctx.shelfLife.get(it.id);
+		if (doc.type === 'receipt' && rule && line.expiryDate) {
+			const daysLeft = Math.round((Date.parse(line.expiryDate) - Date.parse(today)) / DAY);
+			if (daysLeft < rule.days) {
+				const text = `Lot ${lotNumber} of ${it.name} has ${daysLeft} day(s) of shelf life left; its category wants at least ${rule.days}.`;
+				if (rule.refuse) throw new StockError(`${text} Refuse the delivery.`, line.id);
+				ctx.warnings.push(text);
+			}
+		}
 		const resolved = await resolveLot(
 			tx,
 			orgId,
@@ -385,16 +686,8 @@ async function bringIn(
 		throw new StockError(`${it.name} has no main supplier. Set one on the item first.`, line.id);
 	}
 
-	// The average is taken over everything on hand before this line arrives, everywhere.
-	const [{ onHand }] = await tx
-		.select({ onHand: sql<number>`COALESCE(SUM(${stockBalance.quantity}), 0)` })
-		.from(stockBalance)
-		.where(and(eq(stockBalance.itemId, it.id), eq(stockBalance.orgId, orgId)));
-	const newAvg = movingAverage(Number(onHand), it.avgCost, quantity, cost);
-	if (newAvg !== it.avgCost) {
-		await tx.update(item).set({ avgCost: newAvg }).where(eq(item.id, it.id));
-		it.avgCost = newAvg; // later lines of the same item average on top of this one
-	}
+	// The item's value takes this in: the moving average, or a new FIFO layer.
+	await valueIn(ctx, it, quantity, cost);
 
 	if (it.trackSerials) {
 		for (const serialNumber of serials) {
@@ -445,10 +738,44 @@ async function takeOut(
 	kind: Kind,
 	options: { allowUnusable?: boolean; transferTo?: number } = {}
 ) {
-	const { tx, orgId, today } = ctx;
-	const cost = it.avgCost;
+	const { tx, orgId, today, doc } = ctx;
+	// Moving stock between shelves does not change what it cost; stock leaving the business is
+	// valued now (the average, or the oldest FIFO layers).
+	const leaves = kind !== 'transfer_out';
+	// Stock promised to someone else stays: issues and transfers may not dip into it.
+	const held =
+		(kind === 'issue' || kind === 'transfer_out') && !options.allowUnusable
+			? await reservedElsewhere(tx, {
+					orgId,
+					itemId: it.id,
+					locationId,
+					today,
+					quoteId: doc.quoteId,
+					requisitionId: doc.requisitionId
+				})
+			: 0;
+	const unit = ctx.units.get(it.baseUomId) ?? '';
+	const heldError = (free: number) =>
+		new StockError(
+			`Only ${Math.max(0, round4(free))} ${unit} of ${it.name} is free at ${ctx.locationNames.get(locationId)}: ${held} ${unit} is held for accepted proformas or approved requisitions.`,
+			line.id
+		);
 
 	if (it.trackSerials) {
+		if (held > 0) {
+			const [{ n }] = await tx
+				.select({ n: sql<number>`COUNT(*)` })
+				.from(serialUnit)
+				.where(
+					and(
+						eq(serialUnit.itemId, it.id),
+						eq(serialUnit.locationId, locationId),
+						eq(serialUnit.status, 'in_stock')
+					)
+				);
+			if (Number(n) - held < serials.length) throw heldError(Number(n) - held);
+		}
+		const cost = leaves ? await valueOut(ctx, it, serials.length) : it.avgCost;
 		for (const serialNumber of serials) {
 			const [unit] = await tx
 				.select()
@@ -563,13 +890,21 @@ async function takeOut(
 
 	if (short > 0) {
 		const available = round4(quantity - short);
-		const unit = ctx.units.get(it.baseUomId) ?? '';
 		throw new StockError(
 			`Only ${available} ${unit} of ${it.name} ${line.lotId ? 'in that lot ' : ''}can be taken from ${ctx.locationNames.get(locationId)}; the line needs ${quantity} ${unit}.` +
 				(options.allowUnusable ? '' : ' Expired, quarantined and recalled lots are not counted.'),
 			line.id
 		);
 	}
+	if (held > 0) {
+		const usable = allocate(
+			rows.map((r) => ({ ...r, quantity: Number(r.quantity) })),
+			Number.MAX_SAFE_INTEGER,
+			{ today, lotId: line.lotId }
+		).takes.reduce((s, t) => s + t.quantity, 0);
+		if (usable - held < quantity - 0.00001) throw heldError(usable - held);
+	}
+	const cost = leaves ? await valueOut(ctx, it, quantity) : it.avgCost;
 
 	for (const take of takes) {
 		// A lot knows who delivered it. Stock without lots is credited to the item's main supplier —
@@ -609,54 +944,6 @@ function requireSupplier(supplierId: number | null, it: Item, line: Line): numbe
 		throw new StockError(`${it.name} has no main supplier. Set one on the item first.`, line.id);
 	}
 	return supplierId;
-}
-
-/** One ledger row, and the balance it changes. */
-async function move(
-	ctx: Context,
-	m: {
-		kind: Kind;
-		it: Item;
-		line: Line;
-		locationId: number;
-		lotId: number | null;
-		serialUnitId: number | null;
-		supplierId: number;
-		quantity: number;
-		cost: number;
-	}
-) {
-	const { tx, orgId, doc, userId } = ctx;
-
-	await tx.insert(stockMovement).values({
-		orgId,
-		kind: m.kind,
-		itemId: m.it.id,
-		locationId: m.locationId,
-		lotId: m.lotId,
-		serialUnitId: m.serialUnitId,
-		supplierId: m.supplierId,
-		quantity: m.quantity,
-		unitCost: m.cost,
-		documentId: doc.id,
-		documentLineId: m.line.id,
-		docDate: doc.docDate,
-		createdBy: userId ?? null
-	});
-
-	await tx
-		.insert(stockBalance)
-		.values({
-			orgId,
-			locationId: m.locationId,
-			itemId: m.it.id,
-			lotId: m.lotId,
-			lotKey: m.lotId ?? 0,
-			quantity: m.quantity
-		})
-		.onDuplicateKeyUpdate({
-			set: { quantity: sql`ROUND(${stockBalance.quantity} + ${m.quantity}, 4)` }
-		});
 }
 
 /**

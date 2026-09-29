@@ -19,13 +19,14 @@ import {
 	stockDocument
 } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
-import { itemOptions, locationOptions, unitOptions } from '$lib/server/options';
+import { locationOptions, saleItemOptions, unitOptions } from '$lib/server/options';
 import { checkCustomer, customerChoices } from '$lib/server/customers';
 import { discountPercent, priceFor } from '$lib/server/pricing';
 import { convertQuote, numberQuote, orgQuote, quoteEditable, quoteLines } from '$lib/server/quotes';
 import { sendMail } from '$lib/server/mail';
 import { StockError } from '$lib/server/stock/post';
 import { quoteHeader, quoteLineAdd, quoteLineEdit } from '$lib/schemas/quotes';
+import { releaseQuote, reservationsOfQuote, reserveQuote } from '$lib/server/reservations';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 /**
@@ -39,7 +40,8 @@ async function lineValues(values: Record<string, unknown>, event: RequestEvent) 
 		.select()
 		.from(item)
 		.where(and(eq(item.id, Number(values.itemId)), eq(item.orgId, orgId), isNull(item.deletedAt)));
-	if (!it || !it.stockTracked || !it.sellable) {
+	// Services and kits are quoted like anything else that is sold.
+	if (!it || !it.sellable) {
 		throw new WriteRefused('itemId', 'Choose an item this business sells.');
 	}
 	const uomId = Number(values.uomId) || it.baseUomId;
@@ -107,7 +109,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const [section, priced, items, units, customers, locations, [buyer], [sale]] = await Promise.all([
 		lines.load(q.id),
 		quoteLines(orgId, q.id),
-		editable ? itemOptions(orgId) : Promise.resolve([]),
+		editable ? saleItemOptions(orgId) : Promise.resolve([]),
 		editable ? unitOptions(orgId) : Promise.resolve([]),
 		customerChoices(orgId),
 		locationOptions(orgId),
@@ -172,6 +174,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			zod4(quoteHeader),
 			{ errors: false }
 		),
+		held:
+			q.status === 'accepted' || q.status === 'converted'
+				? await reservationsOfQuote(orgId, q.id)
+				: [],
+		reserves: Boolean(
+			(
+				await db
+					.select({ on: organization.reserveStock })
+					.from(organization)
+					.where(eq(organization.id, orgId))
+			)[0]?.on
+		),
 		expired: Boolean(editable && q.validUntil && q.validUntil < localToday()),
 		editable,
 		canManage: hasPermission(locals, 'sales.manage'),
@@ -198,13 +212,43 @@ async function setStatus(
 				updatedBy: event.locals.user?.id
 			})
 			.where(eq(quote.id, q.id));
+		// Accepted: the stock is held for the buyer (when the business reserves stock). Anything
+		// else lets it go again.
+		if (status === 'accepted') {
+			await reserveQuote(tx, { orgId, quoteId: q.id, userId: event.locals.user?.id });
+		} else {
+			await releaseQuote(tx, q.id);
+		}
 	});
 	setFlash({ type: 'success', message: text }, event.cookies);
 	return { done: true };
 }
 
+/** An accepted proforma changed: hold what it now says, where it now says. */
+async function reheld(event: RequestEvent) {
+	const orgId = orgIdOf(event.locals);
+	const q = await orgQuote(orgId, Number(event.params.id));
+	if (q.status === 'accepted') {
+		await db.transaction((tx) =>
+			reserveQuote(tx, { orgId, quoteId: q.id, userId: event.locals.user?.id })
+		);
+	}
+}
+
+/** The line actions, each re-holding the stock of an accepted proforma once it has saved. */
+const lineActions = Object.fromEntries(
+	Object.entries(childActions({ Line: lines }, editableOwner)).map(([name, action]) => [
+		name,
+		async (event: RequestEvent) => {
+			const result = await action(event);
+			await reheld(event);
+			return result;
+		}
+	])
+);
+
 export const actions: Actions = {
-	...childActions({ Line: lines }, editableOwner),
+	...lineActions,
 
 	editHeader: async (event) => {
 		requirePermission(event.locals, 'sales.manage');
@@ -261,6 +305,7 @@ export const actions: Actions = {
 				updatedBy: event.locals.user?.id
 			})
 			.where(eq(quote.id, q.id));
+		await reheld(event);
 		return message(form, { type: 'success', text: 'Saved' });
 	},
 

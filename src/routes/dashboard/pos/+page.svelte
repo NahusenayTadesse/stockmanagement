@@ -330,17 +330,23 @@
 						<button
 							type="button"
 							onclick={() => add(it)}
-							disabled={it.onHand <= 0}
+							disabled={it.onHand !== null && it.onHand <= 0}
 							class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition hover:border-primary hover:shadow-sm disabled:opacity-40"
 						>
 							<span class="line-clamp-2 font-medium">{it.name}</span>
 							<span class="text-xs text-muted-foreground">{it.sku}</span>
 							<span class="mt-auto flex w-full items-end justify-between gap-1">
 								<span class="font-semibold">{price === null ? '—' : formatETB(price)}</span>
-								<span
-									class="text-xs {it.onHand <= 0 ? 'text-destructive' : 'text-muted-foreground'}"
-									>{it.onHand} {it.unit}</span
-								>
+								{#if it.onHand === null}
+									<span class="text-xs text-muted-foreground"
+										>{it.kind === 'kit' ? 'Kit' : 'Service'}</span
+									>
+								{:else}
+									<span
+										class="text-xs {it.onHand <= 0 ? 'text-destructive' : 'text-muted-foreground'}"
+										>{it.onHand} {it.kind === 'kit' ? 'can be made' : it.unit}</span
+									>
+								{/if}
 							</span>
 						</button>
 					{:else}

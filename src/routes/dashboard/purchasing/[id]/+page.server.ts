@@ -28,7 +28,9 @@ import {
 	receiptFromOrder
 } from '$lib/server/purchasing';
 import { orderLineValues } from '$lib/server/orderLines';
-import { StockError } from '$lib/server/stock/post';
+import { ApprovalRequired, StockError } from '$lib/server/stock/post';
+import { approvalState, closePendingFor, requestApproval } from '$lib/server/approvals';
+import { branchScope, inScope, requireBranch } from '$lib/server/scope';
 import { orderHeader, orderLineAdd, orderLineEdit } from '$lib/schemas/purchasing';
 import { supplierSchema } from '$lib/schemas/suppliers';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
@@ -45,15 +47,22 @@ const lines = childCrud({
 
 /** Lines change only while the order is a draft: once sent, the supplier is working from them. */
 async function draftOwner(event: RequestEvent) {
-	const order = await orgOrder(orgIdOf(event.locals), Number(event.params.id));
+	const order = await scopedOrder(event);
 	if (order.status !== 'draft')
 		error(409, 'This order has been sent and its lines can no longer change.');
 	return order.id;
 }
 
+/** This business's order, in one of the viewer's branches — to anyone else it does not exist. */
+async function scopedOrder(event: Pick<RequestEvent, 'locals' | 'params'>) {
+	const order = await orgOrder(orgIdOf(event.locals), Number(event.params.id));
+	await requireBranch(event.locals, order.branchId);
+	return order;
+}
+
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const orgId = orgIdOf(locals);
-	const order = await orgOrder(orgId, Number(params.id));
+	const order = await scopedOrder({ params, locals });
 	const isDraft = order.status === 'draft';
 
 	const [{ details }, lineSection, detailed, receipts, items, units, [people]] = await Promise.all([
@@ -107,7 +116,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			{ errors: false }
 		),
 		suppliers: isDraft && canManage ? await supplierOptions(orgId) : [],
-		locations: isDraft && canManage ? await locationOptions(orgId) : [],
+		locations: isDraft && canManage ? await locationOptions(orgId, await branchScope(locals)) : [],
+		approval: isDraft
+			? await approvalState(orgId, { kind: 'purchase_order', purchaseOrderId: order.id })
+			: { pending: null, last: null },
 		supplierForm:
 			isDraft && canManage && hasPermission(locals, 'suppliers.manage')
 				? await superValidate(zod4(supplierSchema))
@@ -141,7 +153,7 @@ export const actions: Actions = {
 		const form = await superValidate(event.request, zod4(orderHeader));
 		if (!form.valid)
 			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
-		const order = await orgOrder(orgId, Number(event.params.id));
+		const order = await scopedOrder(event);
 		if (order.status !== 'draft') {
 			return message(
 				form,
@@ -180,7 +192,7 @@ export const actions: Actions = {
 				{ status: 400 }
 			);
 		}
-		if (!loc) {
+		if (!loc || !inScope(await branchScope(event.locals), loc.branchId)) {
 			setError(form, 'locationId', 'Choose a location from the list.');
 			return message(
 				form,
@@ -209,18 +221,44 @@ export const actions: Actions = {
 	markOrdered: async (event) => {
 		requirePermission(event.locals, 'purchasing.manage');
 		const orgId = orgIdOf(event.locals);
-		return attempt(event, async () => {
+		const order = await scopedOrder(event);
+		try {
 			const number = await db.transaction((tx) =>
-				markOrdered(tx, { orgId, orderId: Number(event.params.id), userId: event.locals.user?.id })
+				markOrdered(tx, { orgId, orderId: order.id, userId: event.locals.user?.id })
 			);
-			return `Ordered as ${number}`;
-		});
+			setFlash({ type: 'success', message: `Ordered as ${number}` }, event.cookies);
+			return { done: true };
+		} catch (err) {
+			// Over the business's limit: it waits for a second person instead.
+			if (err instanceof ApprovalRequired) {
+				await requestApproval({
+					orgId,
+					userId: event.locals.user?.id,
+					subject: { kind: 'purchase_order', purchaseOrderId: order.id },
+					refusal: err
+				});
+				setFlash(
+					{
+						type: 'success',
+						message: `Sent for approval: ${err.reason}. It is ordered once someone else approves it.`
+					},
+					event.cookies
+				);
+				return { sentForApproval: true };
+			}
+			if (err instanceof StockError) {
+				setFlash({ type: 'error', message: err.message }, event.cookies);
+				return fail(409, { refused: err.message });
+			}
+			throw err;
+		}
 	},
 
 	/** A draft goods receipt for what is still due, opened for the storekeeper to check and post. */
 	receive: async (event) => {
 		requirePermission(event.locals, 'stock.draft');
 		const orgId = orgIdOf(event.locals);
+		await scopedOrder(event);
 		let documentId: number;
 		try {
 			documentId = await db.transaction((tx) =>
@@ -253,6 +291,7 @@ export const actions: Actions = {
 	email: async (event) => {
 		requirePermission(event.locals, 'purchasing.manage');
 		const orgId = orgIdOf(event.locals);
+		await scopedOrder(event);
 		const { order, details, lines } = await orderForSupplier(orgId, Number(event.params.id));
 		if (order.status === 'draft' || order.status === 'cancelled') {
 			setFlash(
@@ -324,9 +363,8 @@ export const actions: Actions = {
 	/** Nothing more is coming: what was delivered stands, the rest is no longer expected. */
 	close: async (event) => {
 		requirePermission(event.locals, 'purchasing.manage');
-		const orgId = orgIdOf(event.locals);
 		return attempt(event, async () => {
-			const order = await orgOrder(orgId, Number(event.params.id));
+			const order = await scopedOrder(event);
 			if (order.status !== 'ordered' && order.status !== 'partially_received') {
 				throw new StockError('Only an open order can be closed.');
 			}
@@ -343,7 +381,7 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'purchasing.manage');
 		const orgId = orgIdOf(event.locals);
 		return attempt(event, async () => {
-			const order = await orgOrder(orgId, Number(event.params.id));
+			const order = await scopedOrder(event);
 			if (order.status !== 'draft' && order.status !== 'ordered') {
 				throw new StockError(
 					order.status === 'partially_received'
@@ -358,6 +396,7 @@ export const actions: Actions = {
 				.update(purchaseOrder)
 				.set({ status: 'cancelled', updatedBy: event.locals.user?.id })
 				.where(eq(purchaseOrder.id, order.id));
+			await closePendingFor(orgId, { kind: 'purchase_order', purchaseOrderId: order.id });
 			return 'Order cancelled';
 		});
 	}

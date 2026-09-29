@@ -1,12 +1,13 @@
 import { message, setError, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect } from 'sveltekit-flash-message/server';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import { location, purchaseOrder, supplier } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
+import { branchScope, inScope } from '$lib/server/scope';
 import { locationOptions, supplierOptions } from '$lib/server/options';
 import { orderList } from '$lib/server/purchasing';
 import { orderHeader } from '$lib/schemas/purchasing';
@@ -16,10 +17,26 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
 	const canManage = hasPermission(locals, 'purchasing.manage');
+	const scope = await branchScope(locals);
 	const [orders, suppliers, locations, form] = await Promise.all([
-		orderList(orgId),
+		// The viewer's branches only (`orderList` covers every branch).
+		Promise.all([
+			orderList(orgId),
+			scope
+				? db
+						.select({ id: purchaseOrder.id })
+						.from(purchaseOrder)
+						.where(
+							and(eq(purchaseOrder.orgId, orgId), inArray(purchaseOrder.branchId, [-1, ...scope]))
+						)
+				: null
+		]).then(([rows, mine]) => {
+			if (!mine) return rows;
+			const ids = new Set(mine.map((m) => m.id));
+			return rows.filter((o) => ids.has(o.id));
+		}),
 		supplierOptions(orgId),
-		locationOptions(orgId),
+		locationOptions(orgId, scope),
 		superValidate({ orderDate: localToday() }, zod4(orderHeader), { errors: false })
 	]);
 	return {
@@ -56,7 +73,7 @@ export const actions: Actions = {
 					)
 				),
 			db
-				.select({ id: location.id, branchId: location.branchId })
+				.select({ id: location.id, branchId: location.branchId, kind: location.kind })
 				.from(location)
 				.where(
 					and(
@@ -66,6 +83,7 @@ export const actions: Actions = {
 					)
 				)
 		]);
+		const scope = await branchScope(event.locals);
 		if (!sup) {
 			setError(form, 'supplierId', 'Choose a supplier from the list.');
 			return message(
@@ -74,7 +92,7 @@ export const actions: Actions = {
 				{ status: 400 }
 			);
 		}
-		if (!loc) {
+		if (!loc || loc.kind === 'transit' || !inScope(scope, loc.branchId)) {
 			setError(form, 'locationId', 'Choose a location from the list.');
 			return message(
 				form,

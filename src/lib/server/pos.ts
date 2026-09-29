@@ -248,7 +248,8 @@ export async function checkout(
 
 	for (const l of lines) {
 		const it = items.find((i) => i.id === l.itemId);
-		if (!it || !it.stockTracked) throw new StockError('One of the items cannot be sold here.');
+		// Services and kits sell too: a service moves no stock, a kit takes its components.
+		if (!it) throw new StockError('One of the items cannot be sold here.');
 		if (!it.sellable || !it.isActive) throw new StockError(`${it.name} is not for sale.`);
 		if (l.uomId !== it.baseUomId && !units.some((u) => u.itemId === it.id && u.uomId === l.uomId)) {
 			throw new StockError(`${it.name} is not sold in that unit.`);
@@ -271,6 +272,7 @@ export async function checkout(
 		}
 	}
 
+	const stocked = new Set(items.filter((i) => i.stockTracked).map((i) => i.id));
 	const [doc] = await tx
 		.insert(stockDocument)
 		.values({
@@ -296,8 +298,8 @@ export async function checkout(
 			quantity: l.quantity,
 			unitPrice: l.unitPrice,
 			listPrice: list !== null && list !== l.unitPrice ? list : null,
-			lotId: l.lotId || null,
-			serials: l.serials?.length ? l.serials.join('\n') : null
+			lotId: stocked.has(l.itemId) ? l.lotId || null : null,
+			serials: stocked.has(l.itemId) && l.serials?.length ? l.serials.join('\n') : null
 		});
 	}
 

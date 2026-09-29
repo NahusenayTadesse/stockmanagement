@@ -18,6 +18,7 @@ import {
 	user
 } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
+import { branchScope, scopeWhere } from '$lib/server/scope';
 import { locationOptions, supplierOptions } from '$lib/server/options';
 import { supplierSchema } from '$lib/schemas/suppliers';
 import { customerPicker, headerValues } from '$lib/server/stock/documents';
@@ -29,7 +30,8 @@ const toLoc = alias(location, 'to_loc');
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
-	const [documents, locations, form] = await Promise.all([
+	const scope = await branchScope(locals);
+	const [documents, locations, destinations, form] = await Promise.all([
 		db
 			.select({
 				id: stockDocument.id,
@@ -63,16 +65,26 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.leftJoin(transactions, eq(transactions.id, stockDocument.transactionId))
 			.leftJoin(supplier, eq(supplier.id, stockDocument.supplierId))
 			.leftJoin(customer, eq(customer.id, stockDocument.customerId))
-			.where(and(eq(stockDocument.orgId, orgId), isNull(stockDocument.deletedAt)))
+			.where(
+				and(
+					eq(stockDocument.orgId, orgId),
+					isNull(stockDocument.deletedAt),
+					// The viewer's branches: documents numbered there, or moving stock in or out of them.
+					scopeWhere(scope, stockDocument.branchId, fromLoc.branchId, toLoc.branchId)
+				)
+			)
 			.orderBy(desc(stockDocument.id))
 			.limit(1000),
-		locationOptions(orgId),
+		locationOptions(orgId, scope),
+		// A transfer may go to any branch's location, not only the viewer's.
+		scope ? locationOptions(orgId) : Promise.resolve(null),
 		superValidate({ docDate: localToday() }, zod4(documentHeader), { errors: false })
 	]);
 
 	return {
 		documents,
 		locations,
+		destinations: destinations ?? locations,
 		form,
 		suppliers: await supplierOptions(orgId),
 		supplierForm: hasPermission(locals, 'suppliers.manage')
@@ -95,7 +107,9 @@ export const actions: Actions = {
 
 		let id: number;
 		try {
-			const values = await headerValues(orgId, form.data);
+			const values = await headerValues(orgId, form.data, {
+				scope: await branchScope(event.locals)
+			});
 			const [created] = await db
 				.insert(stockDocument)
 				.values({ ...values, orgId, createdBy: event.locals.user?.id })

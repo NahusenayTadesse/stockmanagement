@@ -7,12 +7,27 @@ import { orgIdOf } from '$lib/server/tenant';
 import { locationOptions } from '$lib/server/options';
 import { ordersFromReorder, reorderSuggestions } from '$lib/server/purchasing';
 import { StockError } from '$lib/server/stock/post';
+import { branchScope, inScope } from '$lib/server/scope';
+import { location } from '$lib/server/db/schema';
+import { and, eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
+/**
+ * `?location=` plans one location by its reorder rules; without it, the whole business by each
+ * item's reorder level. Either way, items about to run out at their rate of use are listed too.
+ */
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const orgId = orgIdOf(locals);
-	const [items, locations] = await Promise.all([reorderSuggestions(orgId), locationOptions(orgId)]);
-	return { items, locations, canManage: hasPermission(locals, 'purchasing.manage') };
+	const locations = await locationOptions(orgId, await branchScope(locals));
+	const wanted = Number(url.searchParams.get('location')) || null;
+	const locationId = locations.some((l) => l.value === wanted) ? wanted : null;
+	const items = await reorderSuggestions(orgId, db, { locationId });
+	return {
+		items,
+		locations,
+		locationId,
+		canManage: hasPermission(locals, 'purchasing.manage')
+	};
 };
 
 export const actions: Actions = {
@@ -27,12 +42,26 @@ export const actions: Actions = {
 			.filter(Number.isInteger)
 			.map((itemId) => ({ itemId, quantity: Number(form.get(`qty_${itemId}`)) }));
 
+		// Deliveries go to one of the viewer's own locations.
+		const locationId = Number(form.get('locationId'));
+		const [loc] = await db
+			.select({ branchId: location.branchId })
+			.from(location)
+			.where(and(eq(location.id, locationId), eq(location.orgId, orgId)));
+		if (!loc || !inScope(await branchScope(event.locals), loc.branchId)) {
+			setFlash(
+				{ type: 'error', message: 'Choose where the orders should be delivered.' },
+				event.cookies
+			);
+			return fail(400);
+		}
+
 		let ids: number[];
 		try {
 			ids = await db.transaction((tx) =>
 				ordersFromReorder(tx, {
 					orgId,
-					locationId: Number(form.get('locationId')),
+					locationId,
 					date: localToday(),
 					picks,
 					userId: event.locals.user?.id

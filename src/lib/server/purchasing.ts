@@ -3,24 +3,29 @@
  * goods receipts pointing back at the order; everything here is worked out from them.
  */
 import { error } from '@sveltejs/kit';
-import { and, asc, desc, eq, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	branch,
 	item,
 	itemUnit,
 	location,
+	organization,
 	purchaseOrder,
 	purchaseOrderLine,
+	reorderRule,
+	stockBalance,
 	stockDocument,
 	stockDocumentLine,
+	stockMovement,
 	supplier,
 	uom
 } from '$lib/server/db/schema';
+import { addLocalDays, localToday } from '@nahu/admin-kit/time';
+import { reservedByLocation } from '$lib/server/reservations';
 import { qualified } from '$lib/server/db/sql';
 import { round4 } from '$lib/server/stock/math';
-import { itemOnHand } from '$lib/server/stock/queries';
-import { issueNumber, StockError, type Tx } from '$lib/server/stock/post';
+import { ApprovalRequired, issueNumber, StockError, type Tx } from '$lib/server/stock/post';
 
 type Writer = typeof db | Tx;
 
@@ -158,7 +163,9 @@ export async function orderList(orgId: number) {
  */
 export async function onOrderByItem(
 	orgId: number,
-	reader: Writer = db
+	reader: Writer = db,
+	/** Only orders to be delivered here. */
+	locationId: number | null = null
 ): Promise<Map<number, number>> {
 	const rows = await reader
 		.select({
@@ -175,7 +182,8 @@ export async function onOrderByItem(
 			and(
 				eq(purchaseOrderLine.orgId, orgId),
 				isNull(purchaseOrderLine.deletedAt),
-				inArray(purchaseOrder.status, ['ordered', 'partially_received'])
+				inArray(purchaseOrder.status, ['ordered', 'partially_received']),
+				locationId ? eq(purchaseOrder.locationId, locationId) : undefined
 			)
 		);
 
@@ -226,13 +234,35 @@ export async function orderReceipts(orgId: number, orderId: number) {
  */
 export async function markOrdered(
 	tx: Tx,
-	input: { orgId: number; orderId: number; userId?: string }
+	input: {
+		orgId: number;
+		orderId: number;
+		userId?: string;
+		/** A second person approved it (maker-checker). */
+		approved?: boolean;
+	}
 ) {
 	const order = await orgOrder(input.orgId, input.orderId, tx);
 	if (order.status !== 'draft')
 		throw new StockError(`This order is already ${order.status.replace('_', ' ')}.`);
 	const lines = await orderLines(input.orgId, order.id, tx);
 	if (!lines.length) throw new StockError('Add at least one line before ordering.');
+
+	// Maker-checker: a large order waits for a second person before it goes out.
+	if (!input.approved) {
+		const [org] = await tx
+			.select({ limit: organization.approveOrdersOver })
+			.from(organization)
+			.where(eq(organization.id, input.orgId));
+		const value = Math.round(lines.reduce((s, l) => s + l.value, 0) * 100) / 100;
+		if (org?.limit != null && value >= org.limit) {
+			throw new ApprovalRequired(
+				'purchase_order',
+				value,
+				`it is worth ${value.toFixed(2)}, over the ${org.limit.toFixed(2)} limit`
+			);
+		}
+	}
 
 	const number = await issueNumber(tx, {
 		orgId: input.orgId,
@@ -335,12 +365,40 @@ export async function orderForSupplier(orgId: number, orderId: number) {
 	return { order, details, lines };
 }
 
+/** Assumed when a supplier has no lead time: a week from order to delivery. */
+export const DEFAULT_LEAD_DAYS = 7;
+/** An order should last this long after it arrives, until the next one. */
+export const COVER_DAYS = 30;
+
 /**
- * Items at or below their reorder level, with what is already on order and a suggested quantity:
- * enough to bring stock back up to twice the reorder level. Everything in base units.
+ * What to reorder, in base units: for one location (by its reorder rules) or for the whole
+ * business (by each item's reorder level). An item is listed when
+ *
+ *   - what is free (on hand, less what is held for proformas and requisitions) is at or below its
+ *     minimum, or
+ *   - at the rate it has been used over the last `days` days, it will run out before a delivery
+ *     ordered today could arrive (the supplier's lead time) — whether or not it has a minimum.
+ *
+ * The suggestion fills up to the maximum (twice the minimum when there is none), or — when that is
+ * less — to what the lead time plus a month of use needs, less what is free and on order.
+ * Usage is what left the business: issues, write-offs, losses in transit, net of customer returns.
  */
-export async function reorderSuggestions(orgId: number, reader: Writer = db) {
-	const [rows, onOrder] = await Promise.all([
+export async function reorderSuggestions(
+	orgId: number,
+	reader: Writer = db,
+	options: { locationId?: number | null; today?: string; days?: number } = {}
+) {
+	const locationId = options.locationId ?? null;
+	const today = options.today ?? localToday();
+	const days = options.days ?? 90;
+	const since = addLocalDays(today, -days);
+
+	const used = sql<number>`COALESCE(SUM(CASE
+		WHEN ${stockMovement.docDate} >= ${since}
+			AND ${stockMovement.kind} IN ('issue', 'adjustment_out', 'transit_loss', 'sales_return')
+		THEN -${stockMovement.quantity} ELSE 0 END), 0)`;
+
+	const [items, balances, usage, rules, onOrder, held] = await Promise.all([
 		reader
 			.select({
 				id: item.id,
@@ -351,7 +409,7 @@ export async function reorderSuggestions(orgId: number, reader: Writer = db) {
 				avgCost: item.avgCost,
 				supplierId: item.supplierId,
 				supplier: supplier.name,
-				onHand: itemOnHand
+				leadTimeDays: supplier.leadTimeDays
 			})
 			.from(item)
 			.innerJoin(uom, eq(uom.id, item.baseUomId))
@@ -362,26 +420,102 @@ export async function reorderSuggestions(orgId: number, reader: Writer = db) {
 					isNull(item.deletedAt),
 					eq(item.isActive, true),
 					eq(item.stockTracked, true),
-					eq(item.purchasable, true),
-					sql`${item.reorderLevel} IS NOT NULL`,
-					lte(itemOnHand, item.reorderLevel)
+					eq(item.purchasable, true)
 				)
 			)
 			.orderBy(asc(supplier.name), asc(item.name)),
-		onOrderByItem(orgId, reader)
+		reader
+			.select({
+				itemId: stockBalance.itemId,
+				quantity: sql<number>`SUM(${stockBalance.quantity})`
+			})
+			.from(stockBalance)
+			.where(
+				and(
+					eq(stockBalance.orgId, orgId),
+					locationId ? eq(stockBalance.locationId, locationId) : undefined
+				)
+			)
+			.groupBy(stockBalance.itemId),
+		reader
+			.select({
+				itemId: stockMovement.itemId,
+				used,
+				first: sql<string>`MIN(${stockMovement.docDate})`
+			})
+			.from(stockMovement)
+			.where(
+				and(
+					eq(stockMovement.orgId, orgId),
+					locationId ? eq(stockMovement.locationId, locationId) : undefined
+				)
+			)
+			.groupBy(stockMovement.itemId),
+		locationId
+			? reader
+					.select()
+					.from(reorderRule)
+					.where(and(eq(reorderRule.orgId, orgId), eq(reorderRule.locationId, locationId)))
+			: Promise.resolve([]),
+		onOrderByItem(orgId, reader, locationId),
+		reservedByLocation(orgId, today, reader)
 	]);
 
-	return rows.map((r) => {
-		const onHand = round4(Number(r.onHand));
-		const ordered = onOrder.get(r.id) ?? 0;
-		const level = r.reorderLevel ?? 0;
-		return {
-			...r,
+	const heldOf = (itemId: number) => {
+		let sum = 0;
+		for (const [key, q] of held) {
+			const [loc, it] = key.split(':').map(Number);
+			if (it === itemId && (!locationId || loc === locationId)) sum += q;
+		}
+		return round4(sum);
+	};
+	const DAY = 86_400_000;
+
+	const out = [];
+	for (const it of items) {
+		const rule = rules.find((r) => r.itemId === it.id);
+		const min = locationId ? (rule?.minQuantity ?? null) : it.reorderLevel;
+		const max = locationId ? (rule?.maxQuantity ?? null) : null;
+		const onHand = round4(Number(balances.find((b) => b.itemId === it.id)?.quantity ?? 0));
+		const ordered = onOrder.get(it.id) ?? 0;
+		const heldHere = heldOf(it.id);
+		const free = round4(onHand - heldHere);
+
+		// Usage per day, over the window — or since the item first moved here, if that is sooner
+		// (but never less than two weeks, so one early sale does not look like a trend).
+		const u = usage.find((x) => x.itemId === it.id);
+		const known = u?.first ? Math.round((Date.parse(today) - Date.parse(u.first)) / DAY) : 0;
+		const window = Math.min(days, Math.max(14, known));
+		const perDay = u ? Math.max(0, Number(u.used)) / window : 0;
+		const usagePerDay = Math.round(perDay * 1000) / 1000;
+
+		const lead = it.leadTimeDays ?? DEFAULT_LEAD_DAYS;
+		const daysLeft = perDay > 0 ? Math.max(0, Math.floor(free / perDay)) : null;
+		const belowMin = min !== null && free <= min;
+		// What will be free when an order placed today arrives, counting what is already coming.
+		const runsOut = perDay > 0 && free + ordered - perDay * lead < 0;
+		if (!belowMin && !runsOut) continue;
+
+		const byLevel = max ?? (min !== null ? 2 * min : 0);
+		const byUse = perDay > 0 ? perDay * (lead + COVER_DAYS) : 0;
+		const target = max !== null ? max : Math.max(byLevel, byUse);
+		out.push({
+			...it,
+			reorderLevel: min,
+			max,
 			onHand,
+			held: heldHere,
 			onOrder: ordered,
-			suggested: Math.max(0, Math.ceil(2 * level - onHand - ordered))
-		};
-	});
+			usagePerDay,
+			daysLeft,
+			leadTimeDays: lead,
+			leadTimeAssumed: it.leadTimeDays === null,
+			belowMin,
+			runsOut,
+			suggested: Math.max(0, Math.ceil(round4(target - free - ordered)))
+		});
+	}
+	return out;
 }
 
 /**

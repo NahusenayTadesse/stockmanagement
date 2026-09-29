@@ -6,6 +6,10 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import QuickSupplier from '$lib/components/QuickSupplier.svelte';
+	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
+	import Barcode from '@lucide/svelte/icons/barcode';
+	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 
 	let { data } = $props();
 
@@ -23,6 +27,16 @@
 		{ name: 'name', label: 'Name', type: 'text' },
 		{ name: 'sku', label: 'Code / SKU', type: 'text' },
 		{ name: 'nameAm', label: 'Name (Amharic)', type: 'text', required: false, inTable: false },
+		{ name: 'variantLabel', label: 'Variant', type: 'text', required: false },
+		{
+			name: 'parentItemId',
+			label: 'Variant of (optional)',
+			type: 'reference',
+			options: 'parentList',
+			display: 'parent',
+			required: false,
+			inTable: false
+		},
 		{
 			name: 'categoryId',
 			label: 'Category',
@@ -70,6 +84,20 @@
 			inTable: false
 		},
 		{
+			name: 'warrantyMonths',
+			label: 'Warranty (months from sale, optional)',
+			type: 'number',
+			required: false,
+			inTable: false
+		},
+		{
+			name: 'weightKg',
+			label: 'Weight per base unit, kg (optional; shares freight by weight)',
+			type: 'number',
+			required: false,
+			inTable: false
+		},
+		{
 			name: 'storageCondition',
 			label: 'Storage',
 			type: 'select',
@@ -77,6 +105,7 @@
 			inTable: false
 		},
 		flag('stockTracked', 'Counted in stock (untick for services)'),
+		flag('isKit', 'Kit or recipe — sold as one, made of components (never counted itself)'),
 		flag('trackLots', 'Track lot / batch numbers'),
 		flag('trackExpiry', 'Track expiry dates (FEFO; expired lots are blocked)'),
 		flag('trackSerials', 'Track serial numbers'),
@@ -101,7 +130,8 @@
 	const options = $derived({
 		categoryId: data.categoryList,
 		baseUomId: data.unitList,
-		supplierId: data.supplierList
+		supplierId: data.supplierList,
+		parentItemId: data.parentList
 	});
 </script>
 
@@ -116,6 +146,18 @@
 			Everything you stock, sell, buy, use or rent out. The ticks decide how it is tracked: medicine
 			and food usually track lots and expiry; equipment tracks serial numbers.
 		</p>
+	</div>
+	<div class="flex flex-wrap items-center gap-2">
+		<Button variant="outline" size="sm" href={resolve('/dashboard/items/labels')}>
+			<Barcode class="size-4" /> Print labels
+		</Button>
+		{#if data.canManage && data.withoutBarcode}
+			<form method="POST" action="?/generateBarcodes" use:enhance>
+				<Button type="submit" variant="outline" size="sm">
+					Give barcodes to {data.withoutBarcode} item(s) without one
+				</Button>
+			</form>
+		{/if}
 	</div>
 	{#if data.canManage && data.supplierForm}
 		<!-- Outside the item dialog, which is the kit's: the new supplier is then in its picker. -->

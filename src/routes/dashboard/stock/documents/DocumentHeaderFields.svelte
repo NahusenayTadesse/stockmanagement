@@ -13,6 +13,7 @@
 		form,
 		errors,
 		locations,
+		destinations = undefined,
 		suppliers,
 		supplierForm = undefined,
 		customers = null,
@@ -21,7 +22,12 @@
 	}: {
 		form: SuperForm<Record<string, unknown>>['form'];
 		errors: SuperForm<Record<string, unknown>>['errors'];
-		locations: { value: number; name: string }[];
+		locations: { value: number; name: string; branchId?: number }[];
+		/**
+		 * Where a transfer may go: every location, other branches included (a user kept to one
+		 * branch still sends stock to the others). Defaults to `locations`.
+		 */
+		destinations?: { value: number; name: string; branchId?: number }[];
 		suppliers: { value: number; name: string }[];
 		/** Present when the viewer may add suppliers: shows "+ New supplier". */
 		supplierForm?: SuperValidated<Record<string, unknown>>;
@@ -41,6 +47,14 @@
 	];
 
 	const type = $derived($form.type as string);
+	const targets = $derived(destinations ?? locations);
+	/** A transfer to another branch travels: say who carries it. */
+	const crossBranch = $derived.by(() => {
+		if (type !== 'transfer') return false;
+		const from = locations.find((l) => l.value === Number($form.fromLocationId));
+		const to = targets.find((l) => l.value === Number($form.toLocationId));
+		return Boolean(from && to && from.branchId !== undefined && from.branchId !== to.branchId);
+	});
 
 	/**
 	 * Suppliers added from this form, shown at once rather than after the page's data reloads — so
@@ -111,9 +125,48 @@
 		name="toLocationId"
 		type="combo"
 		label={type === 'receipt' ? 'Received into' : type === 'sales_return' ? 'Returned into' : 'To'}
-		items={locations}
+		items={type === 'transfer' ? targets : locations}
 		required
 	/>
+{/if}
+{#if crossBranch}
+	<p class="text-sm text-muted-foreground">
+		Another branch: the stock goes into transit when posted, and arrives when that branch receives
+		it.
+	</p>
+	<div class="grid gap-4 sm:grid-cols-2">
+		<InputComp {form} {errors} name="driverName" label="Driver (optional)" />
+		<InputComp
+			{form}
+			{errors}
+			name="vehiclePlate"
+			label="Vehicle plate (optional)"
+			placeholder="e.g. AA-3-12345"
+		/>
+	</div>
+{/if}
+{#if type === 'receipt'}
+	<div class="grid gap-4 sm:grid-cols-2">
+		<InputComp
+			{form}
+			{errors}
+			name="currency"
+			label="Currency (optional)"
+			placeholder="ETB"
+			description="Bought in dollars, euros…? Its code, e.g. USD. Empty: birr."
+		/>
+		{#if $form.currency && String($form.currency).toUpperCase() !== 'ETB'}
+			<InputComp
+				{form}
+				{errors}
+				name="exchangeRate"
+				type="number"
+				step="0.0001"
+				label="Rate (birr per 1 {String($form.currency).toUpperCase()})"
+				required
+			/>
+		{/if}
+	</div>
 {/if}
 {#if type === 'adjustment'}
 	<InputComp

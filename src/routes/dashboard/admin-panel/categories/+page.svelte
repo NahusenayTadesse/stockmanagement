@@ -20,6 +20,20 @@
 				type: 'number',
 				placeholder: 'How early a lot counts as expiring soon'
 			},
+			{
+				name: 'minShelfLifeDays',
+				label: 'Least shelf life on delivery (days)',
+				type: 'number',
+				required: false,
+				placeholder: 'Empty: accept any. E.g. 180 for medicine'
+			},
+			{
+				name: 'refuseShortShelfLife',
+				label: 'Shorter shelf life',
+				type: 'boolean',
+				trueLabel: 'Refuse the delivery',
+				falseLabel: 'Accept, flagged'
+			},
 			{ name: 'status', label: 'Status', type: 'boolean' }
 		]
 	}}

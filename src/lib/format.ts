@@ -26,7 +26,8 @@ export const MOVEMENT_LABELS: Record<string, string> = {
 	adjustment_in: 'Adjusted in',
 	adjustment_out: 'Adjusted out',
 	sales_return: 'Returned by customer',
-	purchase_return: 'Returned to supplier'
+	purchase_return: 'Returned to supplier',
+	transit_loss: 'Lost in transit'
 };
 
 export const TAX_CODE_LABELS: Record<string, string> = {
@@ -47,5 +48,6 @@ export const ADJUSTMENT_REASONS = [
 	{ value: 'damage', name: 'Damaged' },
 	{ value: 'expiry', name: 'Expired' },
 	{ value: 'found', name: 'Found' },
+	{ value: 'opening', name: 'Opening stock' },
 	{ value: 'other', name: 'Other' }
 ];

@@ -37,6 +37,7 @@
 						{form}
 						{errors}
 						locations={data.locations}
+						destinations={data.destinations}
 						suppliers={data.suppliers}
 						supplierForm={data.supplierForm}
 						customers={data.customers}

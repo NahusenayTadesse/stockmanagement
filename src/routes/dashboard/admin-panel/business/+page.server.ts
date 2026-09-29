@@ -7,7 +7,9 @@ import { requirePermission } from '@nahu/admin-kit/server/permissions';
 import { recordAudit } from '@nahu/admin-kit/server/audit';
 import { saveUploadedFile } from '@nahu/admin-kit/server/files';
 import { db } from '$lib/server/db';
-import { organization } from '$lib/server/db/schema';
+import { costLayer, organization } from '$lib/server/db/schema';
+import { localToday } from '@nahu/admin-kit/time';
+import { startFifo } from '$lib/server/stock/ledger';
 import { orgIdOf } from '$lib/server/tenant';
 import { removeStoredFile } from '$lib/server/files';
 import { seal } from '$lib/server/secrets';
@@ -41,7 +43,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 				einvoiceTokenUrl: org.einvoiceTokenUrl ?? '',
 				einvoiceClientId: org.einvoiceClientId ?? '',
 				// Never sent back: the form only says whether one is stored.
-				einvoiceSecret: ''
+				einvoiceSecret: '',
+				costingMethod: org.costingMethod ?? 'average',
+				reserveStock: org.reserveStock,
+				approveAdjustmentsOver: org.approveAdjustmentsOver,
+				approveWriteOffs: org.approveWriteOffs,
+				approveCountsOver: org.approveCountsOver,
+				approveOrdersOver: org.approveOrdersOver
 			},
 			zod4(businessSchema),
 			{ errors: false }
@@ -89,10 +97,22 @@ export const actions: Actions = {
 			einvoiceClientId: form.data.einvoiceClientId || null,
 			einvoiceSecret: form.data.einvoiceSecret
 				? seal(form.data.einvoiceSecret)
-				: before.einvoiceSecret
+				: before.einvoiceSecret,
+			costingMethod: form.data.costingMethod === 'fifo' ? ('fifo' as const) : null,
+			reserveStock: form.data.reserveStock,
+			approveAdjustmentsOver: form.data.approveAdjustmentsOver,
+			approveWriteOffs: form.data.approveWriteOffs,
+			approveCountsOver: form.data.approveCountsOver,
+			approveOrdersOver: form.data.approveOrdersOver
 		};
+		const wasFifo = before.costingMethod === 'fifo';
+		const isFifo = after.costingMethod === 'fifo';
 		await db.transaction(async (tx) => {
 			await tx.update(organization).set(after).where(eq(organization.id, orgId));
+			// Turning FIFO on: what is on hand becomes the first layer, at today's average cost.
+			// Turning it off: the average carries on from where the layers left it.
+			if (isFifo && !wasFifo) await startFifo(tx, orgId, localToday());
+			if (wasFifo && !isFifo) await tx.delete(costLayer).where(eq(costLayer.orgId, orgId));
 			await recordAudit(tx, event, {
 				table: 'organization',
 				recordId: orgId,
@@ -101,7 +121,13 @@ export const actions: Actions = {
 				after: { ...after, einvoiceSecret: after.einvoiceSecret ? '(set)' : null }
 			});
 		});
-		return message(form, { type: 'success', text: 'Business details saved' });
+		return message(form, {
+			type: 'success',
+			text:
+				isFifo && !wasFifo
+					? 'Saved. Stock is now costed first in, first out, starting from today’s average cost'
+					: 'Business details saved'
+		});
 	},
 
 	/** A new logo replaces the old one, whose file is deleted: nothing else ever points at it. */

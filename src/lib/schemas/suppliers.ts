@@ -24,7 +24,9 @@ export const supplierSchema = z.object({
 	contactPerson: z.string().trim().max(120).default(''),
 	note: z.string().trim().max(255).default(''),
 	/** Charges VAT: its deliveries carry input VAT. */
-	vatRegistered: z.boolean().default(false)
+	vatRegistered: z.boolean().default(false),
+	/** Usual days from order to delivery; what reorder planning works to. Empty: unknown. */
+	leadTimeDays: z.number().int().min(0).max(365).nullable().default(null)
 });
 
 export const supplierEdit = supplierSchema.extend({ status: z.boolean().default(true) });

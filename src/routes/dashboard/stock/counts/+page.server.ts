@@ -15,6 +15,7 @@ import {
 } from '$lib/server/db/schema';
 import { qualified } from '$lib/server/db/sql';
 import { orgIdOf } from '$lib/server/tenant';
+import { branchScope, inScope, scopeWhere } from '$lib/server/scope';
 import { categoryOptions, locationOptions } from '$lib/server/options';
 import { openCount } from '$lib/server/counts';
 import { StockError } from '$lib/server/stock/post';
@@ -23,6 +24,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
+	const scope = await branchScope(locals);
 	const line = qualified(stockCount, stockCount.id);
 	const [counts, locations, categories, form] = await Promise.all([
 		db
@@ -45,9 +47,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.leftJoin(category, eq(category.id, stockCount.categoryId))
 			.leftJoin(stockDocument, eq(stockDocument.id, stockCount.adjustmentId))
 			.leftJoin(user, eq(user.id, stockCount.createdBy))
-			.where(and(eq(stockCount.orgId, orgId), isNull(stockCount.deletedAt)))
+			.where(
+				and(
+					eq(stockCount.orgId, orgId),
+					isNull(stockCount.deletedAt),
+					scopeWhere(scope, stockCount.branchId)
+				)
+			)
 			.orderBy(desc(stockCount.id)),
-		locationOptions(orgId),
+		locationOptions(orgId, scope),
 		categoryOptions(orgId),
 		superValidate({ countDate: localToday(), blind: true }, zod4(countOpen), { errors: false })
 	]);
@@ -72,6 +80,20 @@ export const actions: Actions = {
 		const form = await superValidate(event.request, zod4(countOpen));
 		if (!form.valid)
 			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
+
+		// Only a location in the viewer's branches, and never the system's transit locations.
+		const [loc] = await db
+			.select({ branchId: location.branchId, kind: location.kind })
+			.from(location)
+			.where(and(eq(location.id, form.data.locationId), eq(location.orgId, orgId)));
+		if (!loc || loc.kind === 'transit' || !inScope(await branchScope(event.locals), loc.branchId)) {
+			setError(form, 'locationId', 'Choose a location from the list.');
+			return message(
+				form,
+				{ type: 'error', text: 'Choose a location from the list.' },
+				{ status: 400 }
+			);
+		}
 
 		let id: number;
 		try {

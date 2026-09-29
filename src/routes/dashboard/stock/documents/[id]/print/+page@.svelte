@@ -43,7 +43,10 @@
 >
 	<section class="flex items-start justify-between gap-6">
 		<div class="flex flex-col gap-1">
-			<h1 class="text-xl font-bold">{TITLES[doc.type]}</h1>
+			<h1 class="text-xl font-bold">
+				{doc.status === 'in_transit' ? 'Dispatch note' : TITLES[doc.type]}
+			</h1>
+			{#if doc.status === 'in_transit'}<p class="text-sm">In transit — not yet received</p>{/if}
 			<p>No. <strong>{doc.number ?? `DRAFT ${doc.id} — not posted`}</strong></p>
 			{#if doc.tin}<p class="text-sm">TIN {doc.tin}</p>{/if}
 		</div>
@@ -85,6 +88,18 @@
 			<dd>{doc.reference}</dd>{/if}
 		{#if doc.reason}<dt class="font-semibold">Reason</dt>
 			<dd class="capitalize">{doc.reason}</dd>{/if}
+		{#if doc.driverName || doc.vehiclePlate}
+			<dt class="font-semibold">Carried by</dt>
+			<dd>
+				{[doc.driverName, doc.vehiclePlate && `plate ${doc.vehiclePlate}`]
+					.filter(Boolean)
+					.join(', ')}
+			</dd>
+		{/if}
+		{#if doc.currency}
+			<dt class="font-semibold">Currency</dt>
+			<dd>{doc.currency} at {doc.exchangeRate} birr — amounts below are in birr</dd>
+		{/if}
 	</dl>
 
 	<table class="w-full border-collapse text-sm">
@@ -188,7 +203,10 @@
 
 	<div class="mt-12 grid grid-cols-3 gap-6 text-sm">
 		<div class="border-t pt-1">Prepared by<br />{doc.createdBy ?? ''}</div>
-		<div class="border-t pt-1">{doc.type === 'receipt' ? 'Delivered by' : 'Received by'}</div>
+		<div class="border-t pt-1">
+			{doc.type === 'receipt' ? 'Delivered by' : doc.driverName ? 'Driver' : 'Received by'}
+			{#if doc.type === 'transfer' && doc.driverName}<br />{doc.driverName}{/if}
+		</div>
 		<div class="border-t pt-1">Approved by<br />{doc.postedBy ?? ''}</div>
 	</div>
 </PrintSheet>

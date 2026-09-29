@@ -30,9 +30,45 @@ const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 export class ReturnError extends Error {}
 
-/** What each line (and lot) of a posted document moved, and how much of it is already back. */
+/**
+ * What each line (and lot) of a posted document moved, and how much of it is already back.
+ *
+ * Services and kits move nothing under their own name: a service line is returnable in full, a
+ * kit line as whole kits (its components come back with it, when the return is posted).
+ */
 export async function returnable(orgId: number, documentId: number, reader: Reader = db) {
-	const moved = await reader
+	const docLines = await reader
+		.select({
+			id: stockDocumentLine.id,
+			itemId: stockDocumentLine.itemId,
+			uomId: stockDocumentLine.uomId,
+			quantity: stockDocumentLine.quantity,
+			stockTracked: item.stockTracked,
+			baseUomId: item.baseUomId
+		})
+		.from(stockDocumentLine)
+		.innerJoin(item, eq(item.id, stockDocumentLine.itemId))
+		.where(
+			and(
+				eq(stockDocumentLine.documentId, documentId),
+				eq(stockDocumentLine.orgId, orgId),
+				isNull(stockDocumentLine.deletedAt)
+			)
+		);
+	const unstocked = docLines.filter((l) => !l.stockTracked);
+	const packs = unstocked.some((l) => l.uomId !== l.baseUomId)
+		? await reader
+				.select({ itemId: itemUnit.itemId, uomId: itemUnit.uomId, factor: itemUnit.factor })
+				.from(itemUnit)
+				.where(
+					inArray(
+						itemUnit.itemId,
+						unstocked.map((l) => l.itemId)
+					)
+				)
+		: [];
+
+	const movedRows = await reader
 		.select({
 			lineId: stockMovement.documentLineId,
 			itemId: stockMovement.itemId,
@@ -47,6 +83,27 @@ export async function returnable(orgId: number, documentId: number, reader: Read
 		.leftJoin(serialUnit, eq(serialUnit.id, stockMovement.serialUnitId))
 		.where(and(eq(stockMovement.orgId, orgId), eq(stockMovement.documentId, documentId)))
 		.groupBy(stockMovement.documentLineId, stockMovement.itemId, stockMovement.lotId);
+
+	// A kit's component movements are returned through the kit's line, not one by one.
+	const itemOfLine = new Map(docLines.map((l) => [l.id, l.itemId]));
+	const moved = movedRows.filter((m) => m.lineId !== null && itemOfLine.get(m.lineId) === m.itemId);
+	for (const l of unstocked) {
+		const factor =
+			l.uomId === l.baseUomId
+				? 1
+				: (packs.find((p) => p.itemId === l.itemId && p.uomId === l.uomId)?.factor ?? 1);
+		const componentValue = movedRows
+			.filter((m) => m.lineId === l.id)
+			.reduce((sum, m) => sum + Number(m.value), 0);
+		moved.push({
+			lineId: l.id,
+			itemId: l.itemId,
+			lotId: null,
+			quantity: round4(l.quantity * factor),
+			value: componentValue,
+			serials: null
+		});
+	}
 
 	const lineIds = moved.map((m) => m.lineId).filter((id): id is number => id !== null);
 	const back = lineIds.length

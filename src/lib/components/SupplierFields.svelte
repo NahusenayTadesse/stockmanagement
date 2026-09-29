@@ -62,6 +62,16 @@
 		label="Contact person (optional)"
 	/>
 	<InputComp {form} {errors} id="{idPrefix}note" name="note" label="Note (optional)" />
+	<InputComp
+		{form}
+		{errors}
+		id="{idPrefix}leadTimeDays"
+		name="leadTimeDays"
+		type="number"
+		step="1"
+		label="Lead time in days (optional)"
+		description="How long they usually take from order to delivery. Reorder planning orders early enough to cover it; a week is assumed when empty."
+	/>
 {/if}
 <InputComp
 	{form}

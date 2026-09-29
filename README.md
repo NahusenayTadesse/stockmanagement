@@ -71,7 +71,61 @@ The first request after a boot seeds the `permissions` table from the route rule
   `src/lib/server/stock/post.ts`. Posting writes the append-only `stock_movement` ledger and the
   `stock_balance` cache in one transaction, issues first-expiry-first-out, never goes negative,
   never issues expired/quarantined/recalled lots, and numbers documents per branch and Ethiopian
-  fiscal year (`MAIN-GRN-2019-00001`).
+  fiscal year (`MAIN-GRN-2019-00001`). The movement and valuation primitives it shares with
+  transfer receiving are in `stock/ledger.ts`; refusals are `StockError` (and `ApprovalRequired`)
+  from `stock/errors.ts`.
+- **Transfers between branches travel** (`src/lib/server/stock/transit.ts`). A transfer inside
+  one branch moves at once. One to another branch, when posted, takes the stock into that
+  branch's system **In transit** location (made on first use, never offered on a form) and waits
+  `in_transit`; the form takes the driver and vehicle plate, and the printout is a dispatch note.
+  The receiving branch opens it (Stock → Transfers in transit) and enters what arrived — serials
+  ticked off for serial items; more than was sent is refused. Arrivals move onto its shelf dated
+  the day they arrived; whatever did not arrive is written off from transit as `transit_loss`, so
+  the ledger shows the loss. Only someone who works at the receiving branch can receive it.
+- **Branch scoping** (`src/lib/server/scope.ts`). A user may be kept to some branches (Admin
+  panel → Users → Works in; empty = every branch). They see documents, counts, orders, sales,
+  shifts, requisitions and stock of those branches only, pick only their locations, and get a 404
+  for anything else; a transfer may still be sent to any branch. `branches.all` (owners and
+  managers by default) sees everything whatever is assigned.
+- **Requisitions** (`/dashboard/requisitions`, `src/lib/server/requisitions.ts`). A department,
+  ward or site asks the store for items (`requisitions.request`; the new **Department** role holds
+  just that), submits it (numbered `REQ`), and someone else (`requisitions.approve`) approves it —
+  cutting quantities if need be — or rejects it with a reason. "Issue" drafts the store issue with
+  the approved quantities, to the department; posting it marks the requisition issued.
+- **Approvals — maker-checker** (optional; Business profile → Approvals, `src/lib/server/approvals.ts`).
+  Limits, all empty by default: adjustments worth at least X at cost, every write-off, counts
+  whose differences come to at least X, purchase orders worth at least X. Past a limit, posting
+  (or "Mark as ordered") does not happen: it becomes a request on **Approvals**, and someone with
+  `approvals.decide` — never the person who asked — approves it, which posts it in their name,
+  or rejects it with a reason shown to the requester, who can also withdraw it to change it.
+- **Reservations** (optional; Business profile → Hold stock). An accepted proforma holds what it
+  quotes at its location, and an approved requisition what was approved at its store
+  (`stock_reservation`, `src/lib/server/reservations.ts`; kits hold their components). Issues,
+  the till and transfers from that location may not dip into stock held for someone else; the
+  sale or issue it was held for may, and posting it releases the hold. A proforma going back to
+  draft, cancelled or past its date releases it too. On hand shows held and free quantities.
+- **Costing: moving average or FIFO** (Business profile). By default stock is valued at the
+  moving average. With FIFO, each receipt becomes a `cost_layer`; stock leaving the business
+  (sales, write-offs, returns to supplier, losses in transit) takes the oldest layers first, and
+  the item's average cost follows the layers left, so valuations still read `avg_cost`. Turning
+  FIFO on opens one layer per item at its current average; moving stock between locations never
+  changes what it cost.
+- **Receipts in another currency, and landed costs.** A receipt may name a currency and the rate
+  on the day; lines take the price as invoiced and are costed in birr at the rate (a new rate
+  re-costs them). Landed costs (freight, insurance, duty, excise, surtax, clearing, transport)
+  are added on the receipt while it is a draft, each shared over the lines by value, quantity or
+  weight (items have an optional weight); posting adds each line's share to what the stock cost.
+  They are not part of what the goods supplier is owed.
+- **Kits, recipes, variants and services.** A kit or recipe is an item with components
+  (`kit_component`, per one unit of the kit) and no stock of its own: selling it takes the
+  components off the shelf (first expiry first out) on the kit's line; returning it brings them
+  back, in proportion, into the lots they left. A variant (`parent_item_id`, `variant_label`) is
+  an item of its own — SKU, barcode, stock, price — listed under its parent, made with "Add
+  variant", which copies the parent's settings and packs. Services and kits sell at the till, on
+  proformas and on issues; they cannot be received, transferred or adjusted.
+- **Shelf life on receiving** (Admin panel → Categories). A category may ask for a least
+  remaining shelf life on deliveries; a lot below it is flagged when the receipt is posted, or
+  refused outright if the category says so.
 
 - **Money** is one `transactions` table: direction (in/out), amount, the day it moved, payment
   method (Cash, Telebirr, CBE Birr, M-Pesa, bank transfer, cheque — each business edits its own
@@ -190,14 +244,39 @@ The first request after a boot seeds the `permissions` table from the route rule
   still due at the agreed prices; the storekeeper corrects it to what arrived and posts it. The
   order's status (ordered → partly received → received) follows posted receipts, in the same
   transaction. Closing an order stops the rest counting as "on order".
-- **Reorder** (`/dashboard/purchasing/reorder`): items at or below their reorder level, by main
-  supplier, with on hand and on order; the suggestion refills to twice the reorder level. Ticked
-  items become one draft order per supplier.
+- **Reorder and planning** (`/dashboard/purchasing/reorder`, `reorderSuggestions` in
+  `src/lib/server/purchasing.ts`). "Plan for" a location to use its own min/max levels (set per
+  location on the item's page, `reorder_rule`); otherwise items plan on their reorder level
+  across all stock. Each row shows on hand, held, on order (to that location), usage per day
+  over the last 90 days, days of stock left and the supplier's lead time (Suppliers → lead time;
+  7 days when unknown). The suggestion refills to max (or twice the level), and never below
+  what the lead time plus 30 days of usage needs; items with no level at all are still listed
+  when they will run out before a delivery could arrive. Ticked items become one draft order per
+  main supplier.
 - **Expiry follow-up** (`/dashboard/stock/expiry`, `src/lib/server/expiry.ts`): expired and
   expiring lots by location, with drafts to move them into quarantine or write them off. "Email me
   this list" sends the digest now. For a daily digest, set `CRON_SECRET` and have a scheduler
   `POST /api/cron/expiry-digest` with `Authorization: Bearer $CRON_SECRET`; it mails everyone who
   can post stock, in each business with something expired or expiring within 30 days.
+- **Import from a spreadsheet** (Admin panel → Import, `data.import`, `src/lib/server/importer.ts`):
+  items (with a pack unit and barcodes), suppliers, customers and opening stock (per location,
+  lot, expiry and serials), from CSV or Excel, with a template for each. Every file is previewed
+  row by row first; one bad row and nothing is imported, and the server plans the import again
+  rather than trusting the preview. Items are matched by SKU, suppliers by name, customers by
+  name and phone; missing units and categories are created. Opening stock posts one adjustment per
+  location (reason "opening"). Up to 5 MB and 5,000 rows a file.
+- **Barcodes and labels** (`src/lib/server/barcodes.ts`, Items → Labels & barcodes). "Give
+  barcodes to items without one" makes in-store EAN-13 codes (`20` + the item id + check digit),
+  never one another item already uses. Labels print on A4 sheets — shelf labels (name, Amharic
+  name, price with VAT for a VAT-registered business, barcode) or small item labels — for chosen
+  items, or for everything on a posted receipt (`?document=`). Barcodes are SVG from bwip-js
+  (EAN-13 when valid, else Code 128; items without a barcode print their SKU).
+- **Stock analysis** (Reports menu, `src/lib/server/analysis.ts`): slow-moving and dead stock (on
+  hand, last issued, days idle, value); ABC analysis by cost used or by sales revenue; stock-out
+  history (when each item ran out, and for how long, from the ledger); an item's stock level over
+  time with its reorder lines (`/dashboard/reports/trend?item=`); and serial lookup — where a
+  unit came from, every movement, who bought it, and whether it is still under warranty (items
+  carry optional warranty months, counted from the sale).
 - **Reports** (`/dashboard/reports`, `src/lib/server/reports.ts`): stock value by category,
   location and item; movements over time; most issued items; purchases and fill rate by
   supplier; write-offs by reason; money in and out by purpose and method (only for roles that

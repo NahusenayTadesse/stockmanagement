@@ -2,7 +2,7 @@
  * Reading stock. Every function takes the organization and filters by it first; none reads a
  * value from the request.
  */
-import { and, asc, desc, eq, gt, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { localToday, addLocalDays } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
@@ -18,8 +18,15 @@ import {
 	uom
 } from '$lib/server/db/schema';
 
-/** Everything on hand, one row per location, item and lot, with its value at average cost. */
-export async function onHandRows(orgId: number, filter: { itemId?: number } = {}) {
+/**
+ * Everything on hand, one row per location, item and lot, with its value at average cost. Stock
+ * on the road between branches is on hand too, at the receiving branch's transit location.
+ * `branchIds` narrows it to the viewer's branches.
+ */
+export async function onHandRows(
+	orgId: number,
+	filter: { itemId?: number; branchIds?: number[] | null } = {}
+) {
 	return db
 		.select({
 			itemId: item.id,
@@ -50,7 +57,12 @@ export async function onHandRows(orgId: number, filter: { itemId?: number } = {}
 			and(
 				eq(stockBalance.orgId, orgId),
 				gt(stockBalance.quantity, 0),
-				filter.itemId ? eq(stockBalance.itemId, filter.itemId) : undefined
+				filter.itemId ? eq(stockBalance.itemId, filter.itemId) : undefined,
+				filter.branchIds
+					? filter.branchIds.length
+						? inArray(location.branchId, filter.branchIds)
+						: eq(location.id, -1)
+					: undefined
 			)
 		)
 		.orderBy(

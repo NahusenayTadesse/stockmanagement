@@ -35,9 +35,10 @@
 	const estimate = $derived(chosen.reduce((s, r) => s + quantityOf(r) * r.avgCost, 0));
 	let busy = $state(false);
 
-	/** Deliveries go to a store room, not the shop floor. */
+	/** Deliveries go where the plan is for — or, planning the whole business, a store room. */
 	const defaultLocation = $derived(
-		(data.locations.find((l) => l.kind === 'storage') ?? data.locations[0])?.value
+		data.locationId ??
+			(data.locations.find((l) => l.kind === 'storage') ?? data.locations[0])?.value
 	);
 </script>
 
@@ -49,15 +50,38 @@
 	<div>
 		<h1 class="text-2xl font-semibold">What to reorder</h1>
 		<p class="text-muted-foreground">
-			Items at or below their reorder level, grouped by main supplier. The suggestion brings stock
-			back to twice the reorder level, less what is already on order. Orders are created as drafts
-			you can still change.
+			Items whose free stock (on hand, less what is held for proformas and requisitions) is at or
+			below their minimum, and items that — at the rate they were used over the last 90 days — will
+			run out before a delivery ordered today could arrive. The suggestion fills up to the maximum
+			(twice the minimum when there is none), or enough for the supplier's lead time and a month
+			after, less what is on order. Orders are created as drafts you can still change.
 		</p>
 	</div>
 
+	<form method="GET" class="flex max-w-md flex-col gap-1 text-sm">
+		<label for="plan-location">Plan for</label>
+		<select
+			id="plan-location"
+			name="location"
+			class="h-9 rounded-md border bg-background px-2"
+			onchange={(e) => e.currentTarget.form?.requestSubmit()}
+		>
+			<option value="0" selected={!data.locationId}
+				>The whole business (items' reorder levels)</option
+			>
+			{#each data.locations as l (l.value)}
+				<option value={l.value} selected={l.value === data.locationId}
+					>{l.name} (its minimum and maximum)</option
+				>
+			{/each}
+		</select>
+		<noscript><Button type="submit" variant="outline">Show</Button></noscript>
+	</form>
+
 	{#if !data.items.length}
 		<p class="rounded-md border p-6 text-center text-muted-foreground">
-			Nothing is below its reorder level. Set reorder levels on items to use this page.
+			Nothing needs reordering {data.locationId ? 'here' : ''}. Set minimum and maximum levels on an
+			item's page (per location), or a reorder level, to plan by them.
 		</p>
 	{:else}
 		<form
@@ -95,7 +119,11 @@
 									<th class="w-10 px-3 py-2"><span class="sr-only">Order</span></th>
 									<th class="px-3 py-2">Item</th>
 									<th class="px-3 py-2 text-right">On hand</th>
-									<th class="px-3 py-2 text-right">Reorder at</th>
+									<th class="px-3 py-2 text-right">Held</th>
+									<th class="px-3 py-2 text-right">Min / max</th>
+									<th class="px-3 py-2 text-right">Use / day</th>
+									<th class="px-3 py-2 text-right">Days left</th>
+									<th class="px-3 py-2 text-right">Lead time</th>
 									<th class="px-3 py-2 text-right">On order</th>
 									<th class="px-3 py-2 text-right">Order</th>
 									<th class="px-3 py-2 text-right">Est. cost</th>
@@ -121,14 +149,34 @@
 												class="font-medium underline-offset-4 hover:underline"
 												href={resolve('/dashboard/items/[id]', { id: String(r.id) })}>{r.name}</a
 											>
-											<p class="text-xs text-muted-foreground">{r.sku}</p>
+											<p class="text-xs text-muted-foreground">
+												{r.sku}{#if r.runsOut}
+													· <span class="text-amber-600">runs out before a delivery</span>{/if}
+											</p>
 										</td>
 										<td
 											class="px-3 py-2 text-right {r.onHand <= 0
 												? 'font-medium text-destructive'
 												: ''}">{qty(r.onHand, r.unit)}</td
 										>
-										<td class="px-3 py-2 text-right">{qty(r.reorderLevel, r.unit)}</td>
+										<td class="px-3 py-2 text-right">{r.held ? qty(r.held, r.unit) : '—'}</td>
+										<td class="px-3 py-2 text-right">
+											{r.reorderLevel === null ? '—' : qty(r.reorderLevel, r.unit)}
+											{#if r.max !== null}/ {qty(r.max, r.unit)}{/if}
+										</td>
+										<td class="px-3 py-2 text-right">{r.usagePerDay || '—'}</td>
+										<td
+											class="px-3 py-2 text-right {r.daysLeft !== null &&
+											r.daysLeft < r.leadTimeDays
+												? 'font-medium text-destructive'
+												: ''}">{r.daysLeft ?? '—'}</td
+										>
+										<td
+											class="px-3 py-2 text-right"
+											title={r.leadTimeAssumed
+												? 'The supplier has no lead time; a week is assumed'
+												: undefined}>{r.leadTimeDays} d{r.leadTimeAssumed ? '*' : ''}</td
+										>
 										<td class="px-3 py-2 text-right">{r.onOrder ? qty(r.onOrder, r.unit) : '—'}</td>
 										<td class="px-3 py-2 text-right">
 											<input

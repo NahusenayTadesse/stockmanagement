@@ -11,7 +11,9 @@ export const addUserSchema = z.object({
 	email: z.email('Invalid email address'),
 	password: z.string().min(8, 'At least 8 characters').max(128),
 	role: z.coerce.number().int().positive('Choose a role'),
-	branchId: z.coerce.number().int().min(0).default(0)
+	branchId: z.coerce.number().int().min(0).default(0),
+	/** The branches they work in. None: every branch. */
+	branchIds: z.array(z.coerce.number().int().positive()).default([])
 });
 
 export const editUserSchema = z.object({
@@ -19,6 +21,8 @@ export const editUserSchema = z.object({
 	email: z.email('Invalid email address'),
 	role: z.coerce.number().int().positive('Choose a role'),
 	branchId: z.coerce.number().int().min(0).default(0),
+	/** The branches they work in. None: every branch. */
+	branchIds: z.array(z.coerce.number().int().positive()).default([]),
 	status: z.boolean().default(true),
 	editPermission: z.boolean().default(false),
 	permissionsList: z.array(z.coerce.number()).default([])

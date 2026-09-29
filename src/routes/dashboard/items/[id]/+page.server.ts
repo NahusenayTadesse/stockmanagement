@@ -6,6 +6,8 @@ import { barcode, category, itemUnit, supplier, uom } from '$lib/server/db/schem
 import { orgIdOf } from '$lib/server/tenant';
 import { unitOptions } from '$lib/server/options';
 import { checkBarcode, checkUnit, requireOrgItem } from '$lib/server/items';
+import { productActions, productSection } from './product';
+import { planningActions, planningSection } from './planning';
 import { binCard, onHandRows } from '$lib/server/stock/queries';
 import { barcodeAdd, barcodeEdit, unitAdd, unitEdit } from '$lib/schemas/items';
 import type { PageServerLoad, RequestEvent } from './$types';
@@ -85,8 +87,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		},
 		stock,
 		card: card.reverse(), // newest first on screen; the balance column still reads correctly
+		// Kit components, variants and the variant's parent.
+		...(await productSection(orgId, it, locals)),
+		// Minimum and maximum per location, and what is held for proformas and requisitions.
+		...(await planningSection(orgId, it, locals)),
 		canManage: hasPermission(locals, 'items.manage')
 	};
 };
 
-export const actions = childActions({ Unit: units, Barcode: barcodes }, owner);
+export const actions = {
+	...childActions({ Unit: units, Barcode: barcodes }, owner),
+	...productActions,
+	...planningActions
+};

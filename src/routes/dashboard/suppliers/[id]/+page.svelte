@@ -46,6 +46,12 @@
 		{ name: 'Address', value: s.address ?? '—', href: null },
 		{ name: 'TIN', value: s.tin ?? '—', href: null },
 		{ name: 'Contact person', value: s.contactPerson ?? '—', href: null },
+		{
+			name: 'Lead time',
+			value:
+				s.leadTimeDays === null ? '—' : `${s.leadTimeDays} day${s.leadTimeDays === 1 ? '' : 's'}`,
+			href: null
+		},
 		{ name: 'Note', value: s.note ?? '—', href: null }
 	]);
 

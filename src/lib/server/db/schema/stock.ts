@@ -23,10 +23,13 @@ import { customer } from './customers';
 import { purchaseOrder, purchaseOrderLine } from './purchasing';
 import { fiscalDevice } from './fiscal';
 import { posShift, quote } from './sales';
+import { requisition } from './control';
 import { deletionFields, orgRef, secureFields } from './fields';
 import {
 	ADJUSTMENT_REASONS,
 	DOCUMENT_STATUSES,
+	LANDED_COST_KINDS,
+	LANDED_COST_METHODS,
 	DOCUMENT_TYPES,
 	LOT_STATUSES,
 	SERIAL_STATUSES
@@ -170,6 +173,26 @@ export const stockDocument = mysqlTable(
 		transactionId: int('transaction_id').references(() => transactions.id, {
 			onDelete: 'set null'
 		}),
+		/** Issues: the requisition this fills. */
+		requisitionId: int('requisition_id').references((): AnyMySqlColumn => requisition.id, {
+			onDelete: 'set null'
+		}),
+		// ── Transfers to another branch: dispatched, in transit, received. All optional. ──
+		driverName: varchar('driver_name', { length: 120 }),
+		vehiclePlate: varchar('vehicle_plate', { length: 20 }),
+		/** Where the stock waits while on the road: the receiving branch's transit location. */
+		transitLocationId: int('transit_location_id').references(() => location.id, {
+			onDelete: 'restrict'
+		}),
+		receivedAt: datetime('received_at'),
+		receivedBy: varchar('received_by', { length: 255 }).references(() => user.id, {
+			onDelete: 'set null'
+		}),
+		// ── Receipts bought in another currency. Empty: birr. ──
+		/** ISO code, e.g. `USD`. Line costs are kept in birr, converted at `exchangeRate`. */
+		currency: varchar('currency', { length: 3 }),
+		/** Birr per one unit of `currency`, on the day (the bank's or NBE's rate). */
+		exchangeRate: decimal('exchange_rate', { precision: 14, scale: 6, mode: 'number' }),
 		/** Receipts: the purchase order this delivery is against. */
 		purchaseOrderId: int('purchase_order_id').references((): AnyMySqlColumn => purchaseOrder.id, {
 			onDelete: 'restrict'
@@ -224,6 +247,16 @@ export const stockDocumentLine = mysqlTable(
 		vatRate: decimal('vat_rate', { precision: 5, scale: 2, mode: 'number' }),
 		/** Turnover tax on this line, in percent, fixed at posting like `vatRate`. Optional. */
 		totRate: decimal('tot_rate', { precision: 5, scale: 2, mode: 'number' }),
+		/** Receipts in another currency: the price per `uomId` in that currency, as invoiced. */
+		foreignUnitCost: decimal('foreign_unit_cost', { precision: 18, scale: 4, mode: 'number' }),
+		/**
+		 * Receipts: this line's share of the landed costs (freight, duty...), in birr, for the
+		 * whole line. Worked out when the receipt is posted and added to what the stock cost.
+		 */
+		landedCost: decimal('landed_cost', { precision: 18, scale: 4, mode: 'number' }),
+		/** Transfers in transit: what arrived, per `uomId`. Empty until received. */
+		receivedQuantity: decimal('received_quantity', { precision: 18, scale: 4, mode: 'number' }),
+		receivedSerials: text('received_serials'),
 		/** Returns: the line of the original document this returns part of. */
 		returnOfLineId: int('return_of_line_id').references(
 			(): AnyMySqlColumn => stockDocumentLine.id,
@@ -262,7 +295,9 @@ export const MOVEMENT_KINDS = [
 	'adjustment_in',
 	'adjustment_out',
 	'sales_return',
-	'purchase_return'
+	'purchase_return',
+	/** Dispatched to another branch and never arrived. */
+	'transit_loss'
 ] as const;
 
 /**
@@ -367,4 +402,105 @@ export const numberSequence = mysqlTable(
 	(table) => [
 		uniqueIndex('number_sequence_key_idx').on(table.branchId, table.docType, table.fiscalYear)
 	]
+);
+
+/**
+ * How much of an item a location should hold: at or below `minQuantity` it needs reordering, up
+ * to `maxQuantity`. In base units. Items without a rule fall back to the item's reorder level.
+ */
+export const reorderRule = mysqlTable(
+	'reorder_rule',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		orgId: orgRef(),
+		itemId: int('item_id')
+			.notNull()
+			.references(() => item.id, { onDelete: 'cascade' }),
+		locationId: int('location_id')
+			.notNull()
+			.references(() => location.id, { onDelete: 'cascade' }),
+		minQuantity: decimal('min_quantity', { precision: 18, scale: 4, mode: 'number' }).notNull(),
+		maxQuantity: decimal('max_quantity', { precision: 18, scale: 4, mode: 'number' }),
+		createdAt: timestamp('created_at').defaultNow().notNull()
+	},
+	(table) => [uniqueIndex('reorder_rule_key_idx').on(table.locationId, table.itemId)]
+);
+
+/**
+ * Stock promised and not yet taken: for an accepted proforma or an approved requisition. Issues
+ * and transfers from the location may not dip into it, except the one it is held for. Deleted
+ * when released. In base units.
+ */
+export const stockReservation = mysqlTable(
+	'stock_reservation',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		orgId: orgRef(),
+		itemId: int('item_id')
+			.notNull()
+			.references(() => item.id, { onDelete: 'cascade' }),
+		locationId: int('location_id')
+			.notNull()
+			.references(() => location.id, { onDelete: 'cascade' }),
+		quantity: decimal('quantity', { precision: 18, scale: 4, mode: 'number' }).notNull(),
+		quoteId: int('quote_id').references((): AnyMySqlColumn => quote.id, { onDelete: 'cascade' }),
+		requisitionId: int('requisition_id').references((): AnyMySqlColumn => requisition.id, {
+			onDelete: 'cascade'
+		}),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		createdBy: varchar('created_by', { length: 255 }).references(() => user.id, {
+			onDelete: 'set null'
+		})
+	},
+	(table) => [index('stock_reservation_key_idx').on(table.locationId, table.itemId)]
+);
+
+/**
+ * First-in-first-out costing: what is left of each purchase, at what it cost. Kept only while the
+ * business costs by FIFO; stock going out takes the oldest layers first. Layers are per item, not
+ * per location: moving stock between shelves does not change what it cost.
+ */
+export const costLayer = mysqlTable(
+	'cost_layer',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		orgId: orgRef(),
+		itemId: int('item_id')
+			.notNull()
+			.references(() => item.id, { onDelete: 'cascade' }),
+		/** The movement that brought it in. Empty for the opening layer made when FIFO was turned on. */
+		movementId: int('movement_id').references(() => stockMovement.id, { onDelete: 'set null' }),
+		docDate: date('doc_date', { mode: 'string' }).notNull(),
+		quantity: decimal('quantity', { precision: 18, scale: 4, mode: 'number' }).notNull(),
+		remaining: decimal('remaining', { precision: 18, scale: 4, mode: 'number' }).notNull(),
+		/** Per base unit. */
+		unitCost: decimal('unit_cost', { precision: 18, scale: 4, mode: 'number' }).notNull(),
+		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull()
+	},
+	(table) => [index('cost_layer_item_idx').on(table.orgId, table.itemId, table.remaining)]
+);
+
+/**
+ * A cost of bringing a receipt's goods in, besides the supplier's price: freight, insurance,
+ * customs duty, excise, surtax, the clearing agent, transport. Shared over the receipt's lines
+ * when it is posted, so the stock is valued at what it really cost.
+ */
+export const landedCost = mysqlTable(
+	'landed_cost',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		orgId: orgRef(),
+		documentId: int('document_id')
+			.notNull()
+			.references(() => stockDocument.id, { onDelete: 'cascade' }),
+		kind: mysqlEnum('kind', LANDED_COST_KINDS).notNull(),
+		description: varchar('description', { length: 160 }),
+		/** In birr. */
+		amount: decimal('amount', { precision: 14, scale: 2, mode: 'number' }).notNull(),
+		method: mysqlEnum('method', LANDED_COST_METHODS).notNull().default('value'),
+		/** Who billed it (the clearing agent, the transporter), when they are on the supplier list. */
+		supplierId: int('supplier_id').references(() => supplier.id, { onDelete: 'restrict' }),
+		...deletionFields
+	},
+	(table) => [index('landed_cost_document_idx').on(table.documentId)]
 );

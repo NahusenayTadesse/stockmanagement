@@ -2,7 +2,11 @@
  * The fixed value sets the database enums are built from. Here rather than in the schema so forms
  * in the browser can validate against the same lists without importing `$lib/server`.
  */
-export const LOCATION_KINDS = ['storage', 'sales', 'cold', 'quarantine'] as const;
+/**
+ * `transit` locations are made by the system, one per branch: stock dispatched to that branch
+ * sits there until the branch receives it. Nobody picks them on a form.
+ */
+export const LOCATION_KINDS = ['storage', 'sales', 'cold', 'quarantine', 'transit'] as const;
 export const STORAGE_CONDITIONS = ['ambient', 'cool', 'cold', 'frozen'] as const;
 export const LOT_STATUSES = ['available', 'quarantine', 'recalled'] as const;
 export const SERIAL_STATUSES = [
@@ -26,8 +30,16 @@ export const CREATABLE_TYPES = ['receipt', 'issue', 'transfer', 'adjustment'] as
 export const RETURN_TYPES = ['sales_return', 'purchase_return'] as const;
 /** VAT treatment of an item: standard rate, zero-rated (exports, some foods), or exempt. */
 export const TAX_CODES = ['standard', 'zero', 'exempt'] as const;
-export const DOCUMENT_STATUSES = ['draft', 'posted', 'cancelled'] as const;
-export const ADJUSTMENT_REASONS = ['count', 'damage', 'expiry', 'found', 'other'] as const;
+/** `in_transit`: a transfer to another branch, dispatched and not yet received there. */
+export const DOCUMENT_STATUSES = ['draft', 'in_transit', 'posted', 'cancelled'] as const;
+export const ADJUSTMENT_REASONS = [
+	'count',
+	'damage',
+	'expiry',
+	'found',
+	'opening',
+	'other'
+] as const;
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
@@ -55,3 +67,34 @@ export const PO_STATUSES = [
 
 /** How the app talks to a fiscal device. Empty means manual. */
 export const FISCAL_DEVICE_KINDS = ['manual', 'datecs_tcp', 'http_bridge'] as const;
+
+/** A department's request for stock from the store: asked, approved (or not), then issued. */
+export const REQUISITION_STATUSES = [
+	'draft',
+	'submitted',
+	'approved',
+	'rejected',
+	'issued',
+	'cancelled'
+] as const;
+
+/** What a second person must approve before it happens (maker-checker). */
+export const APPROVAL_KINDS = ['adjustment', 'count', 'purchase_order'] as const;
+export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const;
+
+/** How stock leaving is valued: the moving average, or the oldest purchases first. */
+export const COSTING_METHODS = ['average', 'fifo'] as const;
+
+/** Costs of bringing goods in, on top of the supplier's price. */
+export const LANDED_COST_KINDS = [
+	'freight',
+	'insurance',
+	'duty',
+	'excise',
+	'surtax',
+	'clearing',
+	'transport',
+	'other'
+] as const;
+/** How a landed cost is shared out over a receipt's lines. */
+export const LANDED_COST_METHODS = ['value', 'quantity', 'weight'] as const;

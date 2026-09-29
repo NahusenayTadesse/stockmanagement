@@ -108,9 +108,11 @@ export function supplierValues(data: {
 	contactPerson: string;
 	note: string;
 	vatRegistered?: boolean;
+	leadTimeDays?: number | null;
 }) {
 	return {
 		vatRegistered: data.vatRegistered ?? false,
+		leadTimeDays: data.leadTimeDays ?? null,
 		name: data.name,
 		phone: data.phone,
 		email: data.email || null,

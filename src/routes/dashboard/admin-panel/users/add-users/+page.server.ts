@@ -8,10 +8,10 @@ import { db } from '$lib/server/db';
 import { branch, user } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { branchOptions, roleOptions } from '$lib/server/options';
-import { orgRole } from '$lib/server/users';
+import { orgRole, setUserBranches } from '$lib/server/users';
 import { addUserSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
-import { and } from 'drizzle-orm';
+import { and, inArray } from 'drizzle-orm';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
@@ -20,7 +20,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 		roleOptions(orgId),
 		branchOptions(orgId)
 	]);
-	return { form, roleList, branchList: [{ value: 0, name: 'Any branch' }, ...branchList] };
+	return {
+		form,
+		roleList,
+		branchList: [{ value: 0, name: 'Any branch' }, ...branchList],
+		branchChoices: branchList
+	};
 };
 
 export const actions: Actions = {
@@ -36,7 +41,7 @@ export const actions: Actions = {
 			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
 		}
 
-		const { name, email, password, role, branchId } = form.data;
+		const { name, email, password, role, branchId, branchIds } = form.data;
 
 		const target = await orgRole(orgId, role);
 		if (!target) {
@@ -71,6 +76,21 @@ export const actions: Actions = {
 			}
 		}
 
+		if (branchIds.length) {
+			const mine = await db
+				.select({ id: branch.id })
+				.from(branch)
+				.where(and(eq(branch.orgId, orgId), inArray(branch.id, branchIds)));
+			if (mine.length !== new Set(branchIds).size) {
+				setError(form, 'branchIds._errors', 'Choose branches from the list.');
+				return message(
+					form,
+					{ type: 'error', text: 'Choose branches from the list.' },
+					{ status: 400 }
+				);
+			}
+		}
+
 		const [taken] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
 		if (taken) {
 			setError(form, 'email', 'An account with this email already exists.');
@@ -93,6 +113,7 @@ export const actions: Actions = {
 				}
 			});
 			id = created.user.id;
+			await setUserBranches(db, orgId, id, branchIds);
 		} catch (err) {
 			console.error('user create failed', err);
 			const text =

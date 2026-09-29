@@ -14,6 +14,7 @@ import {
 	category,
 	item,
 	location,
+	organization,
 	lot,
 	stockBalance,
 	stockCount,
@@ -23,7 +24,7 @@ import {
 	stockMovement,
 	uom
 } from '$lib/server/db/schema';
-import { postDocument, StockError, type Tx } from '$lib/server/stock/post';
+import { ApprovalRequired, postDocument, StockError, type Tx } from '$lib/server/stock/post';
 import { round4 } from '$lib/server/stock/math';
 
 type Writer = typeof db | Tx;
@@ -266,7 +267,14 @@ export async function movedSinceOpened(orgId: number, countId: number) {
  */
 export async function postCount(
 	tx: Tx,
-	input: { orgId: number; countId: number; userId?: string; today?: string }
+	input: {
+		orgId: number;
+		countId: number;
+		userId?: string;
+		today?: string;
+		/** A second person approved it (or it is under the business's limit anyway). */
+		approved?: boolean;
+	}
 ): Promise<{ adjustmentId: number | null; number: string | null; lines: number }> {
 	const { orgId, countId, userId } = input;
 	const count = await orgCount(orgId, countId, tx);
@@ -281,6 +289,24 @@ export async function postCount(
 	}
 
 	const differences = lines.filter((l) => l.variance !== 0);
+
+	// Maker-checker: differences worth more than the business lets one person post.
+	if (!input.approved && differences.length) {
+		const [org] = await tx
+			.select({ limit: organization.approveCountsOver })
+			.from(organization)
+			.where(eq(organization.id, orgId));
+		const value =
+			Math.round(differences.reduce((s, d) => s + Math.abs(d.varianceValue ?? 0), 0) * 100) / 100;
+		if (org?.limit != null && value >= org.limit) {
+			throw new ApprovalRequired(
+				'count',
+				value,
+				`its differences come to ${value.toFixed(2)} at cost, over the ${org.limit.toFixed(2)} limit`
+			);
+		}
+	}
+
 	let adjustmentId: number | null = null;
 	let number: string | null = null;
 
@@ -326,11 +352,13 @@ export async function postCount(
 			});
 		}
 
+		// The count's own limit was checked above; its adjustment is not asked about again.
 		({ number } = await postDocument(tx, {
 			orgId,
 			documentId: doc.id,
 			userId,
-			today: input.today ?? localToday()
+			today: input.today ?? localToday(),
+			approved: true
 		}));
 	}
 

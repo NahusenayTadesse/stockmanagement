@@ -15,7 +15,18 @@ export const documentHeader = z.object({
 	reference: z.string().trim().max(80).default(''),
 	party: z.string().trim().max(160).default(''),
 	reason: z.enum(['', ...ADJUSTMENT_REASONS]).default(''),
-	note: z.string().trim().max(2000).default('')
+	note: z.string().trim().max(2000).default(''),
+	/** Transfers to another branch: who is carrying it. Optional. */
+	driverName: z.string().trim().max(120).default(''),
+	vehiclePlate: z.string().trim().max(20).default(''),
+	/** Receipts bought in another currency: its code, and birr per unit of it. Empty: birr. */
+	currency: z
+		.string()
+		.trim()
+		.toUpperCase()
+		.regex(/^([A-Z]{3})?$/, 'Three letters, e.g. USD')
+		.default(''),
+	exchangeRate: z.number().positive('Above zero').nullable().default(null)
 });
 
 export const lineAdd = z.object({
@@ -24,6 +35,8 @@ export const lineAdd = z.object({
 	/** 0 means the item's base unit. */
 	uomId: z.coerce.number().int().min(0).default(0),
 	unitCost: z.number().min(0).nullable().default(null),
+	/** Receipts in another currency: the invoiced price in that currency; the birr cost follows. */
+	foreignUnitCost: z.number().min(0).nullable().default(null),
 	/** Issues: the sale price per unit above. Empty takes the item's list price. */
 	unitPrice: z.number().min(0).nullable().default(null),
 	/** 0 means first-expiry-first-out. */

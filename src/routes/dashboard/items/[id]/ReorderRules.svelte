@@ -1,0 +1,101 @@
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
+	import { Input } from '@nahu/admin-kit/components/ui/input/index.js';
+	import { qty } from '$lib/format';
+
+	/**
+	 * An item's minimum and maximum per location. At or below the minimum, the reorder screen
+	 * suggests ordering up to the maximum. Saving a location that already has levels changes them.
+	 */
+	let {
+		rules,
+		locations,
+		unit,
+		readonly = false
+	}: {
+		rules: {
+			id: number;
+			locationId: number;
+			location: string;
+			branch: string;
+			minQuantity: number;
+			maxQuantity: number | null;
+		}[];
+		locations: { value: number; name: string }[];
+		unit: string | undefined;
+		readonly?: boolean;
+	} = $props();
+</script>
+
+{#if rules.length}
+	<div class="overflow-x-auto rounded-md border">
+		<table class="w-full text-sm">
+			<thead class="bg-muted/50 text-left">
+				<tr>
+					<th class="px-3 py-2">Location</th>
+					<th class="px-3 py-2 text-right">Minimum</th>
+					<th class="px-3 py-2 text-right">Maximum</th>
+					{#if !readonly}<th class="w-10 px-3 py-2"><span class="sr-only">Remove</span></th>{/if}
+				</tr>
+			</thead>
+			<tbody>
+				{#each rules as r (r.id)}
+					<tr class="border-t">
+						<td class="px-3 py-2">{r.branch} · {r.location}</td>
+						<td class="px-3 py-2 text-right">{qty(r.minQuantity, unit ?? '')}</td>
+						<td class="px-3 py-2 text-right">
+							{r.maxQuantity === null ? 'Twice the minimum' : qty(r.maxQuantity, unit ?? '')}
+						</td>
+						{#if !readonly}
+							<td class="px-3 py-2">
+								<form method="POST" action="?/deleteRule" use:enhance>
+									<input type="hidden" name="id" value={r.id} />
+									<Button
+										type="submit"
+										variant="ghost"
+										size="icon"
+										aria-label="Remove the levels at {r.location}"><Trash2 /></Button
+									>
+								</form>
+							</td>
+						{/if}
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
+{:else}
+	<p class="text-muted-foreground">
+		No levels per location. The reorder screen uses the item's reorder level for the whole business,
+		and its rate of use.
+	</p>
+{/if}
+
+{#if !readonly && locations.length}
+	<form
+		method="POST"
+		action="?/saveRule"
+		use:enhance
+		class="flex flex-wrap items-end gap-2 rounded-md border p-3"
+	>
+		<label class="flex flex-col gap-1 text-sm">
+			Location
+			<select name="locationId" class="h-9 rounded-md border bg-background px-2" required>
+				{#each locations as l (l.value)}
+					<option value={l.value}>{l.name}</option>
+				{/each}
+			</select>
+		</label>
+		<label class="flex flex-col gap-1 text-sm">
+			Minimum ({unit ?? 'base units'})
+			<Input name="minQuantity" type="number" min="0" step="any" required class="w-32" />
+		</label>
+		<label class="flex flex-col gap-1 text-sm">
+			Maximum (optional)
+			<Input name="maxQuantity" type="number" min="0" step="any" class="w-32" />
+		</label>
+		<Button type="submit" variant="outline">Save levels</Button>
+	</form>
+{/if}

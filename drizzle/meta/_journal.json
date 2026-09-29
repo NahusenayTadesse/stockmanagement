@@ -85,6 +85,13 @@
       "when": 1790670495364,
       "tag": "0011_pos_quotes_price_lists",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1790674717330,
+      "tag": "0012_stock_control",
+      "breakpoints": true
     }
   ]
 }

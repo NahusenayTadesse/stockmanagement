@@ -12,7 +12,9 @@
 	let { data } = $props();
 
 	// svelte-ignore state_referenced_locally
-	const { form, errors, enhance, delayed, allErrors } = createForm(data.form, addUserSchema);
+	const { form, errors, enhance, delayed, allErrors } = createForm(data.form, addUserSchema, {
+		dataType: 'json'
+	});
 </script>
 
 <svelte:head>
@@ -42,9 +44,21 @@
 			{errors}
 			name="branchId"
 			type="select"
-			label="Branch"
+			label="Home branch"
 			items={data.branchList}
+			description="Where they usually work: the default on their forms."
 		/>
+		{#if data.branchChoices.length > 1}
+			<InputComp
+				{form}
+				{errors}
+				name="branchIds"
+				type="checkbox"
+				label="Works in (optional)"
+				items={data.branchChoices}
+				description="Tick the branches whose stock they may see and move. None ticked: every branch. Owners and managers (who may work in every branch) see everything anyway."
+			/>
+		{/if}
 		<Button type="submit" form="main">
 			{#if $delayed}<LoadingBtn name="Adding user" />{:else}<Plus /> Add user{/if}
 		</Button>

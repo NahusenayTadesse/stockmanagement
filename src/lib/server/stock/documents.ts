@@ -12,6 +12,7 @@ import {
 	lot,
 	purchaseOrderLine,
 	stockDocument,
+	stockDocumentLine,
 	supplier,
 	uom
 } from '$lib/server/db/schema';
@@ -59,7 +60,14 @@ export async function customerPicker(orgId: number, locals: App.Locals) {
 export async function headerValues(
 	orgId: number,
 	h: Header,
-	options: { allowReturn?: boolean } = {}
+	options: {
+		allowReturn?: boolean;
+		/**
+		 * The viewer's branches (`$lib/server/scope`); null for all. Stock may only leave from —
+		 * or, for receipts and returns, arrive at — a location in them. A transfer may go anywhere.
+		 */
+		scope?: number[] | null;
+	} = {}
 ) {
 	// Returns are started from the sale or receipt they return, never from the blank form.
 	if ((h.type === 'sales_return' || h.type === 'purchase_return') && !options.allowReturn) {
@@ -118,6 +126,27 @@ export async function headerValues(
 	if (from && to && from.id === to.id) {
 		throw new WriteRefused('toLocationId', 'A transfer needs two different locations.');
 	}
+	if (from?.kind === 'transit' || to?.kind === 'transit') {
+		throw new WriteRefused(
+			from?.kind === 'transit' ? 'fromLocationId' : 'toLocationId',
+			'Stock in transit moves only by being received.'
+		);
+	}
+	const scope = options.scope ?? null;
+	const own = from ?? to;
+	if (scope && own && !scope.includes(own.branchId)) {
+		throw new WriteRefused(
+			from ? 'fromLocationId' : 'toLocationId',
+			'Choose a location in your branch.'
+		);
+	}
+
+	// Another currency: only on receipts, and then with the rate it was bought at.
+	const currency = h.type === 'receipt' && h.currency && h.currency !== 'ETB' ? h.currency : null;
+	if (currency && !h.exchangeRate) {
+		throw new WriteRefused('exchangeRate', `Enter the rate: birr per one ${currency}.`);
+	}
+	const crossBranch = h.type === 'transfer' && from && to && from.branchId !== to.branchId;
 
 	return {
 		type: h.type,
@@ -132,8 +161,34 @@ export async function headerValues(
 		// A receipt's "who" is its supplier; `party` is for where issued stock went.
 		party: h.type === 'receipt' ? null : h.party || null,
 		reason: h.type === 'adjustment' && h.reason ? h.reason : null,
-		note: h.note || null
+		note: h.note || null,
+		driverName: crossBranch ? h.driverName || null : null,
+		vehiclePlate: crossBranch ? h.vehiclePlate.toUpperCase() || null : null,
+		currency,
+		exchangeRate: currency ? h.exchangeRate : null
 	};
+}
+
+/**
+ * A receipt's rate changed: every line priced in its currency is costed again in birr, so the
+ * lines never disagree with the header.
+ */
+export async function recostForeignLines(documentId: number, exchangeRate: number | null) {
+	const lines = await db
+		.select({ id: stockDocumentLine.id, foreign: stockDocumentLine.foreignUnitCost })
+		.from(stockDocumentLine)
+		.where(and(eq(stockDocumentLine.documentId, documentId), isNull(stockDocumentLine.deletedAt)));
+	for (const l of lines) {
+		if (l.foreign === null) continue;
+		await db
+			.update(stockDocumentLine)
+			.set(
+				exchangeRate
+					? { unitCost: Math.round(l.foreign * exchangeRate * 10000) / 10000 }
+					: { foreignUnitCost: null }
+			)
+			.where(eq(stockDocumentLine.id, l.id));
+	}
 }
 
 /**
@@ -150,7 +205,17 @@ export async function lineValues(
 		.from(item)
 		.where(and(eq(item.id, Number(values.itemId)), eq(item.orgId, orgId), isNull(item.deletedAt)));
 	if (!it) throw new WriteRefused('itemId', 'Choose an item from the list.');
-	if (!it.stockTracked) throw new WriteRefused('itemId', `${it.name} is a service, not stock.`);
+	// Services and kits have no stock: they can be sold (a kit's components leave the shelf), and
+	// nothing else.
+	if (!it.stockTracked && doc.type !== 'issue') {
+		throw new WriteRefused(
+			'itemId',
+			`${it.name} is not stocked, so it cannot be ${doc.type === 'receipt' ? 'received' : 'moved'}.`
+		);
+	}
+	if (!it.stockTracked && !it.sellable) {
+		throw new WriteRefused('itemId', `${it.name} is not for sale.`);
+	}
 
 	// A line delivering an order line keeps that line's item and unit, or "received" stops meaning
 	// anything on the order.
@@ -217,13 +282,25 @@ export async function lineValues(
 		if (!l || l.itemId !== it.id) throw new WriteRefused('lotId', 'That lot is not of this item.');
 	}
 
+	// Bought in another currency: the price as invoiced, and its cost in birr at the receipt's rate.
+	let unitCost = values.unitCost ?? null;
+	let foreignUnitCost: number | null = null;
+	if (doc.type === 'receipt' && doc.currency && doc.exchangeRate) {
+		if (values.foreignUnitCost != null && values.foreignUnitCost !== '') {
+			foreignUnitCost = Number(values.foreignUnitCost);
+			unitCost = Math.round(foreignUnitCost * doc.exchangeRate * 10000) / 10000;
+		}
+	}
+
 	return {
 		...values,
 		orgId,
-		lotId: values.lotId || null,
-		lotNumber: values.lotNumber || null,
-		expiryDate: values.expiryDate || null,
-		serials: values.serials || null,
+		lotId: it.stockTracked ? values.lotId || null : null,
+		lotNumber: it.stockTracked ? values.lotNumber || null : null,
+		expiryDate: it.stockTracked ? values.expiryDate || null : null,
+		serials: it.stockTracked ? values.serials || null : null,
+		unitCost,
+		foreignUnitCost,
 		unitPrice
 	};
 }

@@ -38,7 +38,8 @@ export const columns: ColumnDef<Row>[] = [
 				entity: 'role'
 			})
 	},
-	{ accessorKey: 'branch', header: 'Branch', cell: (info) => info.getValue() ?? '—' },
+	{ accessorKey: 'branch', header: 'Home branch', cell: (info) => info.getValue() ?? '—' },
+	{ accessorKey: 'worksIn', header: 'Works in' },
 	{
 		accessorKey: 'status',
 		header: 'Status',

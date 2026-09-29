@@ -2,6 +2,7 @@ import {
 	boolean,
 	decimal,
 	index,
+	type AnyMySqlColumn,
 	int,
 	mysqlEnum,
 	mysqlTable,
@@ -25,6 +26,12 @@ export const category = mysqlTable(
 		 * warning to return or discount it; bread wants a day or two.
 		 */
 		expiryWarningDays: int('expiry_warning_days').notNull().default(90),
+		/**
+		 * The least shelf life a delivery may have left, in days. Empty: any. Below it a receipt
+		 * is flagged, or refused when `refuseShortShelfLife`.
+		 */
+		minShelfLifeDays: int('min_shelf_life_days'),
+		refuseShortShelfLife: boolean('refuse_short_shelf_life').notNull().default(false),
 		...lesserFields
 	},
 	(table) => [uniqueIndex('category_org_name_idx').on(table.orgId, table.name)]
@@ -73,6 +80,15 @@ export const item = mysqlTable(
 		 */
 		supplierId: int('supplier_id').references(() => supplier.id, { onDelete: 'restrict' }),
 
+		/**
+		 * A variant of another item (the same shirt in red, XL): its own SKU, barcode and stock,
+		 * listed under the parent. `variantLabel` is what tells it apart.
+		 */
+		parentItemId: int('parent_item_id').references((): AnyMySqlColumn => item.id, {
+			onDelete: 'set null'
+		}),
+		variantLabel: varchar('variant_label', { length: 80 }),
+
 		// ── What the item is ──────────────────────────────────────────────────────────────────
 		/** False for services: nothing is counted and no ledger rows are written. */
 		stockTracked: boolean('stock_tracked').notNull().default(true),
@@ -86,6 +102,11 @@ export const item = mysqlTable(
 		purchasable: boolean('purchasable').notNull().default(true),
 		/** Can be rented out. Leasing arrives in a later phase; the flag is here so items are set up once. */
 		leasable: boolean('leasable').notNull().default(false),
+		/**
+		 * A kit or recipe: sold as one line, made of the components in `kit_component`, which is
+		 * what leaves the shelf. Has no stock of its own (`stockTracked` is off).
+		 */
+		isKit: boolean('is_kit').notNull().default(false),
 		/** Used up internally (cleaning supplies, ingredients) rather than sold. */
 		consumable: boolean('consumable').notNull().default(false),
 		perishable: boolean('perishable').notNull().default(false),
@@ -97,6 +118,10 @@ export const item = mysqlTable(
 			.default('ambient'),
 
 		// ── Numbers ───────────────────────────────────────────────────────────────────────────
+		/** Months of warranty from the day it is sold. Empty: none. */
+		warrantyMonths: int('warranty_months'),
+		/** Per base unit; shares out landed costs by weight. Optional. */
+		weightKg: decimal('weight_kg', { precision: 12, scale: 3, mode: 'number' }),
 		/** In base units. Stock at or below this shows as "reorder". */
 		reorderLevel: decimal('reorder_level', { precision: 18, scale: 4, mode: 'number' }),
 		salePrice: decimal('sale_price', { precision: 14, scale: 2, mode: 'number' }),
@@ -157,4 +182,29 @@ export const barcode = mysqlTable(
 		...deletionFields
 	},
 	(table) => [index('barcode_org_code_idx').on(table.orgId, table.code)]
+);
+
+/**
+ * What one base unit of a kit or recipe is made of: an injera platter uses 3 injera and 0.2 kg of
+ * wot; a first-aid kit holds 10 plasters. Selling the kit takes these off the shelf.
+ */
+export const kitComponent = mysqlTable(
+	'kit_component',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		orgId: orgRef(),
+		kitItemId: int('kit_item_id')
+			.notNull()
+			.references(() => item.id, { onDelete: 'cascade' }),
+		componentItemId: int('component_item_id')
+			.notNull()
+			.references(() => item.id, { onDelete: 'restrict' }),
+		/** The unit `quantity` is in: the component's base unit or one of its packs. */
+		uomId: int('uom_id')
+			.notNull()
+			.references(() => uom.id, { onDelete: 'restrict' }),
+		quantity: decimal('quantity', { precision: 18, scale: 4, mode: 'number' }).notNull(),
+		...deletionFields
+	},
+	(table) => [index('kit_component_kit_idx').on(table.kitItemId)]
 );

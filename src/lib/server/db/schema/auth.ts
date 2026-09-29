@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm/mysql-core';
 import { relations, sql } from 'drizzle-orm';
 import { branch } from './locations';
+import { COSTING_METHODS } from '../../../constants';
 
 /**
  * A tenant: one business using the system. Every business table carries an `orgId` pointing here,
@@ -65,6 +66,26 @@ export const organization = mysqlTable('organization', {
 	einvoiceClientId: varchar('einvoice_client_id', { length: 120 }),
 	/** Stored encrypted (`$lib/server/secrets`); never sent to the browser. */
 	einvoiceSecret: varchar('einvoice_secret', { length: 512 }),
+	/** How stock going out is valued. Empty: moving average. */
+	costingMethod: mysqlEnum('costing_method', COSTING_METHODS),
+	/**
+	 * Hold stock for accepted proformas and approved requisitions, so the till and other issues
+	 * cannot sell what was promised.
+	 */
+	reserveStock: boolean('reserve_stock').default(false).notNull(),
+	// ── Maker-checker. Empty: no approval needed. ──
+	/** Adjustments worth this much or more (at cost) wait for a second person. */
+	approveAdjustmentsOver: decimal('approve_adjustments_over', {
+		precision: 14,
+		scale: 2,
+		mode: 'number'
+	}),
+	/** Every write-off (stock removed by an adjustment) waits for a second person. */
+	approveWriteOffs: boolean('approve_write_offs').default(false).notNull(),
+	/** Counts whose differences come to this much or more (at cost) wait for a second person. */
+	approveCountsOver: decimal('approve_counts_over', { precision: 14, scale: 2, mode: 'number' }),
+	/** Purchase orders worth this much or more wait for a second person before they go out. */
+	approveOrdersOver: decimal('approve_orders_over', { precision: 14, scale: 2, mode: 'number' }),
 	withholdingThreshold: decimal('withholding_threshold', {
 		precision: 14,
 		scale: 2,
@@ -108,7 +129,10 @@ export const user = mysqlTable(
 			.notNull()
 			.references((): AnyMySqlColumn => roles.id, { onDelete: 'restrict' }),
 
-		/** Where this person usually works. Optional; branch scoping comes in a later phase. */
+		/**
+		 * Where this person usually works: the default on their forms. Which branches they may see
+		 * and move stock in is `user_branch`.
+		 */
 		branchId: int('branch_id').references((): AnyMySqlColumn => branch.id, {
 			onDelete: 'set null'
 		}),
@@ -233,3 +257,24 @@ export const sessionRelations = relations(session, ({ one }) => ({
 export const accountRelations = relations(account, ({ one }) => ({
 	user: one(user, { fields: [account.userId], references: [user.id] })
 }));
+
+/**
+ * The branches a user works in. A user with none — or with `branches.all` — sees every branch;
+ * one with rows sees and moves stock only in those.
+ */
+export const userBranch = mysqlTable(
+	'user_branch',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		orgId: int('org_id')
+			.notNull()
+			.references((): AnyMySqlColumn => organization.id, { onDelete: 'cascade' }),
+		userId: varchar('user_id', { length: 255 })
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		branchId: int('branch_id')
+			.notNull()
+			.references((): AnyMySqlColumn => branch.id, { onDelete: 'cascade' })
+	},
+	(table) => [uniqueIndex('user_branch_key_idx').on(table.userId, table.branchId)]
+);

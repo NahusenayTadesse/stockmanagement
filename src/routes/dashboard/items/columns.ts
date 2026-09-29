@@ -6,6 +6,7 @@ import { qty } from '$lib/format';
 
 /** How an item is tracked, in a few words. */
 function tracking(row: LookupRow): string {
+	if (row.isKit) return 'Kit / recipe';
 	if (!row.stockTracked) return 'Service';
 	const parts = [
 		row.trackSerials && 'Serial',

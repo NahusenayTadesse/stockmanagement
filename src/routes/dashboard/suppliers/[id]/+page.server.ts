@@ -26,6 +26,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				contactPerson: s.contactPerson ?? '',
 				note: s.note ?? '',
 				vatRegistered: s.vatRegistered,
+				leadTimeDays: s.leadTimeDays,
 				status: s.isActive
 			},
 			zod4(supplierEdit),

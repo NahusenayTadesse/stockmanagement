@@ -48,6 +48,16 @@ export const columns: ColumnDef<Row>[] = [
 		cell: ({ row }) => qty(row.original.quantity, row.original.unit)
 	},
 	{
+		accessorKey: 'held',
+		header: 'Held',
+		cell: ({ row }) => (row.original.held ? qty(row.original.held, row.original.unit) : '—')
+	},
+	{
+		accessorKey: 'free',
+		header: sortable('Free'),
+		cell: ({ row }) => qty(row.original.free, row.original.unit)
+	},
+	{
 		accessorKey: 'value',
 		header: sortable('Value'),
 		cell: (info) => formatETB(Number(info.getValue()))

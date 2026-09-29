@@ -10,6 +10,7 @@ import {
 	branch,
 	customer,
 	item,
+	landedCost,
 	location,
 	lot,
 	organization,
@@ -21,17 +22,37 @@ import {
 	uom,
 	user
 } from '$lib/server/db/schema';
+import { z } from 'zod/v4';
+import { LANDED_COST_KINDS, LANDED_COST_METHODS } from '$lib/constants';
 import { orgIdOf } from '$lib/server/tenant';
 import {
+	belongsToOrg,
 	itemOptions,
 	locationOptions,
 	lotOptions,
+	saleItemOptions,
 	supplierOptions,
 	unitOptions
 } from '$lib/server/options';
 import { supplierSchema } from '$lib/schemas/suppliers';
-import { customerPicker, headerValues, lineValues, orgDocument } from '$lib/server/stock/documents';
-import { postDocument, StockError } from '$lib/server/stock/post';
+import {
+	customerPicker,
+	headerValues,
+	lineValues,
+	orgDocument,
+	recostForeignLines
+} from '$lib/server/stock/documents';
+import { ApprovalRequired, postDocument, StockError } from '$lib/server/stock/post';
+import { receiveTransfer } from '$lib/server/stock/transit';
+import {
+	closePendingFor,
+	lastDecision,
+	pendingFor,
+	requestApproval,
+	withdrawApproval
+} from '$lib/server/approvals';
+import { releaseQuote } from '$lib/server/reservations';
+import { branchScope, inScope, locationBranches, requireBranch } from '$lib/server/scope';
 import { createReturn, ReturnError, returnable } from '$lib/server/returns';
 import { documentTotals } from '$lib/server/tax';
 import { afterSale } from '$lib/server/afterSale';
@@ -70,15 +91,59 @@ const lines = childCrud({
 	}
 });
 
+/** A receipt's landed costs: freight, duty and the rest, shared over its lines when it is posted. */
+const landedSchema = z.object({
+	kind: z.enum(LANDED_COST_KINDS),
+	description: z.string().trim().max(160).default(''),
+	amount: z.number().positive('Enter the amount in birr'),
+	method: z.enum(LANDED_COST_METHODS).default('value'),
+	supplierId: z.coerce.number().int().min(0).default(0)
+});
+const costs = childCrud({
+	table: landedCost,
+	ownerColumn: 'documentId',
+	label: 'Landed cost',
+	addSchema: landedSchema,
+	editSchema: landedSchema.extend({ id: z.coerce.number() }),
+	permission: 'stock.draft',
+	transform: async (values, event) => {
+		const orgId = orgIdOf(event.locals);
+		const doc = await orgDocument(orgId, Number(event.params.id));
+		if (doc.type !== 'receipt') {
+			throw new WriteRefused('kind', 'Landed costs belong on goods receipts.');
+		}
+		if (values.supplierId)
+			await belongsToOrg(supplier, values.supplierId, orgId, 'supplierId', 'supplier');
+		return {
+			...values,
+			orgId,
+			description: values.description || null,
+			supplierId: values.supplierId || null
+		};
+	}
+});
+
 /**
- * The document every line write is filed under: this business's, and still a draft. A posted
- * document's lines are the record of what moved; they are never edited.
+ * The document every line write is filed under: this business's, in the viewer's branches, and
+ * still a draft. A posted document's lines are the record of what moved; they are never edited.
  */
 async function draftOwner(event: RequestEvent) {
 	const doc = await orgDocument(orgIdOf(event.locals), Number(event.params.id));
+	await inViewersBranches(event.locals, doc);
 	if (doc.status !== 'draft')
 		error(409, `This document is ${doc.status} and can no longer change.`);
 	return doc.id;
+}
+
+/** 404 unless the document touches one of the viewer's branches: its own, or where it goes. */
+async function inViewersBranches(locals: App.Locals, doc: typeof stockDocument.$inferSelect) {
+	const branches = await locationBranches(doc.orgId, [doc.fromLocationId, doc.toLocationId]);
+	await requireBranch(
+		locals,
+		doc.branchId,
+		...[doc.fromLocationId, doc.toLocationId].map((id) => (id ? branches.get(id) : null))
+	);
+	return branches;
 }
 
 /**
@@ -118,10 +183,13 @@ async function fiscalPanel(orgId: number, doc: typeof stockDocument.$inferSelect
 const fromLoc = alias(location, 'from_loc');
 const toLoc = alias(location, 'to_loc');
 const poster = alias(user, 'poster');
+const receiver = alias(user, 'receiver');
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const orgId = orgIdOf(locals);
 	const doc = await orgDocument(orgId, Number(params.id));
+	const branches = await inViewersBranches(locals, doc);
+	const scope = await branchScope(locals);
 
 	const [[names], lineSection, items, units, lots, locations, movements, [org]] = await Promise.all(
 		[
@@ -138,7 +206,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 					supplierPhone: supplier.phone,
 					purchaseOrder: purchaseOrder.number,
 					customer: customer.name,
-					customerPhone: customer.phone
+					customerPhone: customer.phone,
+					receivedBy: receiver.name
 				})
 				.from(stockDocument)
 				.innerJoin(branch, eq(branch.id, stockDocument.branchId))
@@ -149,13 +218,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				.leftJoin(supplier, eq(supplier.id, stockDocument.supplierId))
 				.leftJoin(purchaseOrder, eq(purchaseOrder.id, stockDocument.purchaseOrderId))
 				.leftJoin(customer, eq(customer.id, stockDocument.customerId))
+				.leftJoin(receiver, eq(receiver.id, stockDocument.receivedBy))
 				.where(eq(stockDocument.id, doc.id)),
 			lines.load(doc.id),
-			itemOptions(orgId),
+			// A sale may carry services and kits; everything else moves stock.
+			doc.type === 'issue' ? saleItemOptions(orgId) : itemOptions(orgId),
 			unitOptions(orgId),
 			lotOptions(orgId),
-			locationOptions(orgId),
-			doc.status === 'posted'
+			locationOptions(orgId, scope),
+			doc.status === 'posted' || doc.status === 'in_transit'
 				? db
 						.select({
 							id: stockMovement.id,
@@ -209,7 +280,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			reference: doc.reference ?? '',
 			party: doc.party ?? '',
 			reason: doc.reason ?? '',
-			note: doc.note ?? ''
+			note: doc.note ?? '',
+			driverName: doc.driverName ?? '',
+			vehiclePlate: doc.vehiclePlate ?? '',
+			currency: doc.currency ?? '',
+			exchangeRate: doc.exchangeRate
 		},
 		zod4(documentHeader),
 		{ errors: false }
@@ -274,6 +349,66 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			? await customerStatement(orgId, doc.customerId)
 			: null;
 
+	// A transfer to another branch: what was sent, and — once received — what arrived.
+	const trackSerials = new Set(
+		(
+			await db
+				.select({ id: item.id })
+				.from(item)
+				.where(and(eq(item.orgId, orgId), eq(item.trackSerials, true)))
+		).map((i) => i.id)
+	);
+	const transit =
+		doc.type === 'transfer' && (doc.status === 'in_transit' || doc.receivedAt)
+			? {
+					canReceive:
+						doc.status === 'in_transit' &&
+						hasPermission(locals, 'stock.post') &&
+						inScope(scope, doc.toLocationId ? branches.get(doc.toLocationId) : null),
+					lines: rows.map((l) => ({
+						id: l.id,
+						item: l.item,
+						unit: l.unit,
+						sent: l.quantity,
+						received: l.receivedQuantity,
+						serials: l.serials,
+						receivedSerials: l.receivedSerials ?? '',
+						trackSerials: trackSerials.has(l.itemId)
+					}))
+				}
+			: null;
+
+	// Receipts: freight, duty and the rest, shared over the lines when posted.
+	let landed = null;
+	if (doc.type === 'receipt') {
+		const [section, payees] = await Promise.all([costs.load(doc.id), supplierOptions(orgId)]);
+		const payee = new Map(payees.map((p) => [p.value, p.name]));
+		landed = {
+			...section,
+			rows: (section.rows as (typeof landedCost.$inferSelect)[]).map((c) => ({
+				...c,
+				description: c.description ?? '',
+				supplierId: c.supplierId ?? 0,
+				supplier: c.supplierId ? (payee.get(c.supplierId) ?? '—') : ''
+			})),
+			suppliers: [{ value: 0, name: '— None —' }, ...payees],
+			total:
+				Math.round(
+					(section.rows as (typeof landedCost.$inferSelect)[]).reduce((s, c) => s + c.amount, 0) *
+						100
+				) / 100
+		};
+	}
+
+	// Maker-checker on adjustments: what is waiting, or why it was turned down.
+	const approval =
+		doc.type === 'adjustment' && doc.status === 'draft'
+			? {
+					pending: await pendingFor(orgId, { kind: 'adjustment', documentId: doc.id }),
+					last: await lastDecision(orgId, { kind: 'adjustment', documentId: doc.id })
+				}
+			: null;
+
 	return {
 		doc,
 		names,
@@ -291,11 +426,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			creditLimit: credit.creditLimit
 		},
 		org,
+		transit,
+		landed,
+		approval,
 		lines: { ...lineSection, rows },
 		items,
 		units: [{ value: 0, name: 'Base unit' }, ...units],
 		lots: [{ value: 0, name: 'First expiry first out' }, ...lots],
 		locations,
+		destinations:
+			doc.type === 'transfer' && doc.status === 'draft' ? await locationOptions(orgId) : null,
 		movements,
 		headerForm,
 		pay: await paymentSection(orgId, doc, locals),
@@ -313,7 +453,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-	...childActions({ Line: lines }, draftOwner),
+	...childActions({ Line: lines, Cost: costs }, draftOwner),
 	...paymentActions,
 
 	editHeader: async (event) => {
@@ -324,6 +464,7 @@ export const actions: Actions = {
 			return message(form, { type: 'error', text: 'Please check the form' }, { status: 400 });
 		}
 		const doc = await orgDocument(orgId, Number(event.params.id));
+		await inViewersBranches(event.locals, doc);
 		if (doc.status !== 'draft') {
 			return message(form, { type: 'error', text: 'Only a draft can change.' }, { status: 409 });
 		}
@@ -336,17 +477,29 @@ export const actions: Actions = {
 		try {
 			// The type stays what it was: the lines were entered for it.
 			const values = {
-				...(await headerValues(orgId, { ...form.data, type: doc.type }, { allowReturn: true })),
+				...(await headerValues(
+					orgId,
+					{ ...form.data, type: doc.type },
+					{ allowReturn: true, scope: await branchScope(event.locals) }
+				)),
 				...keep
 			};
 			await db
 				.update(stockDocument)
 				.set({ ...values, updatedBy: event.locals.user?.id })
 				.where(eq(stockDocument.id, doc.id));
+			// A new rate (or no currency any more) re-costs the lines priced in that currency.
+			if (values.exchangeRate !== doc.exchangeRate || values.currency !== doc.currency) {
+				await recostForeignLines(doc.id, values.currency ? values.exchangeRate : null);
+			}
 		} catch (err) {
 			if (err instanceof WriteRefused) {
 				if (err.field)
-					setError(form, err.field as 'toLocationId' | 'supplierId' | 'customerId', err.message);
+					setError(
+						form,
+						err.field as 'toLocationId' | 'supplierId' | 'customerId' | 'exchangeRate',
+						err.message
+					);
 				return message(form, { type: 'error', text: err.message }, { status: 400 });
 			}
 			throw err;
@@ -359,9 +512,10 @@ export const actions: Actions = {
 		requirePermission(event.locals, 'stock.post');
 		const orgId = orgIdOf(event.locals);
 		const documentId = Number(event.params.id);
+		await inViewersBranches(event.locals, await orgDocument(orgId, documentId));
 
 		try {
-			const { number } = await db.transaction((tx) =>
+			const { number, status, warnings } = await db.transaction((tx) =>
 				postDocument(tx, {
 					orgId,
 					documentId,
@@ -373,13 +527,36 @@ export const actions: Actions = {
 			const { notes, failed } = await afterSale(orgId, documentId);
 			setFlash(
 				{
-					type: failed ? 'error' : 'success',
-					message: [`Posted as ${number}`, ...notes].join(' · ')
+					type: failed || warnings.length ? 'error' : 'success',
+					message: [
+						status === 'in_transit'
+							? `Dispatched as ${number}: in transit until the other branch receives it`
+							: `Posted as ${number}`,
+						...warnings,
+						...notes
+					].join(' · ')
 				},
 				event.cookies
 			);
 			return { posted: number };
 		} catch (err) {
+			// Over the business's limits: not refused, but it waits for someone else.
+			if (err instanceof ApprovalRequired) {
+				await requestApproval({
+					orgId,
+					userId: event.locals.user?.id,
+					subject: { kind: 'adjustment', documentId },
+					refusal: err
+				});
+				setFlash(
+					{
+						type: 'success',
+						message: `Sent for approval: ${err.reason}. It posts when someone approves it.`
+					},
+					event.cookies
+				);
+				return { awaitingApproval: true };
+			}
 			if (err instanceof StockError) {
 				setFlash({ type: 'error', message: err.message }, event.cookies);
 				return fail(409, { stockError: err.message, lineId: err.lineId ?? null });
@@ -515,18 +692,105 @@ export const actions: Actions = {
 		return r.ok ? { sent: true } : fail(502, { einvoiceError: r.error });
 	},
 
+	/** The receiving branch says what arrived; the rest is written off as lost in transit. */
+	receive: async (event) => {
+		requirePermission(event.locals, 'stock.post');
+		const orgId = orgIdOf(event.locals);
+		const doc = await orgDocument(orgId, Number(event.params.id));
+		const branches = await locationBranches(orgId, [doc.toLocationId]);
+		// Only the branch it is going to can say it arrived.
+		await requireBranch(event.locals, doc.toLocationId ? branches.get(doc.toLocationId) : null);
+		const data = await event.request.formData();
+		const docLines = await db
+			.select({ id: stockDocumentLine.id })
+			.from(stockDocumentLine)
+			.where(and(eq(stockDocumentLine.documentId, doc.id), isNull(stockDocumentLine.deletedAt)));
+		const arrivals = docLines.map((l) => {
+			const serials = data.get(`serials_${l.id}`);
+			return {
+				lineId: l.id,
+				quantity: Number(data.get(`qty_${l.id}`) ?? 0),
+				serials:
+					serials === null
+						? null
+						: String(serials)
+								.split(/[\n,]/)
+								.map((x) => x.trim())
+								.filter(Boolean)
+			};
+		});
+		try {
+			const { lost } = await db.transaction((tx) =>
+				receiveTransfer(tx, {
+					orgId,
+					documentId: doc.id,
+					userId: event.locals.user?.id,
+					arrivals,
+					note: String(data.get('note') ?? '').trim() || null
+				})
+			);
+			setFlash(
+				lost.length
+					? {
+							type: 'error',
+							message: `Received. Lost in transit: ${lost.map((l) => `${l.quantity} ${l.item}`).join(', ')} — written off.`
+						}
+					: { type: 'success', message: 'Received in full' },
+				event.cookies
+			);
+			return { received: true };
+		} catch (err) {
+			if (err instanceof StockError) {
+				setFlash({ type: 'error', message: err.message }, event.cookies);
+				return fail(409, { stockError: err.message, lineId: err.lineId ?? null });
+			}
+			throw err;
+		}
+	},
+
+	/** The requester takes back an adjustment waiting for approval, to change it. */
+	withdraw: async (event) => {
+		requirePermission(event.locals, 'stock.draft');
+		const orgId = orgIdOf(event.locals);
+		const doc = await orgDocument(orgId, Number(event.params.id));
+		const pending = await pendingFor(orgId, { kind: 'adjustment', documentId: doc.id });
+		if (!pending) return fail(409);
+		try {
+			await db.transaction((tx) =>
+				withdrawApproval(tx, { orgId, requestId: pending.id, userId: event.locals.user!.id })
+			);
+		} catch (err) {
+			if (err instanceof StockError) {
+				setFlash({ type: 'error', message: err.message }, event.cookies);
+				return fail(409);
+			}
+			throw err;
+		}
+		setFlash({ type: 'success', message: 'Approval request withdrawn' }, event.cookies);
+		return { withdrawn: true };
+	},
+
 	/** A draft that will not be posted. Kept, not deleted, so its number range has no mystery gaps. */
 	cancel: async (event) => {
 		requirePermission(event.locals, 'stock.post');
 		const doc = await orgDocument(orgIdOf(event.locals), Number(event.params.id));
+		await inViewersBranches(event.locals, doc);
 		if (doc.status !== 'draft') {
 			setFlash({ type: 'error', message: 'Only a draft can be cancelled.' }, event.cookies);
 			return fail(409);
 		}
-		await db
-			.update(stockDocument)
-			.set({ status: 'cancelled', updatedBy: event.locals.user?.id })
-			.where(eq(stockDocument.id, doc.id));
+		await db.transaction(async (tx) => {
+			await tx
+				.update(stockDocument)
+				.set({ status: 'cancelled', updatedBy: event.locals.user?.id })
+				.where(eq(stockDocument.id, doc.id));
+			// A sale made from a proforma is not going ahead: nothing is held for it any more.
+			if (doc.type === 'issue' && doc.quoteId) await releaseQuote(tx, doc.quoteId);
+		});
+		// Nothing left to approve.
+		if (doc.type === 'adjustment') {
+			await closePendingFor(doc.orgId, { kind: 'adjustment', documentId: doc.id });
+		}
 		setFlash({ type: 'success', message: 'Draft cancelled' }, event.cookies);
 		return { cancelled: true };
 	}

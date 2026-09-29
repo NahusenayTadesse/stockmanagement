@@ -1,5 +1,5 @@
 import { error, fail } from '@sveltejs/kit';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, TransactionRollbackError } from 'drizzle-orm';
 import { message, setError, superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
 import { redirect, setFlash } from 'sveltekit-flash-message/server';
@@ -21,8 +21,10 @@ import {
 	activeOwnerCount,
 	orgRole,
 	permissionOptions,
+	branchesByUser,
 	revokeSessions,
 	setPassword,
+	setUserBranches,
 	ungrantable
 } from '$lib/server/users';
 import { editUserSchema, resetPasswordSchema } from '$lib/schemas/users';
@@ -59,7 +61,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const person = await member(orgId, params.id);
 	if (!person) error(404, 'User not found');
 
-	const [roleList, branchList, rolePerms, ownPerms, allPerms] = await Promise.all([
+	const [roleList, branchList, rolePerms, ownPerms, allPerms, works] = await Promise.all([
 		roleOptions(orgId),
 		branchOptions(orgId),
 		db
@@ -78,8 +80,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				and(eq(permissions.id, specialPermissions.permissionId), notDeleted(specialPermissions))
 			)
 			.where(eq(specialPermissions.userId, person.id)),
-		permissionOptions()
+		permissionOptions(),
+		branchesByUser(orgId, person.id)
 	]);
+	const worksIn = works.get(person.id) ?? [];
 
 	// Special permissions, when a user has any, replace the role's — dentalClinic's rule.
 	const custom = ownPerms.length > 0;
@@ -92,6 +96,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				email: person.email,
 				role: person.roleId,
 				branchId: person.branchId ?? 0,
+				branchIds: worksIn.map((b) => b.id),
 				status: person.status,
 				editPermission: custom,
 				permissionsList: permissionList.map((p) => p.value)
@@ -109,6 +114,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		allPerms,
 		roleList,
 		branchList: [{ value: 0, name: 'Any branch' }, ...branchList],
+		branchChoices: branchList,
+		worksIn: worksIn.map((b) => b.name),
 		form,
 		passwordForm
 	};
@@ -126,9 +133,10 @@ export const actions: Actions = {
 		const person = await member(orgId, params.id);
 		if (!person) error(404, 'User not found');
 
-		const { name, email, role, branchId, status, editPermission, permissionsList } = form.data;
+		const { name, email, role, branchId, branchIds, status, editPermission, permissionsList } =
+			form.data;
 		const refuse = (
-			field: 'role' | 'status' | 'permissionsList._errors' | 'branchId',
+			field: 'role' | 'status' | 'permissionsList._errors' | 'branchId' | 'branchIds._errors',
 			text: string,
 			code: 400 | 403 | 409 = 400
 		) => {
@@ -178,11 +186,14 @@ export const actions: Actions = {
 		}
 
 		try {
-			await db.transaction(async (tx) => {
+			const branchesOk = await db.transaction(async (tx) => {
 				await tx
 					.update(user)
 					.set({ name, email, roleId: role, branchId: branchId || null, isActive: status })
 					.where(eq(user.id, person.id));
+				if (!(await setUserBranches(tx, orgId, person.id, branchIds))) {
+					tx.rollback();
+				}
 
 				await tx.delete(specialPermissions).where(eq(specialPermissions.userId, person.id));
 				if (editPermission) {
@@ -197,8 +208,13 @@ export const actions: Actions = {
 
 				// What they may do has changed: it applies from their next sign-in, everywhere.
 				if (person.id !== locals.user?.id) await revokeSessions(tx, person.id);
+				return true;
 			});
+			if (!branchesOk) return refuse('branchIds._errors', 'Choose branches from the list.');
 		} catch (err) {
+			if (err instanceof TransactionRollbackError) {
+				return refuse('branchIds._errors', 'Choose branches from the list.');
+			}
 			if (isDuplicateKey(err)) {
 				setError(form, 'email', 'Another account already uses this email.');
 				return message(

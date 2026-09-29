@@ -27,7 +27,16 @@ export const businessSchema = z.object({
 	einvoiceTokenUrl: z.url('Enter the full URL').or(z.literal('')).default(''),
 	einvoiceClientId: z.string().trim().max(120).default(''),
 	/** Empty keeps the stored one. */
-	einvoiceSecret: z.string().trim().max(300).default('')
+	einvoiceSecret: z.string().trim().max(300).default(''),
+	/** How stock going out is valued. */
+	costingMethod: z.enum(['average', 'fifo']).default('average'),
+	/** Hold stock for accepted proformas and approved requisitions. */
+	reserveStock: z.boolean().default(false),
+	// Maker-checker limits, in birr. Empty: no approval needed.
+	approveAdjustmentsOver: z.number().min(0).nullable().default(null),
+	approveWriteOffs: z.boolean().default(false),
+	approveCountsOver: z.number().min(0).nullable().default(null),
+	approveOrdersOver: z.number().min(0).nullable().default(null)
 });
 
 export const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];

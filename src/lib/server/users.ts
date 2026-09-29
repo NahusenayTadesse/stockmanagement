@@ -3,7 +3,15 @@
  */
 import { and, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { account, permissions, roles, session, user } from '$lib/server/db/schema';
+import {
+	account,
+	branch,
+	permissions,
+	roles,
+	session,
+	user,
+	userBranch
+} from '$lib/server/db/schema';
 import { auth } from '$lib/server/auth';
 import type { Tx } from '$lib/server/stock/post';
 
@@ -87,4 +95,44 @@ export async function setPassword(userId: string, password: string) {
 			.where(and(eq(account.userId, userId), eq(account.providerId, 'credential')));
 		await revokeSessions(tx, userId);
 	});
+}
+
+/**
+ * Sets the branches a user works in (`$lib/server/scope`). Ids must be this business's branches;
+ * returns false, changing nothing, when one is not. An empty list means every branch.
+ */
+export async function setUserBranches(
+	tx: Pick<typeof db, 'select' | 'insert' | 'delete'>,
+	orgId: number,
+	userId: string,
+	branchIds: number[]
+): Promise<boolean> {
+	const wanted = [...new Set(branchIds)];
+	if (wanted.length) {
+		const found = await tx
+			.select({ id: branch.id })
+			.from(branch)
+			.where(and(eq(branch.orgId, orgId), inArray(branch.id, wanted), isNull(branch.deletedAt)));
+		if (found.length !== wanted.length) return false;
+	}
+	await tx.delete(userBranch).where(eq(userBranch.userId, userId));
+	if (wanted.length) {
+		await tx.insert(userBranch).values(wanted.map((branchId) => ({ orgId, userId, branchId })));
+	}
+	return true;
+}
+
+/** Each user's branches, by user id, with names — for the users list and a user's page. */
+export async function branchesByUser(orgId: number, userId?: string) {
+	const rows = await db
+		.select({ userId: userBranch.userId, branchId: userBranch.branchId, name: branch.name })
+		.from(userBranch)
+		.innerJoin(branch, eq(branch.id, userBranch.branchId))
+		.where(and(eq(userBranch.orgId, orgId), userId ? eq(userBranch.userId, userId) : undefined))
+		.orderBy(branch.name);
+	const out = new Map<string, { id: number; name: string }[]>();
+	for (const r of rows) {
+		out.set(r.userId, [...(out.get(r.userId) ?? []), { id: r.branchId, name: r.name }]);
+	}
+	return out;
 }

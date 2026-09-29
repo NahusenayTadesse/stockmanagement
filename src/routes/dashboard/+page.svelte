@@ -84,6 +84,35 @@
 			: []
 	);
 
+	const attentionTiles = $derived<Stat[]>([
+		...(data.attention.approvals
+			? [
+					{
+						key: 'approvals',
+						label: 'Waiting for approval',
+						value: data.attention.approvals,
+						format: 'count' as const,
+						group: 'attention',
+						hint: 'Adjustments, counts and orders over your limits',
+						tone: 'warning' as const
+					}
+				]
+			: []),
+		...(data.attention.inTransit
+			? [
+					{
+						key: 'transit',
+						label: 'Transfers in transit',
+						value: data.attention.inTransit,
+						format: 'count' as const,
+						group: 'attention',
+						hint: 'Sent to another branch, not yet received',
+						tone: 'neutral' as const
+					}
+				]
+			: [])
+	]);
+
 	const tiles = $derived<Stat[]>(
 		stats
 			? [
@@ -159,6 +188,19 @@
 				>
 					<StatCard {stat} />
 				</a>
+			{/each}
+		</div>
+	{/if}
+
+	{#if attentionTiles.length}
+		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			{#each attentionTiles as stat (stat.key)}
+				<a
+					href={stat.key === 'approvals'
+						? resolve('/dashboard/approvals')
+						: resolve('/dashboard/stock/transfers')}
+					class="block"><StatCard {stat} /></a
+				>
 			{/each}
 		</div>
 	{/if}

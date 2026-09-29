@@ -18,6 +18,8 @@ import {
 } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
 import { locationOptions } from '$lib/server/options';
+import { branchScope } from '$lib/server/scope';
+import { kitsAvailable } from '$lib/server/items';
 import { sellsToCustomers } from '$lib/server/customers';
 import { priceTable } from '$lib/server/pricing';
 import { checkout, currentShift, heldCarts, holdCart, openShift, takeCart } from '$lib/server/pos';
@@ -26,7 +28,11 @@ import { StockError } from '$lib/server/stock/post';
 import { checkoutPayload } from '$lib/schemas/pos';
 import type { Actions, PageServerLoad } from './$types';
 
-/** Everything the till sells from this location, with its units, codes and what is on the shelf. */
+/**
+ * Everything the till sells from this location, with its units, codes and what is on the shelf.
+ * Services and kits sell too: a service has no stock to run out of, a kit as many as its
+ * components on this shelf make.
+ */
 async function catalogue(orgId: number, locationId: number) {
 	const onHand = sql<number>`COALESCE((
 		SELECT SUM(${qualified(stockBalance, stockBalance.quantity)}) FROM ${stockBalance}
@@ -37,8 +43,10 @@ async function catalogue(orgId: number, locationId: number) {
 		.select({
 			id: item.id,
 			sku: item.sku,
-			name: item.name,
+			name: sql<string>`IF(${item.variantLabel} IS NULL, ${item.name}, CONCAT(${item.name}, ' — ', ${item.variantLabel}))`,
 			nameAm: item.nameAm,
+			stockTracked: item.stockTracked,
+			isKit: item.isKit,
 			category: category.name,
 			baseUomId: item.baseUomId,
 			unit: uom.symbol,
@@ -54,7 +62,6 @@ async function catalogue(orgId: number, locationId: number) {
 			and(
 				eq(item.orgId, orgId),
 				eq(item.sellable, true),
-				eq(item.stockTracked, true),
 				eq(item.isActive, true),
 				isNull(item.deletedAt)
 			)
@@ -79,9 +86,22 @@ async function catalogue(orgId: number, locationId: number) {
 					.where(and(eq(barcode.orgId, orgId), isNull(barcode.deletedAt)))
 			])
 		: [[], []];
+	const kits = await kitsAvailable(
+		orgId,
+		items.filter((i) => i.isKit).map((i) => i.id),
+		locationId
+	);
 	return items.map((i) => ({
 		...i,
-		onHand: Number(i.onHand),
+		kind: i.isKit ? ('kit' as const) : i.stockTracked ? ('stock' as const) : ('service' as const),
+		/** Null: nothing to run out of (a service, or a kit made only of services). */
+		onHand: i.isKit
+			? (kits.get(i.id) ?? 0) < 0
+				? null
+				: (kits.get(i.id) ?? 0)
+			: i.stockTracked
+				? Number(i.onHand)
+				: null,
 		units: [
 			{ uomId: i.baseUomId, unit: i.unit, factor: 1 },
 			...units
@@ -98,7 +118,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const shift = await currentShift(orgId, userId);
 
 	if (!shift) {
-		const locations = await locationOptions(orgId);
+		const locations = await locationOptions(orgId, await branchScope(locals));
 		return {
 			shift: null,
 			// Sales floors first: that is where a till usually sells from.

@@ -17,6 +17,7 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { countFound } from '$lib/schemas/counts';
+	import ApprovalBanner from '$lib/components/ApprovalBanner.svelte';
 	import { qty } from '$lib/format';
 
 	let { data } = $props();
@@ -126,6 +127,8 @@
 			{/if}
 		</div>
 	</div>
+
+	<ApprovalBanner approval={data.approval} />
 
 	{#if data.moved > 0 && isOpen}
 		<div

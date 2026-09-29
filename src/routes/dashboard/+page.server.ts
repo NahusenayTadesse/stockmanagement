@@ -8,7 +8,31 @@ import { localToday } from '@nahu/admin-kit/time';
 import { datePresets, transactionTotals } from '$lib/server/transactions';
 import { sellsToCustomers } from '$lib/server/customers';
 import { creditSummary } from '$lib/server/credit';
+import { and, eq, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/mysql-core';
+import { db } from '$lib/server/db';
+import { location, stockDocument } from '$lib/server/db/schema';
+import { pendingApprovals } from '$lib/server/approvals';
+import { branchScope, scopeWhere } from '$lib/server/scope';
 import type { Actions, PageServerLoad } from './$types';
+
+const toLoc = alias(location, 'to_loc');
+
+/** Transfers on the road, sent from or to the viewer's branches. */
+async function inTransitCount(orgId: number, scope: number[] | null) {
+	const [row] = await db
+		.select({ n: sql<number>`COUNT(*)` })
+		.from(stockDocument)
+		.leftJoin(toLoc, eq(toLoc.id, stockDocument.toLocationId))
+		.where(
+			and(
+				eq(stockDocument.orgId, orgId),
+				eq(stockDocument.status, 'in_transit'),
+				scopeWhere(scope, stockDocument.branchId, toLoc.branchId)
+			)
+		);
+	return Number(row?.n ?? 0);
+}
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
@@ -46,7 +70,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 			overLimit: all.filter((c) => c.overLimit).length
 		};
 	}
-	return { stats, money, credit };
+	// What is waiting on someone: approvals, and stock on the road between branches.
+	const attention = {
+		approvals: hasPermission(locals, 'approvals.view') ? await pendingApprovals(orgId) : 0,
+		inTransit: hasPermission(locals, 'stock.view')
+			? await inTransitCount(orgId, await branchScope(locals))
+			: 0
+	};
+	return { stats, money, credit, attention };
 };
 
 export const actions: Actions = {

@@ -8,6 +8,7 @@ import {
 	customer,
 	item,
 	itemUnit,
+	kitComponent,
 	location,
 	organization,
 	paymentMethod,
@@ -17,7 +18,9 @@ import {
 	quoteLine,
 	roles,
 	stockDocument,
+	stockBalance,
 	stockDocumentLine,
+	stockMovement,
 	supplier,
 	transactions,
 	uom,
@@ -307,5 +310,62 @@ describe('selling', () => {
 		expect(r.lines[0]).toMatchObject({ quantity: 2, unitPrice: 950, listPrice: 1000 });
 		expect(r.after).toMatchObject({ status: 'converted', saleId: r.doc.id });
 		expect(r.twice).toMatch(/already become a sale/);
+	});
+
+	it('sells a service with no stock and a kit as its components', async () => {
+		const r = await inRollback(async (tx) => {
+			const s = await shop(tx);
+			const [{ id: fitting }] = await tx
+				.insert(item)
+				.values({
+					orgId: s.orgId,
+					sku: 'FIT',
+					name: 'Fitting',
+					baseUomId: s.pcs,
+					stockTracked: false,
+					salePrice: 50
+				})
+				.$returningId();
+			const [{ id: pair }] = await tx
+				.insert(item)
+				.values({
+					orgId: s.orgId,
+					sku: 'PAIR',
+					name: 'Cup pair',
+					baseUomId: s.pcs,
+					stockTracked: false,
+					isKit: true,
+					salePrice: 180
+				})
+				.$returningId();
+			await tx.insert(kitComponent).values({
+				orgId: s.orgId,
+				kitItemId: pair,
+				componentItemId: s.cup,
+				uomId: s.pcs,
+				quantity: 2
+			});
+
+			// 3 pairs (540) + 1 fitting (50) = 590 + 15% VAT = 678.50.
+			const sale = await s.sell({
+				lines: [
+					{ itemId: pair, uomId: s.pcs, quantity: 3, unitPrice: 180 },
+					{ itemId: fitting, uomId: s.pcs, quantity: 1, unitPrice: 50 }
+				],
+				payments: [{ methodId: s.cash, amount: 678.5 }]
+			});
+			const moved = await tx
+				.select({ itemId: stockMovement.itemId, quantity: stockMovement.quantity })
+				.from(stockMovement)
+				.where(eq(stockMovement.documentId, sale.documentId));
+			const [left] = await tx
+				.select({ quantity: stockBalance.quantity })
+				.from(stockBalance)
+				.where(and(eq(stockBalance.itemId, s.cup), eq(stockBalance.locationId, s.store)));
+			return { s, sale, moved, left };
+		});
+		expect(r.sale).toMatchObject({ total: 678.5, paid: 678.5, onCredit: 0 });
+		expect(r.moved).toEqual([{ itemId: r.s.cup, quantity: -6 }]);
+		expect(r.left.quantity).toBe(94);
 	});
 });

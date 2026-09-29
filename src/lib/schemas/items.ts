@@ -29,6 +29,13 @@ export const itemAdd = z.object({
 	perishable: flag,
 	prescriptionOnly: flag,
 	controlledSubstance: flag,
+	/** A kit or recipe: sold as one line, made of components. Never counted in stock itself. */
+	isKit: flag,
+	/** A variant of another item (0 = none), and what tells it apart: "Red / XL". */
+	parentItemId: z.coerce.number().int().min(0).default(0),
+	variantLabel: z.string().trim().max(80).default(''),
+	warrantyMonths: z.number().int('Whole months').min(0).max(600).nullable().default(null),
+	weightKg: z.number().min(0).nullable().default(null),
 	status: z.boolean().default(true)
 });
 export const itemEdit = itemAdd.extend({ id: z.coerce.number() });
@@ -44,6 +51,23 @@ export const barcodeAdd = z.object({
 	uomId: z.coerce.number().int().min(0).default(0)
 });
 export const barcodeEdit = barcodeAdd.extend({ id: z.coerce.number() });
+
+/** One component of a kit or recipe, per one base unit of the kit. */
+export const componentAdd = z.object({
+	componentItemId: z.coerce.number().int().positive('Choose an item'),
+	/** 0 means the component's base unit. */
+	uomId: z.coerce.number().int().min(0).default(0),
+	quantity: z.coerce.number().positive('How many go into one?')
+});
+export const componentEdit = componentAdd.extend({ id: z.coerce.number() });
+
+/** A new variant of an item: what tells it apart, its own code, and optionally its own price and barcode. */
+export const variantAdd = z.object({
+	variantLabel: z.string().trim().min(1, 'Say what tells it apart, e.g. Red / XL').max(80),
+	sku: z.string().trim().min(1, 'Enter a code').max(40),
+	salePrice: z.number().min(0).nullable().default(null),
+	barcode: z.string().trim().max(64).default('')
+});
 
 export const TAX_CODE_CHOICES = [
 	{ value: 'standard', name: 'Standard VAT' },

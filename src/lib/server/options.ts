@@ -3,7 +3,7 @@
  * deleted. The load of any form that offers a choice calls these; the matching action checks the
  * chosen id belongs to the business too (`belongsToOrg`), because a form can post any id.
  */
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
 import type { AnyMySqlColumn, MySqlTable } from 'drizzle-orm/mysql-core';
 import { db } from '$lib/server/db';
@@ -28,7 +28,11 @@ export const branchOptions = (orgId: number) =>
 		.where(and(eq(branch.orgId, orgId), eq(branch.status, true), isNull(branch.deletedAt)))
 		.orderBy(asc(branch.name));
 
-export const locationOptions = (orgId: number) =>
+/**
+ * Locations to choose from: never the system's transit locations, and — given the viewer's branch
+ * scope — only their branches' (`$lib/server/scope`).
+ */
+export const locationOptions = (orgId: number, scope: number[] | null = null) =>
 	db
 		.select({
 			value: location.id,
@@ -38,7 +42,15 @@ export const locationOptions = (orgId: number) =>
 		})
 		.from(location)
 		.innerJoin(branch, eq(branch.id, location.branchId))
-		.where(and(eq(location.orgId, orgId), eq(location.status, true), isNull(location.deletedAt)))
+		.where(
+			and(
+				eq(location.orgId, orgId),
+				eq(location.status, true),
+				isNull(location.deletedAt),
+				ne(location.kind, 'transit'),
+				scope ? (scope.length ? inArray(location.branchId, scope) : eq(location.id, -1)) : undefined
+			)
+		)
 		.orderBy(asc(branch.name), asc(location.name));
 
 export const categoryOptions = (orgId: number) =>
@@ -64,6 +76,24 @@ export const unitOptions = (orgId: number) =>
 		.from(uom)
 		.where(and(eq(uom.orgId, orgId), eq(uom.status, true), isNull(uom.deletedAt)))
 		.orderBy(asc(uom.name));
+
+/** Everything that can go on a sale: stocked items, services and kits (which have no stock of their own). */
+export const saleItemOptions = (orgId: number) =>
+	db
+		.select({
+			value: item.id,
+			name: sql<string>`CONCAT(${item.name}, IF(${item.variantLabel} IS NULL, '', CONCAT(' (', ${item.variantLabel}, ')')), ' — ', ${item.sku})`
+		})
+		.from(item)
+		.where(
+			and(
+				eq(item.orgId, orgId),
+				eq(item.isActive, true),
+				eq(item.sellable, true),
+				isNull(item.deletedAt)
+			)
+		)
+		.orderBy(asc(item.name));
 
 export const itemOptions = (orgId: number) =>
 	db

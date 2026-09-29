@@ -37,6 +37,7 @@ const serial = { trackSerials: true } as const;
 const ITEMS: ItemSpec[] = [
 	{
 		sku: 'LAP-HP450',
+		warranty: 12,
 		name: 'HP ProBook 450 G10 — i5, 16 GB, 512 GB SSD',
 		category: 'Laptops',
 		unit: 'Piece',
@@ -46,6 +47,7 @@ const ITEMS: ItemSpec[] = [
 	},
 	{
 		sku: 'LAP-TPE14',
+		warranty: 12,
 		name: 'Lenovo ThinkPad E14 Gen 5 — i7, 16 GB, 1 TB SSD',
 		category: 'Laptops',
 		unit: 'Piece',
@@ -55,6 +57,7 @@ const ITEMS: ItemSpec[] = [
 	},
 	{
 		sku: 'LAP-ACA315',
+		warranty: 12,
 		name: 'Acer Aspire 3 — i3, 8 GB, 256 GB SSD',
 		category: 'Laptops',
 		unit: 'Piece',
@@ -64,6 +67,7 @@ const ITEMS: ItemSpec[] = [
 	},
 	{
 		sku: 'PH-SGA15',
+		warranty: 12,
 		name: 'Samsung Galaxy A15, 128 GB',
 		category: 'Phones',
 		unit: 'Piece',
@@ -74,6 +78,7 @@ const ITEMS: ItemSpec[] = [
 	},
 	{
 		sku: 'PH-TSP20',
+		warranty: 12,
 		name: 'Tecno Spark 20, 128 GB',
 		category: 'Phones',
 		unit: 'Piece',
@@ -84,6 +89,7 @@ const ITEMS: ItemSpec[] = [
 	},
 	{
 		sku: 'PH-IP13',
+		warranty: 12,
 		name: 'iPhone 13, 128 GB',
 		category: 'Phones',
 		unit: 'Piece',
@@ -196,6 +202,7 @@ const ITEMS: ItemSpec[] = [
 	// Power cuts: UPS units are serial-tracked for warranty claims.
 	{
 		sku: 'UPS-APC650',
+		warranty: 24,
 		name: 'APC Back-UPS 650 VA',
 		category: 'Power backup',
 		unit: 'Piece',
@@ -234,6 +241,46 @@ const ITEMS: ItemSpec[] = [
 		unit: 'Piece',
 		price: 800,
 		flags: { stockTracked: false, purchasable: false }
+	},
+	// One case in three colours: variants, each with its own stock and barcode.
+	{
+		sku: 'ACC-CASE-A15',
+		name: 'Galaxy A15 case, black',
+		category: 'Accessories',
+		unit: 'Piece',
+		price: 450
+	},
+	{
+		sku: 'ACC-CASE-A15-BLU',
+		name: 'Galaxy A15 case, blue',
+		category: 'Accessories',
+		unit: 'Piece',
+		price: 450,
+		variantOf: 'ACC-CASE-A15',
+		variant: 'Blue'
+	},
+	{
+		sku: 'ACC-CASE-A15-CLR',
+		name: 'Galaxy A15 case, clear',
+		category: 'Accessories',
+		unit: 'Piece',
+		price: 400,
+		variantOf: 'ACC-CASE-A15',
+		variant: 'Clear'
+	},
+	// Sold as one line at the till; the three parts leave the shelf.
+	{
+		sku: 'KIT-OFFICE',
+		name: 'Office starter kit: wireless mouse, 32 GB flash drive, HDMI cable',
+		category: 'Accessories',
+		unit: 'Piece',
+		price: 2400,
+		kit: [
+			['ACC-MOUSE', 1],
+			['STO-USB32', 1],
+			['ACC-HDMI15', 1]
+		],
+		flags: { purchasable: false }
 	}
 ];
 
@@ -258,7 +305,10 @@ const MAIN_SUPPLIER: Record<string, string | undefined> = {
 	'BAT-AA': 'Horizon Tech Distribution PLC',
 	'UPS-APC650': 'Horizon Tech Distribution PLC',
 	'STAB-1K': 'Horizon Tech Distribution PLC',
-	'PRJ-EBX51': 'Horizon Tech Distribution PLC'
+	'PRJ-EBX51': 'Horizon Tech Distribution PLC',
+	'ACC-CASE-A15': 'Al Noor Electronics LLC, Dubai',
+	'ACC-CASE-A15-BLU': 'Al Noor Electronics LLC, Dubai',
+	'ACC-CASE-A15-CLR': 'Al Noor Electronics LLC, Dubai'
 };
 
 export async function seedTech(tx: Tx): Promise<Business> {
@@ -275,8 +325,9 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			store: 'Piassa Back Store'
 		},
 		// Not VAT-registered: pays 2% turnover tax on what it sells instead. No fiscal device and
-		// no e-invoicing set up — all of that is optional.
-		settings: { totRate: 2 }
+		// no e-invoicing set up — all of that is optional. Values stock first-in-first-out: phone
+		// prices move with the dollar, and FIFO follows what each batch really cost.
+		settings: { totRate: 2, costingMethod: 'fifo' }
 	});
 
 	await addBranch(tx, biz, {
@@ -1146,6 +1197,33 @@ export async function seedTech(tx: Tx): Promise<Business> {
 			note: 'Counterfeit notice confirmed; lot HP305B-2411 returned for credit'
 		},
 		{ 'INK-HP305B': 30 }
+	);
+
+	// ── An import in dollars, with its landed costs ───────────────────────────────────────
+	await document(
+		tx,
+		biz,
+		{
+			type: 'receipt',
+			date: day(-12),
+			to: 'Piassa Back Store',
+			supplier: 'Al Noor Electronics LLC, Dubai',
+			reference: 'ANE-INV-40551 / AWB 071-88213345',
+			currency: 'USD',
+			rate: 157.8,
+			landed: [
+				{ kind: 'freight', amount: 9_800, description: 'Air freight Dubai–Addis' },
+				{ kind: 'duty', amount: 38_400, description: 'Customs duty and surtax' },
+				{ kind: 'clearing', amount: 3_000, method: 'quantity', description: 'Clearing agent' }
+			],
+			by: 'manager'
+		},
+		[
+			{ sku: 'PH-SGA15', qty: 6, foreignCost: 118, serials: serials('R58X9IMP', 1, 6, 3) },
+			{ sku: 'ACC-CASE-A15', qty: 20, foreignCost: 1.5 },
+			{ sku: 'ACC-CASE-A15-BLU', qty: 15, foreignCost: 1.5 },
+			{ sku: 'ACC-CASE-A15-CLR', qty: 15, foreignCost: 1.2 }
+		]
 	);
 
 	return biz;

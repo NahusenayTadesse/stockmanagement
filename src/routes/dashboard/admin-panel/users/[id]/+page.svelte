@@ -51,7 +51,8 @@
 			value: data.person.role,
 			href: `/dashboard/admin-panel/roles/${data.person.roleId}`
 		},
-		{ name: 'Branch', value: data.person.branch ?? 'Any branch' },
+		{ name: 'Home branch', value: data.person.branch ?? 'Any branch' },
+		{ name: 'Works in', value: data.worksIn.length ? data.worksIn.join(', ') : 'All branches' },
 		{ name: 'Status', value: data.person.status ? 'Active' : 'Inactive' },
 		{
 			name: 'Permissions',
@@ -131,9 +132,21 @@
 				{errors}
 				name="branchId"
 				type="select"
-				label="Branch"
+				label="Home branch"
 				items={data.branchList}
+				description="Where they usually work: the default on their forms."
 			/>
+			{#if data.branchChoices.length > 1}
+				<InputComp
+					{form}
+					{errors}
+					name="branchIds"
+					type="checkbox"
+					label="Works in"
+					items={data.branchChoices}
+					description="Tick the branches whose stock they may see and move. None ticked: every branch. Owners and managers (who may work in every branch) see everything anyway."
+				/>
+			{/if}
 			<InputComp
 				{form}
 				{errors}

@@ -36,7 +36,11 @@ const CODE_ONLY_PERMISSIONS = [
 	'purchasing.manage',
 	'sales.manage',
 	'sales.discount',
-	'pos.manage'
+	'pos.manage',
+	'branches.all',
+	'requisitions.request',
+	'requisitions.approve',
+	'approvals.decide'
 ] as const;
 
 /** Wording for the permission checklist on the role and user screens. */
@@ -66,7 +70,17 @@ export const DESCRIPTIONS: Record<string, string> = {
 	'lots.manage': 'Quarantine, recall and release lots',
 	'transactions.view': 'See every transaction, with totals of money in and out',
 	'transactions.manage': 'Record payments and receipts, attach screenshots and PDFs, void mistakes',
-	'transactions.verify': 'Mark a transaction verified after checking the bank or Telebirr statement'
+	'transactions.verify':
+		'Mark a transaction verified after checking the bank or Telebirr statement',
+	'branches.all':
+		'Work in every branch, whatever branches the user is assigned (without it, assigned branches only)',
+	'requisitions.view': 'See requisitions: what departments asked the store for',
+	'requisitions.request': "Write and submit requisitions for a department's needs",
+	'requisitions.approve': 'Approve (or cut, or reject) requisitions, and issue what was approved',
+	'approvals.view': 'See what is waiting for approval, and what was decided',
+	'approvals.decide':
+		'Approve or reject large adjustments, write-offs, count differences and purchase orders',
+	'data.import': 'Import items, suppliers, customers and opening stock from a spreadsheet'
 };
 
 /** Every permission the system recognises, in a stable order. */
@@ -115,7 +129,14 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'sales.discount',
 				'purchasing.view',
 				'purchasing.manage',
-				'reports.view'
+				'reports.view',
+				'branches.all',
+				'requisitions.view',
+				'requisitions.request',
+				'requisitions.approve',
+				'approvals.view',
+				'approvals.decide',
+				'data.import'
 			]
 		},
 		{
@@ -147,7 +168,9 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'suppliers.manage',
 				'customers.view',
 				'purchasing.view',
-				'reports.view'
+				'reports.view',
+				'requisitions.view',
+				'approvals.view'
 			]
 		},
 		{
@@ -164,8 +187,16 @@ export const DEFAULT_ROLES: { name: string; description: string; permissions: st
 				'customers.manage',
 				'sales.view',
 				'sales.manage',
-				'purchasing.view'
+				'purchasing.view',
+				'requisitions.view',
+				'requisitions.request',
+				'approvals.view'
 			]
+		},
+		{
+			name: 'Department',
+			description: 'Asks the store for what a department, ward or site needs',
+			permissions: ['items.view', 'requisitions.view', 'requisitions.request']
 		},
 		{
 			name: 'Viewer',

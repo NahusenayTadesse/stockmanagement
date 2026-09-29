@@ -198,6 +198,74 @@
 							description="Stored encrypted; never shown again."
 						/>
 					{/if}
+					<h3 class="mt-2 font-semibold">Stock control</h3>
+					<InputComp
+						{form}
+						{errors}
+						name="costingMethod"
+						type="select"
+						label="Costing"
+						items={[
+							{ value: 'average', name: 'Moving average — every unit of an item costs the same' },
+							{ value: 'fifo', name: 'FIFO — the oldest purchases are used up first' }
+						]}
+						description="How stock that leaves (sold, written off, returned) is valued. Switching to FIFO starts from what is on hand at today's average cost; switching back carries on from FIFO's figures. Posted documents keep their values."
+					/>
+					<InputComp
+						{form}
+						{errors}
+						name="reserveStock"
+						type="select"
+						label="Reservations"
+						items={[
+							{ value: false, name: 'Off — stock is first come, first served' },
+							{
+								value: true,
+								name: 'Hold stock for accepted proformas and approved requisitions'
+							}
+						]}
+						description="When on, the till and other issues cannot take what is held for someone else. It is released when their sale or issue is posted, or the proforma is cancelled or runs out."
+					/>
+					<p class="text-sm text-muted-foreground">
+						Approvals (maker-checker): anything at or over these amounts, at cost, waits for someone
+						else with the right to approve. Leave empty for no approval.
+					</p>
+					<InputComp
+						{form}
+						{errors}
+						name="approveAdjustmentsOver"
+						type="number"
+						step="0.01"
+						label="Adjustments worth (ETB, optional)"
+					/>
+					<InputComp
+						{form}
+						{errors}
+						name="approveWriteOffs"
+						type="select"
+						label="Write-offs"
+						items={[
+							{ value: false, name: 'Only over the adjustment limit above' },
+							{ value: true, name: 'Always need approval, whatever the value' }
+						]}
+						description="A write-off is any adjustment that takes stock out: damage, expiry, loss."
+					/>
+					<InputComp
+						{form}
+						{errors}
+						name="approveCountsOver"
+						type="number"
+						step="0.01"
+						label="Stock counts whose differences come to (ETB, optional)"
+					/>
+					<InputComp
+						{form}
+						{errors}
+						name="approveOrdersOver"
+						type="number"
+						step="0.01"
+						label="Purchase orders worth (ETB, optional)"
+					/>
 					<Button type="submit" form="details">
 						{#if $delayed}<LoadingBtn name="Saving" />{:else}<Save /> Save{/if}
 					</Button>

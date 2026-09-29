@@ -138,6 +138,25 @@
 		</div>
 	</div>
 
+	{#if data.held.length}
+		<div class="rounded-md border p-3 text-sm">
+			<p class="font-medium">Stock held for this proforma</p>
+			<p class="mb-2 text-muted-foreground">
+				Other sales cannot take it until this one's sale is posted, or the proforma is cancelled
+				{q.validUntil ? 'or runs out' : ''}.
+			</p>
+			<ul class="list-inside list-disc">
+				{#each data.held as h (h.id)}
+					<li>{h.quantity} {h.unit} {h.item} at {h.location}</li>
+				{/each}
+			</ul>
+		</div>
+	{:else if data.reserves && q.status === 'accepted' && !q.locationId}
+		<p class="rounded-md border p-3 text-sm text-muted-foreground">
+			No stock is held: choose the location the goods will come from, and it will be.
+		</p>
+	{/if}
+
 	{#if data.sale}
 		<p class="rounded-md border p-3 text-sm">
 			Became sale

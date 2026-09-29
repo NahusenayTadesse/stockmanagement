@@ -1,4 +1,4 @@
-import { hasPermission } from '@nahu/admin-kit/server/permissions';
+import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { item } from '$lib/server/db/schema';
 import { orgCrud, orgIdOf } from '$lib/server/tenant';
 import { categoryOptions, supplierOptions, unitOptions } from '$lib/server/options';
@@ -10,7 +10,9 @@ import { db } from '$lib/server/db';
 import { stockBalance, uom } from '$lib/server/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { itemAdd, itemEdit } from '$lib/schemas/items';
-import type { PageServerLoad } from './$types';
+import { setFlash } from 'sveltekit-flash-message/server';
+import { generateBarcodes, itemsWithoutBarcode } from '$lib/server/barcodes';
+import type { Actions, PageServerLoad } from './$types';
 
 const crud = orgCrud({
 	table: item,
@@ -42,6 +44,13 @@ export const load: PageServerLoad = async (event) => {
 	const units = new Map(unitList.map((u) => [u.value, u.name]));
 	const onHand = new Map(totals.map((t) => [t.itemId, Number(t.onHand)]));
 	const symbol = new Map(symbols.map((u) => [u.id, u.symbol]));
+	// Variants hang under an item that is not itself a variant.
+	const itemRows = page.rows as (typeof item.$inferSelect)[];
+	const itemName = new Map(itemRows.map((r) => [r.id, r.name]));
+	const parentList = itemRows
+		.filter((r) => !r.parentItemId && !r.deletedAt)
+		.map((r) => ({ value: r.id, name: `${r.name} — ${r.sku}` }))
+		.sort((a, b) => a.name.localeCompare(b.name));
 
 	return {
 		...page,
@@ -54,16 +63,41 @@ export const load: PageServerLoad = async (event) => {
 			category: row.categoryId ? (categories.get(row.categoryId) ?? '—') : '—',
 			unit: units.get(row.baseUomId) ?? '—',
 			unitSymbol: symbol.get(row.baseUomId) ?? '',
-			onHand: onHand.get(row.id) ?? 0
+			onHand: onHand.get(row.id) ?? 0,
+			parentItemId: row.parentItemId ?? 0,
+			parent: row.parentItemId ? (itemName.get(row.parentItemId) ?? '—') : '',
+			variantLabel: row.variantLabel ?? ''
 		})),
+		parentList: [{ value: 0, name: '— Not a variant —' }, ...parentList],
 		categoryList: [{ value: 0, name: '— None —' }, ...categoryList],
 		unitList,
 		supplierList: [{ value: 0, name: '— None (services only) —' }, ...supplierList],
 		supplierForm: hasPermission(event.locals, 'suppliers.manage')
 			? await superValidate(zod4(supplierSchema))
 			: undefined,
-		canManage: hasPermission(event.locals, 'items.manage')
+		canManage: hasPermission(event.locals, 'items.manage'),
+		withoutBarcode: await itemsWithoutBarcode(orgId)
 	};
 };
 
-export const actions = crud.actions;
+export const actions: Actions = {
+	...crud.actions,
+
+	/** In-store EAN-13 codes for every item that has no barcode yet, ready for labels. */
+	generateBarcodes: async ({ locals, cookies }) => {
+		requirePermission(locals, 'items.manage');
+		const { given, clashes } = await db.transaction((tx) => generateBarcodes(tx, orgIdOf(locals)));
+		setFlash(
+			{
+				type: given || !clashes ? 'success' : 'error',
+				message:
+					(given ? `${given} item(s) given a barcode.` : 'Every item already has a barcode.') +
+					(clashes
+						? ` ${clashes} could not be: its in-store code is already typed onto another item.`
+						: '')
+			},
+			cookies
+		);
+		return { given, clashes };
+	}
+};

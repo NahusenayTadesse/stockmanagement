@@ -16,13 +16,16 @@ import {
 	postCount,
 	saveCounts
 } from '$lib/server/counts';
-import { StockError } from '$lib/server/stock/post';
+import { ApprovalRequired, StockError } from '$lib/server/stock/post';
+import { approvalState, closePendingFor, requestApproval } from '$lib/server/approvals';
+import { requireBranch } from '$lib/server/scope';
 import { countFound } from '$lib/schemas/counts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const orgId = orgIdOf(locals);
 	const count = await orgCount(orgId, Number(params.id));
+	await requireBranch(locals, count.branchId);
 	const canPost = hasPermission(locals, 'stock.post');
 	const canCount = hasPermission(locals, 'stock.draft');
 	const isOpen = count.status === 'open';
@@ -47,6 +50,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		isOpen && canCount ? lotOptions(orgId) : Promise.resolve([]),
 		superValidate(zod4(countFound))
 	]);
+	const approval = isOpen
+		? await approvalState(orgId, { kind: 'count', countId: count.id })
+		: { pending: null, last: null };
 
 	// A blind count hides what the system expects from the counters; whoever posts sees it to review.
 	const showExpected = !count.blind || canPost || !isOpen;
@@ -66,7 +72,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		lots: [{ value: 0, name: 'No lot' }, ...lots],
 		foundForm,
 		canCount,
-		canPost
+		canPost,
+		approval
 	};
 };
 
@@ -74,6 +81,7 @@ async function openCountOf(event: Parameters<Actions[string]>[0]) {
 	requirePermission(event.locals, 'stock.draft');
 	const orgId = orgIdOf(event.locals);
 	const count = await orgCount(orgId, Number(event.params.id));
+	await requireBranch(event.locals, count.branchId);
 	return { orgId, count };
 }
 
@@ -130,9 +138,11 @@ export const actions: Actions = {
 	post: async (event) => {
 		requirePermission(event.locals, 'stock.post');
 		const orgId = orgIdOf(event.locals);
+		const countId = Number(event.params.id);
+		await requireBranch(event.locals, (await orgCount(orgId, countId)).branchId);
 		try {
 			const result = await db.transaction((tx) =>
-				postCount(tx, { orgId, countId: Number(event.params.id), userId: event.locals.user?.id })
+				postCount(tx, { orgId, countId, userId: event.locals.user?.id })
 			);
 			setFlash(
 				{
@@ -145,6 +155,23 @@ export const actions: Actions = {
 			);
 			return { posted: true };
 		} catch (err) {
+			// Over the business's limit: recorded for a second person, not refused.
+			if (err instanceof ApprovalRequired) {
+				await requestApproval({
+					orgId,
+					userId: event.locals.user?.id,
+					subject: { kind: 'count', countId },
+					refusal: err
+				});
+				setFlash(
+					{
+						type: 'success',
+						message: `Sent for approval: ${err.reason}. It is posted once someone else approves it.`
+					},
+					event.cookies
+				);
+				return { sentForApproval: true };
+			}
 			if (err instanceof StockError) {
 				setFlash({ type: 'error', message: err.message }, event.cookies);
 				return fail(409, { stockError: err.message });
@@ -155,8 +182,9 @@ export const actions: Actions = {
 
 	cancel: async (event) => {
 		requirePermission(event.locals, 'stock.post');
-		const { count } = await openCountOf(event);
+		const { orgId, count } = await openCountOf(event);
 		if (count.status !== 'open') return fail(409);
+		await closePendingFor(orgId, { kind: 'count', countId: count.id });
 		await db
 			.update(stockCount)
 			.set({ status: 'cancelled', updatedBy: event.locals.user?.id })

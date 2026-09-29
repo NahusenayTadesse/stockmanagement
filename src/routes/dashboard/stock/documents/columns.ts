@@ -18,7 +18,12 @@ const sortable = (name: string) =>
 		})) satisfies ColumnDef<Row>['header'];
 
 /** `statuses` colours confirmed/pending/cancelled; map the document's own words onto them. */
-const STATUS_WORD = { posted: 'confirmed', draft: 'pending', cancelled: 'cancelled' } as const;
+const STATUS_WORD = {
+	posted: 'confirmed',
+	draft: 'pending',
+	in_transit: 'in transit',
+	cancelled: 'cancelled'
+} as const;
 
 export const columns: ColumnDef<Row>[] = [
 	{

@@ -8,6 +8,8 @@
 	import X from '@lucide/svelte/icons/x';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import Truck from '@lucide/svelte/icons/truck';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import LookupSection from '@nahu/admin-kit/components/lookup/LookupSection.svelte';
 	import type { LookupField } from '@nahu/admin-kit/components/lookup/types';
@@ -24,6 +26,7 @@
 	import { formatETB, formatEthiopianDate } from '@nahu/admin-kit/global';
 	import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
 	import { ADJUSTMENT_REASONS, DOCUMENT_LABELS } from '$lib/format';
+	import { LANDED_COST_KINDS } from '$lib/constants';
 	import { documentHeader, lineAdd, lineEdit } from '$lib/schemas/stock';
 	import DocumentHeaderFields from '../DocumentHeaderFields.svelte';
 	import PaymentCard from './PaymentCard.svelte';
@@ -75,11 +78,27 @@
 		picker: 'select',
 		required: false
 	};
-	const unitCost: LookupField = {
+	const unitCost = $derived<LookupField>({
 		name: 'unitCost',
-		label: 'Unit cost (per unit above)',
+		label: doc.currency ? 'Unit cost in birr (per unit above)' : 'Unit cost (per unit above)',
 		type: 'money',
+		required: false,
+		placeholder: doc.currency ? `Empty: the ${doc.currency} price × rate` : undefined
+	});
+	/** Receipts bought in another currency: the price as invoiced. */
+	const foreignUnitCost = $derived<LookupField>({
+		name: 'foreignUnitCost',
+		label: `Price in ${doc.currency} (per unit above)`,
+		type: 'number',
 		required: false
+	});
+	/** After posting: each line's share of freight, duty and the rest. */
+	const landedShare: LookupField = {
+		name: 'landedCost',
+		label: 'Landed cost',
+		type: 'money',
+		required: false,
+		inForm: false
 	};
 	const lotNumber: LookupField = {
 		name: 'lotNumber',
@@ -121,7 +140,17 @@
 
 	const lineFields = $derived<LookupField[]>(
 		type === 'receipt'
-			? [item, quantity, unit, unitCost, lotNumber, expiryDate, serials]
+			? [
+					item,
+					quantity,
+					unit,
+					...(doc.currency ? [foreignUnitCost] : []),
+					unitCost,
+					...(data.landed?.rows.length && !isDraft ? [landedShare] : []),
+					lotNumber,
+					expiryDate,
+					serials
+				]
 			: type === 'adjustment'
 				? [item, quantity, unit, lotPick, lotNumber, expiryDate, unitCost, serials]
 				: type === 'issue' && sells
@@ -130,6 +159,48 @@
 	);
 
 	const lineOptions = $derived({ itemId: data.items, uomId: data.units, lotId: data.lots });
+
+	const KIND_NAMES: Record<(typeof LANDED_COST_KINDS)[number], string> = {
+		freight: 'Freight',
+		insurance: 'Insurance',
+		duty: 'Customs duty',
+		excise: 'Excise tax',
+		surtax: 'Surtax',
+		clearing: 'Clearing agent',
+		transport: 'Transport',
+		other: 'Other'
+	};
+	const costFields: LookupField[] = [
+		{
+			name: 'kind',
+			label: 'Cost',
+			type: 'select',
+			choices: LANDED_COST_KINDS.map((k) => ({ value: k, name: KIND_NAMES[k] }))
+		},
+		{ name: 'description', label: 'Description', type: 'text', required: false },
+		{ name: 'amount', label: 'Amount (birr)', type: 'money' },
+		{
+			name: 'method',
+			label: 'Shared by',
+			type: 'select',
+			choices: [
+				{ value: 'value', name: 'Value (quantity × cost)' },
+				{ value: 'quantity', name: 'Quantity' },
+				{ value: 'weight', name: 'Weight (item weights)' }
+			]
+		},
+		{
+			name: 'supplierId',
+			label: 'Billed by (optional)',
+			type: 'reference',
+			options: 'suppliers',
+			display: 'supplier',
+			required: false
+		}
+	];
+
+	/** Transfers: how many of each line arrived, as typed on the receive sheet. */
+	const arrived = $state<Record<number, number>>({});
 
 	const details = $derived(
 		[
@@ -177,6 +248,23 @@
 						(isDraft && (type === 'issue' || type === 'receipt') ? ' (VAT fixed on posting)' : '') +
 						(data.unpriced ? ` · ${data.unpriced} line(s) unpriced` : '')
 				},
+			doc.currency && {
+				name: 'Currency',
+				value: `${doc.currency} at ${doc.exchangeRate} birr`
+			},
+			data.landed &&
+				data.landed.total > 0 && {
+					name: 'Landed costs',
+					value: `${formatETB(data.landed.total)} (freight, duty… — added to what the stock cost)`
+				},
+			(doc.driverName || doc.vehiclePlate) && {
+				name: 'Carried by',
+				value: [doc.driverName, doc.vehiclePlate].filter(Boolean).join(' · ')
+			},
+			doc.receivedAt && {
+				name: 'Received',
+				value: `${ethiopianDateTime(doc.receivedAt)} by ${data.names.receivedBy ?? '—'}`
+			},
 			doc.reference && { name: 'Reference', value: doc.reference },
 			doc.reason && {
 				name: 'Reason',
@@ -186,7 +274,8 @@
 			{ name: 'Prepared by', value: data.names.createdBy ?? '—' },
 			doc.postedAt && {
 				name: 'Posted',
-				value: `${ethiopianDateTime(doc.postedAt)} by ${data.names.postedBy ?? '—'}`
+				value: `${ethiopianDateTime(doc.postedAt)} by ${data.names.postedBy ?? '—'}`,
+				...(doc.status === 'in_transit' || doc.receivedAt ? { name: 'Dispatched' } : {})
 			}
 		].filter(Boolean) as { name: string; value: string | null; href?: string }[]
 	);
@@ -209,7 +298,7 @@
 							? 'destructive'
 							: 'secondary'}
 				>
-					{doc.status}
+					{doc.status === 'in_transit' ? 'in transit' : doc.status}
 				</Badge>
 			</h1>
 		</div>
@@ -229,6 +318,7 @@
 							form={headerData}
 							errors={headerErrors}
 							locations={data.locations}
+							destinations={data.destinations ?? undefined}
 							suppliers={data.suppliers}
 							supplierForm={data.supplierForm}
 							customers={data.customers}
@@ -242,7 +332,7 @@
 				</DialogComp>
 			{/if}
 
-			{#if isDraft && data.canPost}
+			{#if isDraft && data.canPost && !data.approval?.pending}
 				<form method="POST" action="?/cancel" use:enhance>
 					<Button type="submit" variant="outline"><X /> Cancel draft</Button>
 				</form>
@@ -294,9 +384,10 @@
 				</form>
 			{/if}
 
-			{#if doc.status === 'posted'}
+			{#if doc.status === 'posted' || doc.status === 'in_transit'}
 				<Button href="/dashboard/stock/documents/{doc.id}/print" target="_blank" variant="outline">
-					<Printer /> Print
+					<Printer />
+					{doc.status === 'in_transit' ? 'Print dispatch note' : 'Print'}
 				</Button>
 			{/if}
 		</div>
@@ -330,6 +421,132 @@
 				{/if}
 			</p>
 		</div>
+	{/if}
+
+	{#if data.approval?.pending}
+		{@const p = data.approval.pending}
+		<div
+			class="flex flex-wrap items-start justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+		>
+			<p class="flex items-start gap-2">
+				<ShieldCheck class="mt-0.5 size-4 shrink-0" />
+				<span>
+					<strong>Waiting for approval</strong> — asked by {p.requestedBy ?? 'someone'}
+					{ethiopianDateTime(p.requestedAt)}: {p.reason}. It is posted when someone with the right
+					to approve does so on the
+					<a class="underline" href={resolve('/dashboard/approvals')}>Approvals</a> page.
+				</span>
+			</p>
+			{#if data.canDraft}
+				<form method="POST" action="?/withdraw" use:enhance>
+					<Button type="submit" size="sm" variant="outline">Withdraw to change it</Button>
+				</form>
+			{/if}
+		</div>
+	{:else if data.approval?.last?.status === 'rejected'}
+		{@const l = data.approval.last}
+		<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+			<strong>Not approved</strong> by {l.decidedBy ?? 'someone'}{l.decisionNote
+				? `: ${l.decisionNote}`
+				: ''}. Change it and post again, or cancel it.
+		</div>
+	{/if}
+
+	{#if data.transit}
+		{@const t = data.transit}
+		<Card.Root>
+			<Card.Header>
+				<Card.Title class="flex items-center gap-2">
+					<Truck class="size-5" />
+					{doc.status === 'in_transit' ? 'On the way' : 'What arrived'}
+				</Card.Title>
+				<Card.Description>
+					{#if doc.status === 'in_transit'}
+						Sent to {data.names.to}. It is in transit until {data.names.to} says what arrived; anything
+						that did not is written off as lost in transit.
+					{:else}
+						Sent and received quantities. Differences were written off as lost in transit.
+					{/if}
+				</Card.Description>
+			</Card.Header>
+			<Card.Content>
+				<form
+					method="POST"
+					action="?/receive"
+					use:enhance={() =>
+						async ({ update }) =>
+							update({ reset: false })}
+					class="flex flex-col gap-3"
+				>
+					<div class="overflow-x-auto rounded-md border">
+						<table class="w-full text-sm">
+							<thead class="bg-muted/50 text-left">
+								<tr>
+									<th class="px-3 py-2">Item</th>
+									<th class="px-3 py-2 text-right">Sent</th>
+									<th class="px-3 py-2 text-right">Arrived</th>
+									<th class="px-3 py-2 text-right">Missing</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each t.lines as l (l.id)}
+									{@const got = t.canReceive ? (arrived[l.id] ?? l.sent) : (l.received ?? l.sent)}
+									<tr class="border-t align-top">
+										<td class="px-3 py-2">{l.item}</td>
+										<td class="px-3 py-2 text-right">{l.sent} {l.unit}</td>
+										<td class="px-3 py-2 text-right">
+											{#if t.canReceive && l.trackSerials}
+												<textarea
+													name="serials_{l.id}"
+													rows={Math.min(6, (l.serials ?? '').split('\n').length)}
+													aria-label="Serials of {l.item} that arrived"
+													class="w-48 rounded-md border bg-background px-2 py-1 font-mono text-xs"
+													>{l.serials}</textarea
+												>
+											{:else if t.canReceive}
+												<input
+													name="qty_{l.id}"
+													type="number"
+													min="0"
+													max={l.sent}
+													step="any"
+													value={l.sent}
+													oninput={(e) => (arrived[l.id] = Number(e.currentTarget.value))}
+													aria-label="Quantity of {l.item} that arrived"
+													class="h-9 w-24 rounded-md border bg-background px-2 text-right"
+												/>
+												<span class="ml-1 text-xs text-muted-foreground">{l.unit}</span>
+											{:else}
+												{l.received ?? '—'}
+												{l.unit}
+												{#if l.trackSerials && l.receivedSerials}
+													<div class="font-mono text-xs text-muted-foreground">
+														{l.receivedSerials.split('\n').join(', ')}
+													</div>
+												{/if}
+											{/if}
+										</td>
+										<td
+											class="px-3 py-2 text-right {l.sent - got > 0 && !l.trackSerials
+												? 'text-destructive'
+												: ''}"
+										>
+											{l.trackSerials
+												? ''
+												: `${Math.round((l.sent - got) * 10000) / 10000} ${l.unit}`}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+					{#if t.canReceive}
+						<Input name="note" placeholder="Note on the delivery (optional)" class="max-w-xl" />
+						<Button type="submit" class="self-start"><Check /> Receive</Button>
+					{/if}
+				</form>
+			</Card.Content>
+		</Card.Root>
 	{/if}
 
 	{#if stockError && isDraft}
@@ -542,6 +759,27 @@
 			/>
 		{/if}
 	</section>
+
+	{#if data.landed && (isDraft || data.landed.rows.length)}
+		<section class="flex flex-col gap-2">
+			<h2 class="text-xl font-semibold">Landed costs</h2>
+			<p class="text-sm text-muted-foreground">
+				Freight, insurance, customs duty, the clearing agent… in birr. When the receipt is posted
+				they are shared over its lines and added to what the stock cost. They are not owed to the
+				supplier of the goods.
+			</p>
+			<LookupSection
+				config={{ entity: 'Landed cost', plural: 'Landed costs', fields: costFields }}
+				rows={data.landed.rows}
+				addForm={data.landed.addForm}
+				editForm={data.landed.editForm}
+				canDelete={isDraft && data.canDraft}
+				options={{ supplierId: data.landed.suppliers }}
+				actions={{ add: '?/addCost', edit: '?/editCost', delete: '?/deleteCost' }}
+				readonly={!isDraft || !data.canDraft}
+			/>
+		</section>
+	{/if}
 
 	{#if data.returnsMade.length}
 		<section class="flex flex-col gap-2">
