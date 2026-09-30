@@ -35,3 +35,7 @@ project.inlang/cache/
 
 # test logins
 ACCOUNTS.md
+
+# The demo guide (PDF and the HTML it is rendered from): kept locally, never pushed
+docs/Stock-Management-Demo-Guide.pdf
+docs/demo-guide/
