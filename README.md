@@ -52,6 +52,63 @@ modules. Modules the seed imports must not import the kit's Vite-only helpers
 The first request after a boot seeds the `permissions` table from the route rules
 (`src/lib/access.ts`) and the code-only list in `src/lib/server/seedPermissions.ts`.
 
+## Deploying
+
+The demo runs at <https://stock.srv1912542.hstgr.cloud> on the `digital` server (`ssh digital`,
+AlmaLinux + CyberPanel/OpenLiteSpeed, MariaDB 10.11, Node 24 via nvm), the same way
+content-svelte is deployed. Layout on the box:
+
+- app: `/home/admin/apps/stock-management` — `build/`, `server.js`, `package.json`, `.env`,
+  `.tempFiles/` (uploads, `FILES_DIR`)
+- helpers and backups: `/home/admin/apps/stock-management-deploy` (`root-setup.sh`, dumps)
+- service: `stock-management.service`, `User=admin`, listening on `127.0.0.1:3020`; the
+  CyberPanel child domain `stock.srv1912542.hstgr.cloud` proxies to it and forces https
+
+`build/` is shipped on its own — there are no `node_modules` on the server — so every dependency
+has to be _inside_ the bundle. Vite does not do that by default: `ssr.noExternal` in
+`vite.config.ts` names the ones it would otherwise leave as bare imports, and
+`npm run verify:build` fails if any survive. A bare import that survives is a 500 on every route
+that reaches it and on no others, so a green build and a healthy homepage prove nothing; run
+`verify:build` before shipping.
+
+`npm run deploy` is the whole procedure: build, verify, hardlink the running build as
+`build.bak.<timestamp>`, prune to the newest two, rsync, SIGTERM, and poll `/health` until it
+answers, then curl the public routes over `ORIGIN`. `--dry-run` says what it would do and touches
+nothing; `--skip-build` ships the tree already in `build/`, and still verifies it. `DEPLOY_KEEP`
+changes how many backups survive, and refuses to go below one. The script prints the exact
+rollback command with the timestamp of the backup it just made.
+
+SIGTERM rather than `systemctl restart`, which would ask for a password the deploying user does
+not have: the unit is `Restart=always` with `RestartSec=3` and `server.js` closes cleanly, so
+systemd brings it back in about three seconds. `server.js` wraps adapter-node's handler because
+OpenLiteSpeed appends a second `Origin` header to every proxied request, which SvelteKit's CSRF
+check would otherwise reject on every form POST. It is not shipped by `npm run deploy`; copy it
+by hand (`scp server.js digital:~/apps/stock-management/`) when it changes.
+
+The script never touches the server's `.env`. It is a systemd `EnvironmentFile`, managed by hand
+there (`.env.example` lists the production-only variables: `PORT`, `HOST`, `FILES_DIR`,
+`BODY_SIZE_LIMIT`).
+
+**Database.** Run `npm run db:migrate:remote` (a dry run, through an SSH tunnel) before every
+deploy — `deploy.sh` does not check for pending migrations, and `/health` answers 200 even when
+every page 500s on a missing column. `-- --apply` takes a `mariadb-dump` into the deploy
+directory first, then runs `drizzle-kit migrate` against the tunnel. The demo data went up as a
+`mariadb-dump` of the local database (`stock_management-dump.sql` in the deploy directory,
+imported by `root-setup.sh`), so schema, migration log and data arrived together.
+`npm run db:seed:remote` rebuilds the two demo stores in place the same way the local seed does
+(`-- --fresh` removes and recreates them); restart the app afterwards so the permissions sync
+runs. Restoring a dump on the box needs `mariadb --skip-ssl`.
+
+**First-time setup** needs root once, which `admin` does not have:
+`sudo bash /home/admin/apps/stock-management-deploy/root-setup.sh` creates the database and
+user (password read from the app's `.env`), installs the unit, creates the child domain with
+`cyberpanel createChild` + `issueSSL`, and adds the proxy context to its vhost. Everything it edits
+is backed up first and restored if the site does not answer afterwards.
+
+Verifying: loopback curl only proves the public pages — session cookies are `Secure`, so signing
+in over `http://127.0.0.1:3020` silently fails. Test signed-in routes through the real origin.
+`journalctl -u stock-management` is readable as `admin`.
+
 ## How it fits together
 
 - **Tenancy.** `organization` is the tenant. Every business table has `org_id`; `locals.orgId`

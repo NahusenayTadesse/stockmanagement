@@ -6,6 +6,8 @@
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
+		"verify:build": "tsx scripts/verify-build.ts",
+		"deploy": "bash scripts/deploy.sh",
 		"preview": "vite preview",
 		"prepare": "(npm run i18n --silent || true) && (svelte-kit sync || echo '')",
 		"check": "npm run i18n --silent && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -18,8 +20,10 @@
 		"db:push": "echo 'db:push is disabled: against MariaDB it tried to TRUNCATE tables. Use npm run db:generate, review the SQL in drizzle/, then npm run db:migrate.' && exit 1",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
+		"db:migrate:remote": "bash scripts/migrate-remote.sh",
 		"db:studio": "drizzle-kit studio",
 		"db:seed": "tsx --tsconfig scripts/tsconfig.json --env-file=.env scripts/seed.ts",
+		"db:seed:remote": "bash scripts/seed-remote.sh",
 		"i18n": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --emit-ts-declarations --strategy cookie preferredLanguage baseLocale"
 	},
 	"devDependencies": {

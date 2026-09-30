@@ -31,6 +31,34 @@ export default defineConfig({
 			strategy: ['cookie', 'preferredLanguage', 'baseLocale']
 		})
 	],
+	/**
+	 * What the server bundle must carry itself.
+	 *
+	 * The deploy ships `build/` alone — there are no `node_modules` on the
+	 * server — so a dependency Vite leaves as a bare import is a 500 on every
+	 * route whose chunk reaches it, and on no others. `npm run verify:build`
+	 * names whatever is still unresolved; the rule for this list is: add what
+	 * it prints, until it prints nothing. CommonJS packages need their whole
+	 * subtree named, because inlining one exposes the `require` calls inside it.
+	 */
+	ssr: {
+		noExternal: [
+			/* Outgoing mail (password resets, expiry digest). */
+			'nodemailer',
+			/* Barcodes on labels and documents. */
+			'bwip-js',
+			/* QR codes on invoices, and its CommonJS subtree. */
+			'qrcode',
+			'pngjs',
+			'dijkstrajs',
+			'encode-utf8',
+			/* The Excel importer. */
+			'read-excel-file'
+		],
+		/* CommonJS packages inlined above are pre-bundled to ESM so the dev
+		   server evaluates them the way the production build does. */
+		optimizeDeps: { include: ['nodemailer', 'bwip-js', 'qrcode', 'read-excel-file'] }
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [
