@@ -120,7 +120,11 @@ const handleSiteAdmin: Handle = async ({ event, resolve }) => {
 };
 
 /** What a business whose subscription has lapsed can still reach: paying, and leaving. */
-const OPEN_WHEN_BLOCKED = ['/dashboard/subscription', '/dashboard/change-password'];
+const OPEN_WHEN_BLOCKED = [
+	'/dashboard/subscription',
+	'/dashboard/change-password',
+	'/dashboard/help'
+];
 
 /**
  * The subscription gate. A business that has not paid (or was suspended) keeps its sign-in and

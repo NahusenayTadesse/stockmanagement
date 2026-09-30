@@ -15,7 +15,9 @@
 		tabTitle={m.admin_users_title()}
 	>
 		{#snippet actions()}
-			<Button href="/dashboard/admin-panel/users/add-users"><Plus /> {m.admin_users_add()}</Button>
+			<Button href="/dashboard/admin-panel/users/add-users" data-tour="users-add"
+				><Plus /> {m.admin_users_add()}</Button
+			>
 		{/snippet}
 	</PageHeader>
 

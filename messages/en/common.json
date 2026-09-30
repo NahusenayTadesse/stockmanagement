@@ -162,5 +162,6 @@
 	"common_from": "From",
 	"common_to": "To",
 	"common_show": "Show",
-	"common_any": "Any"
+	"common_any": "Any",
+	"nav_help": "Help"
 }

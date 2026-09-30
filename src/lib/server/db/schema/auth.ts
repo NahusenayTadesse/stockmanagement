@@ -107,6 +107,11 @@ export const organization = mysqlTable('organization', {
 		.default(10000)
 		.notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
+	/**
+	 * When an owner put the getting-started guide away (Dashboard → Hide the guide). Empty: it
+	 * shows to whoever runs the business until every step is done.
+	 */
+	guideHiddenAt: datetime('guide_hidden_at'),
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 	updatedAt: timestamp('updated_at')
 		.default(sql`CURRENT_TIMESTAMP(3) on update CURRENT_TIMESTAMP(3)`)

@@ -1,0 +1,1 @@
+ALTER TABLE `organization` ADD `guide_hidden_at` datetime;

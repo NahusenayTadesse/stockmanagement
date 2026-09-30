@@ -33,6 +33,7 @@ import ChartLine from '@lucide/svelte/icons/chart-line';
 import ScanSearch from '@lucide/svelte/icons/scan-search';
 import MessageSquare from '@lucide/svelte/icons/message-square';
 import CreditCard from '@lucide/svelte/icons/credit-card';
+import LifeBuoy from '@lucide/svelte/icons/life-buoy';
 import type { Component } from 'svelte';
 import { m } from '$lib/paraglide/messages.js';
 import type { IconProps } from '@lucide/svelte';
@@ -292,6 +293,13 @@ export const NAVIGATION: NavItem[] = [
 		},
 		url: '/dashboard/admin-panel',
 		icon: Settings
+	},
+	{
+		get title() {
+			return m.nav_help();
+		},
+		url: '/dashboard/help',
+		icon: LifeBuoy
 	}
 ];
 

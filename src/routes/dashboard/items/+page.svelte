@@ -152,7 +152,12 @@
 		description={m.stock_items_intro()}
 	>
 		{#snippet actions()}
-			<Button variant="outline" size="sm" href={resolve('/dashboard/items/labels')}>
+			<Button
+				variant="outline"
+				size="sm"
+				href={resolve('/dashboard/items/labels')}
+				data-tour="items-labels"
+			>
 				<Barcode class="size-4" />
 				{m.stock_print_labels()}
 			</Button>
@@ -175,15 +180,17 @@
 			}}
 		/>
 	{/if}
-	<LookupSection
-		config={{ entity: m.stock_item(), plural: m.common_items(), fields, extraColumns }}
-		rows={data.rows}
-		addForm={data.addForm}
-		editForm={data.editForm}
-		canDelete={data.isSuperAdmin}
-		{options}
-		actions={{ add: '?/add', edit: '?/edit', delete: '?/delete' }}
-		schemas={{ add: itemAdd, edit: itemEdit }}
-		readonly={!data.canManage}
-	/>
+	<div data-tour="items-list">
+		<LookupSection
+			config={{ entity: m.stock_item(), plural: m.common_items(), fields, extraColumns }}
+			rows={data.rows}
+			addForm={data.addForm}
+			editForm={data.editForm}
+			canDelete={data.isSuperAdmin}
+			{options}
+			actions={{ add: '?/add', edit: '?/edit', delete: '?/delete' }}
+			schemas={{ add: itemAdd, edit: itemEdit }}
+			readonly={!data.canManage}
+		/>
+	</div>
 </div>

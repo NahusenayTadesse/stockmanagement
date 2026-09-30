@@ -278,7 +278,13 @@
 			description={m.sales_pos_open_intro()}
 		/>
 		{#if form?.refused}<p class="text-sm text-destructive">{form.refused}</p>{/if}
-		<form method="POST" action="?/openShift" use:enhance class="flex flex-col gap-3">
+		<form
+			method="POST"
+			action="?/openShift"
+			use:enhance
+			class="flex flex-col gap-3"
+			data-tour="pos-open"
+		>
 			<label class="flex flex-col gap-1 text-sm">
 				{m.sales_pos_sells_from()}
 				<select name="locationId" class="h-10 rounded-md border bg-background px-2" required>
@@ -296,7 +302,7 @@
 	</div>
 {:else}
 	<div class="flex flex-col gap-3">
-		<div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+		<div class="flex flex-wrap items-center justify-between gap-2 text-sm" data-tour="pos-shift">
 			<p class="text-muted-foreground">
 				{m.sales_pos_till_at()} <strong class="text-foreground">{data.shift.location}</strong> · {m.sales_pos_shift_opened(
 					{ when: ethiopianDateTime(data.shift.openedAt) }

@@ -26,7 +26,10 @@
 </script>
 
 <Sidebar.Root collapsible="offcanvas">
-	<Sidebar.Content class="h-full [scrollbar-width:thin] overflow-y-auto pt-4 {appSurface}">
+	<Sidebar.Content
+		class="h-full [scrollbar-width:thin] overflow-y-auto pt-4 {appSurface}"
+		data-tour="sidebar"
+	>
 		<Sidebar.Group>
 			<div class="flex items-center gap-2 px-2 pb-2">
 				{#if logo}

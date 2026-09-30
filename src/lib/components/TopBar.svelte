@@ -35,13 +35,19 @@
 >
 	<Sidebar.Trigger />
 	<div class="flex items-center gap-2">
-		<Search />
-		<LanguageSwitch />
+		<span class="inline-flex" data-tour="search"><Search /></span>
+		<span class="inline-flex" data-tour="language"><LanguageSwitch /></span>
 		<DarkMode />
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
-					<Button {...props} variant="ghost" size="icon" aria-label={m.common_your_account()}>
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon"
+						aria-label={m.common_your_account()}
+						data-tour="account"
+					>
 						<CircleUser />
 					</Button>
 				{/snippet}

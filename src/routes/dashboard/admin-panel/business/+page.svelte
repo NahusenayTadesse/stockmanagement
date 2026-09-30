@@ -36,7 +36,7 @@
 
 	<div class="grid gap-6 lg:grid-cols-2">
 		<Card.Root>
-			<Card.Header>
+			<Card.Header data-tour="business-details">
 				<Card.Title>{m.admin_biz_details()}</Card.Title>
 			</Card.Header>
 			<Card.Content>
@@ -268,7 +268,7 @@
 						step="0.01"
 						label={m.admin_biz_orders_over()}
 					/>
-					<Button type="submit" form="details">
+					<Button type="submit" form="details" data-tour="business-save">
 						{#if $delayed}<LoadingBtn name={m.common_saving()} />{:else}<Save />
 							{m.common_save()}{/if}
 					</Button>
@@ -308,6 +308,7 @@
 					use:logo.enhance
 					id="logo"
 					class="flex flex-col gap-3"
+					data-tour="business-logo"
 				>
 					<FileUpload form={logoData} name="logo" placeholder={m.admin_biz_logo_placeholder()} />
 					{#if $logoErrors.logo}<span class="text-sm text-destructive">{$logoErrors.logo}</span

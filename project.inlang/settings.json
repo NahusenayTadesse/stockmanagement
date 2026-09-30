@@ -15,7 +15,8 @@
 			"./messages/{locale}/reports.json",
 			"./messages/{locale}/site.json",
 			"./messages/{locale}/billing.json",
-			"./messages/{locale}/platform.json"
+			"./messages/{locale}/platform.json",
+			"./messages/{locale}/help.json"
 		]
 	},
 	"baseLocale": "en",

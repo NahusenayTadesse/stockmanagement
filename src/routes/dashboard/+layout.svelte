@@ -11,6 +11,8 @@
 	import KitProvider from '@nahu/admin-kit/components/KitProvider.svelte';
 	import AppSidebar from '$lib/components/AppSidebar.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
+	import HelpButton from '$lib/components/help/HelpButton.svelte';
+	import TourRunner from '$lib/components/help/TourRunner.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { access } from '$lib/access';
 	import { ENTITIES, NAVIGATION } from '$lib/navigation';
@@ -89,7 +91,8 @@
 					{/if}
 				{/snippet}
 			</TopBar>
-			<div class="p-2 pt-4">
+			<!-- Room at the bottom, so the help button never sits on a table's last row. -->
+			<div class="p-2 pt-4 pb-20">
 				{#if billing}
 					<Notice tone={billing.tone} class="mb-4">
 						{billing.text}
@@ -104,4 +107,6 @@
 			</div>
 		</main>
 	</Sidebar.Provider>
+	<HelpButton />
+	<TourRunner />
 </KitProvider>

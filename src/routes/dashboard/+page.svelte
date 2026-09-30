@@ -6,6 +6,7 @@
 	import ExpiryCell from '@nahu/admin-kit/components/Table/expiry-cell.svelte';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
+	import GettingStarted from '$lib/components/help/GettingStarted.svelte';
 	import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.js';
 	import * as Card from '@nahu/admin-kit/components/ui/card/index.js';
 	import type { Stat } from '@nahu/admin-kit/components/reports/types';
@@ -238,6 +239,8 @@
 
 <div class="flex flex-col gap-6">
 	<PageHeader title={data.organization?.name ?? ''} tabTitle={m.common_dashboard()} />
+
+	{#if data.guide}<GettingStarted guide={data.guide} />{/if}
 
 	{#if data.money}
 		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

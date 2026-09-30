@@ -66,23 +66,30 @@
 	>
 		{#snippet actions()}
 			{#if data.canManage}
-				<DialogComp bind:open title={m.purchasing_add_supplier()} variant="default" IconComp={Plus}>
-					<form
-						method="POST"
-						action="?/add"
-						use:enhance
-						id="add-supplier"
-						class="flex flex-col gap-4"
+				<span class="inline-flex" data-tour="suppliers-add">
+					<DialogComp
+						bind:open
+						title={m.purchasing_add_supplier()}
+						variant="default"
+						IconComp={Plus}
 					>
-						<Errors allErrors={$allErrors} />
-						<SupplierFields {form} {errors} />
-						<Button type="submit" form="add-supplier">
-							{#if $delayed}<LoadingBtn
-									name={m.common_saving()}
-								/>{:else}{m.purchasing_add_supplier()}{/if}
-						</Button>
-					</form>
-				</DialogComp>
+						<form
+							method="POST"
+							action="?/add"
+							use:enhance
+							id="add-supplier"
+							class="flex flex-col gap-4"
+						>
+							<Errors allErrors={$allErrors} />
+							<SupplierFields {form} {errors} />
+							<Button type="submit" form="add-supplier">
+								{#if $delayed}<LoadingBtn
+										name={m.common_saving()}
+									/>{:else}{m.purchasing_add_supplier()}{/if}
+							</Button>
+						</form>
+					</DialogComp>
+				</span>
 			{/if}
 		{/snippet}
 	</PageHeader>

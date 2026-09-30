@@ -88,8 +88,9 @@ export const actions: Actions = {
 			return message(form, { type: 'error', text: m.admin_register_failed() }, { status: 500 });
 		}
 
+		// Straight into the welcome tour: the menu, the help button and the getting-started guide.
 		redirect(
-			'/dashboard',
+			'/dashboard?tour=welcome',
 			{
 				type: 'success',
 				message: m.billing_register_welcome({ business, days: pkg.trialDays, package: pkg.name })

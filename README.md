@@ -150,6 +150,25 @@ in over `http://127.0.0.1:3020` silently fails. Test signed-in routes through th
   rejects with a reason. Every route ends in `applyPayment()`, which claims the payment with a
   conditional UPDATE so it counts once, moves the business to the package paid for, and extends
   `paid_until` from the day after it ends (from today, if it had lapsed).
+- **Help** (`src/lib/help/`, `src/lib/components/help/`). One content module feeds the help
+  centre (`/dashboard/help`: search in either language, filters by area and role, and "only
+  screens I can open"), the round Help button in the corner of every dashboard page (the articles
+  for the screen you are on, pulsing with a "click me" bubble until it has been opened once in that
+  browser), and the getting-started guide. Articles are in `content.ts`, English and Amharic side by
+  side; the words around them are in `messages/{en,am}/help.json`.
+  - **Tours** (`tours.ts`, played by `TourRunner`) point at elements marked `data-tour="…"`: the
+    page is dimmed around the target, which is outlined and pulses, and a card beside it says what
+    it is. A tour starts from the address, `?tour=<id>`, so "Show me" in an article, the
+    getting-started guide or the Help button can open another screen with its tour running. A
+    step whose target is missing is skipped when `optional`, and otherwise shown in the middle of
+    the screen. New owners land in the `welcome` tour straight after registering.
+  - **Getting started** (`src/lib/server/gettingStarted.ts`) is a card on the Dashboard for whoever
+    holds `business.manage`: seven steps, each ticked from the business's own data (items exist, a
+    sale was posted, a second user…), each with "Show me". Hiding it sets
+    `organization.guide_hidden_at`; Help brings it back.
+  - Adding an article: add it to `HELP_TOPICS` with both languages; give it a `path` to open and a
+    `tour` if one exists. `content.test.ts` fails on a missing translation, an unknown screen, or a
+    tour that belongs to another page.
 - **The site admin** (`/admin`, users flagged `site_admin`; anyone else gets a 404 from
   `handleSiteAdmin`). Overview, every business with its subscription (change package or end date,
   complimentary, record a payment taken by hand, suspend and resume), payments and receipts to

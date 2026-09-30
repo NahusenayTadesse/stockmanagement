@@ -2,7 +2,9 @@ import { fail } from '@sveltejs/kit';
 import { redirect } from 'sveltekit-flash-message/server';
 import { auth } from '$lib/server/auth';
 import { orgIdOf } from '$lib/server/tenant';
-import { hasPermission } from '@nahu/admin-kit/server/permissions';
+import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
+import { gettingStarted, setGuideHidden } from '$lib/server/gettingStarted';
+import { flashDone } from '$lib/server/actions';
 import { dashboardStats } from '$lib/server/stock/queries';
 import { localToday } from '@nahu/admin-kit/time';
 import { datePresets, transactionTotals } from '$lib/server/transactions';
@@ -18,6 +20,9 @@ import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
 
 const toLoc = alias(location, 'to_loc');
+
+/** Who sees the getting-started guide and may put it away: whoever runs the business. */
+const GUIDE_PERMISSION = 'business.manage';
 
 /** Transfers on the road, sent from or to the viewer's branches. */
 async function inTransitCount(orgId: number, scope: number[] | null) {
@@ -78,10 +83,20 @@ export const load: PageServerLoad = async ({ locals }) => {
 			? await inTransitCount(orgId, await branchScope(locals))
 			: 0
 	};
-	return { stats, money, credit, attention };
+	// The getting-started guide, for whoever runs the business, until it is put away.
+	const guide = hasPermission(locals, GUIDE_PERMISSION) ? await gettingStarted(orgId) : null;
+	return { stats, money, credit, attention, guide };
 };
 
 export const actions: Actions = {
+	/** Puts the getting-started guide away for the whole business. The help page brings it back. */
+	hideGuide: async (event) => {
+		requirePermission(event.locals, GUIDE_PERMISSION);
+		await setGuideHidden(orgIdOf(event.locals), true);
+		flashDone(event, m.help_guide_hidden());
+		return { done: true as const };
+	},
+
 	logout: async (event) => {
 		if (!event.locals.session) return fail(401);
 		await auth.api.signOut({ headers: event.request.headers });

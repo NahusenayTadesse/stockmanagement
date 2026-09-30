@@ -28,6 +28,13 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 <ModeWatcher />
-<Toaster richColors closeButton position="bottom-right" />
+<!-- Raised off the bottom edge: the dashboard's Help button lives in that corner. -->
+<Toaster
+	richColors
+	closeButton
+	position="bottom-right"
+	offset={{ right: '1rem', bottom: '5rem' }}
+	mobileOffset={{ right: '1rem', left: '1rem', bottom: '5rem' }}
+/>
 
 {@render children()}

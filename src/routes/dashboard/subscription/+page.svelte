@@ -192,7 +192,7 @@
 	{/if}
 
 	<!-- What the owner asked to see at a glance: package, status, last payment, what is unpaid. -->
-	<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+	<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-tour="subscription-status">
 		<Card.Root>
 			<Card.Header>
 				<Card.Description>{m.billing_package()}</Card.Description>
@@ -280,147 +280,149 @@
 		</p>
 
 		{#if canPay && manage.packages.length}
-			<PageSection title={m.billing_pay_title()} hint={m.billing_pay_hint()}>
-				<Card.Root>
-					<Card.Content class="flex flex-col gap-5">
-						<PackagePicker
-							packages={manage.packages}
-							bind:value={$form.packageId}
-							current={sub.package.id}
-						/>
+			<div data-tour="subscription-pay">
+				<PageSection title={m.billing_pay_title()} hint={m.billing_pay_hint()}>
+					<Card.Root>
+						<Card.Content class="flex flex-col gap-5">
+							<PackagePicker
+								packages={manage.packages}
+								bind:value={$form.packageId}
+								current={sub.package.id}
+							/>
 
-						{#if chosen}
-							<p class="text-sm text-muted-foreground">
-								{m.billing_pay_summary({
-									amount: priceText(chosen.price),
-									package: chosen.name,
-									period: periodText(chosen.billingMonths)
-								})}
-							</p>
-						{/if}
+							{#if chosen}
+								<p class="text-sm text-muted-foreground">
+									{m.billing_pay_summary({
+										amount: priceText(chosen.price),
+										package: chosen.name,
+										period: periodText(chosen.billingMonths)
+									})}
+								</p>
+							{/if}
 
-						<div class="flex flex-wrap gap-2">
-							{#if manage.chapa}
-								<form
-									method="POST"
-									action="?/pay"
-									class="contents"
-									use:formEnhance={() => {
-										paying = true;
-										return async ({ update }) => {
-											await update();
-											paying = false;
-										};
-									}}
-								>
-									<input type="hidden" name="packageId" value={$form.packageId} />
-									<Button type="submit" size="lg" disabled={paying || !chosen}>
-										<CreditCard />
-										{paying
-											? m.billing_opening_chapa()
-											: m.billing_pay_chapa({ amount: chosen ? priceText(chosen.price) : '' })}
+							<div class="flex flex-wrap gap-2">
+								{#if manage.chapa}
+									<form
+										method="POST"
+										action="?/pay"
+										class="contents"
+										use:formEnhance={() => {
+											paying = true;
+											return async ({ update }) => {
+												await update();
+												paying = false;
+											};
+										}}
+									>
+										<input type="hidden" name="packageId" value={$form.packageId} />
+										<Button type="submit" size="lg" disabled={paying || !chosen}>
+											<CreditCard />
+											{paying
+												? m.billing_opening_chapa()
+												: m.billing_pay_chapa({ amount: chosen ? priceText(chosen.price) : '' })}
+										</Button>
+									</form>
+								{/if}
+								{#if manage.accounts.length && !showTransfer}
+									<Button
+										size="lg"
+										variant={manage.chapa ? 'outline' : 'default'}
+										onclick={() => (showTransfer = true)}
+									>
+										<Landmark />
+										{manage.pendingTransfer ? m.billing_transfer_again() : m.billing_pay_bank()}
 									</Button>
-								</form>
-							{/if}
-							{#if manage.accounts.length && !showTransfer}
-								<Button
-									size="lg"
-									variant={manage.chapa ? 'outline' : 'default'}
-									onclick={() => (showTransfer = true)}
-								>
-									<Landmark />
-									{manage.pendingTransfer ? m.billing_transfer_again() : m.billing_pay_bank()}
-								</Button>
-							{/if}
-						</div>
-						{#if manage.chapa}
-							<p class="text-xs text-muted-foreground">{m.billing_chapa_note()}</p>
-						{/if}
-						{#if !manage.chapa && !manage.accounts.length}
-							<Notice tone="warning">
-								{m.billing_no_way_to_pay()}
-								<a class="underline" href="mailto:{SITE.email}">{SITE.email}</a>,
-								<a class="underline" href="tel:{telNumber(SITE.phones[0])}">{SITE.phones[0]}</a>
-							</Notice>
-						{/if}
-
-						{#if showTransfer}
-							<div class="flex flex-col gap-4 border-t pt-5">
-								<div>
-									<h3>{m.billing_transfer_title()}</h3>
-									<p class="text-sm text-muted-foreground">
-										{m.billing_transfer_hint({ amount: chosen ? priceText(chosen.price) : '' })}
-									</p>
-								</div>
-
-								<form
-									method="POST"
-									action="?/transfer"
-									enctype="multipart/form-data"
-									use:enhance
-									class="flex flex-col gap-4"
-								>
-									<Errors allErrors={$allErrors} />
-									<input type="hidden" name="packageId" value={$form.packageId} />
-
-									<fieldset class="grid gap-2">
-										<legend class="mb-2 text-sm font-medium">{m.billing_transfer_to()}</legend>
-										{#each manage.accounts as account (account.id)}
-											<label class="account">
-												<input
-													type="radio"
-													name="bankAccountId"
-													value={account.id}
-													bind:group={$form.bankAccountId}
-												/>
-												<span class="flex min-w-0 flex-col">
-													<span class="font-medium">{account.bankName}</span>
-													<span class="text-sm text-muted-foreground">{account.accountName}</span>
-												</span>
-												<span class="font-medium tabular-nums">
-													<Copy data={account.accountNumber} />
-												</span>
-											</label>
-										{/each}
-										{#if $errors.bankAccountId}
-											<span class="text-sm text-destructive">{$errors.bankAccountId}</span>
-										{/if}
-									</fieldset>
-
-									<InputComp
-										{form}
-										{errors}
-										name="reference"
-										label={m.billing_transfer_reference()}
-										placeholder={m.billing_transfer_reference_placeholder()}
-									/>
-
-									<div class="flex flex-col gap-2">
-										<span class="text-sm font-medium">{m.billing_transfer_receipt()}</span>
-										<FileUpload {form} name="receipt" placeholder={m.sales_file_placeholder()} />
-										{#if $errors.receipt}
-											<span class="text-sm text-destructive">{$errors.receipt}</span>
-										{/if}
-									</div>
-
-									<div class="flex flex-wrap gap-2">
-										<Button type="submit" disabled={$delayed}>
-											{#if $delayed}
-												<LoadingBtn name={m.billing_uploading()} />
-											{:else}
-												<Upload />{m.billing_send_receipt()}
-											{/if}
-										</Button>
-										<Button type="button" variant="ghost" onclick={() => (showTransfer = false)}>
-											{m.common_cancel()}
-										</Button>
-									</div>
-								</form>
+								{/if}
 							</div>
-						{/if}
-					</Card.Content>
-				</Card.Root>
-			</PageSection>
+							{#if manage.chapa}
+								<p class="text-xs text-muted-foreground">{m.billing_chapa_note()}</p>
+							{/if}
+							{#if !manage.chapa && !manage.accounts.length}
+								<Notice tone="warning">
+									{m.billing_no_way_to_pay()}
+									<a class="underline" href="mailto:{SITE.email}">{SITE.email}</a>,
+									<a class="underline" href="tel:{telNumber(SITE.phones[0])}">{SITE.phones[0]}</a>
+								</Notice>
+							{/if}
+
+							{#if showTransfer}
+								<div class="flex flex-col gap-4 border-t pt-5">
+									<div>
+										<h3>{m.billing_transfer_title()}</h3>
+										<p class="text-sm text-muted-foreground">
+											{m.billing_transfer_hint({ amount: chosen ? priceText(chosen.price) : '' })}
+										</p>
+									</div>
+
+									<form
+										method="POST"
+										action="?/transfer"
+										enctype="multipart/form-data"
+										use:enhance
+										class="flex flex-col gap-4"
+									>
+										<Errors allErrors={$allErrors} />
+										<input type="hidden" name="packageId" value={$form.packageId} />
+
+										<fieldset class="grid gap-2">
+											<legend class="mb-2 text-sm font-medium">{m.billing_transfer_to()}</legend>
+											{#each manage.accounts as account (account.id)}
+												<label class="account">
+													<input
+														type="radio"
+														name="bankAccountId"
+														value={account.id}
+														bind:group={$form.bankAccountId}
+													/>
+													<span class="flex min-w-0 flex-col">
+														<span class="font-medium">{account.bankName}</span>
+														<span class="text-sm text-muted-foreground">{account.accountName}</span>
+													</span>
+													<span class="font-medium tabular-nums">
+														<Copy data={account.accountNumber} />
+													</span>
+												</label>
+											{/each}
+											{#if $errors.bankAccountId}
+												<span class="text-sm text-destructive">{$errors.bankAccountId}</span>
+											{/if}
+										</fieldset>
+
+										<InputComp
+											{form}
+											{errors}
+											name="reference"
+											label={m.billing_transfer_reference()}
+											placeholder={m.billing_transfer_reference_placeholder()}
+										/>
+
+										<div class="flex flex-col gap-2">
+											<span class="text-sm font-medium">{m.billing_transfer_receipt()}</span>
+											<FileUpload {form} name="receipt" placeholder={m.sales_file_placeholder()} />
+											{#if $errors.receipt}
+												<span class="text-sm text-destructive">{$errors.receipt}</span>
+											{/if}
+										</div>
+
+										<div class="flex flex-wrap gap-2">
+											<Button type="submit" disabled={$delayed}>
+												{#if $delayed}
+													<LoadingBtn name={m.billing_uploading()} />
+												{:else}
+													<Upload />{m.billing_send_receipt()}
+												{/if}
+											</Button>
+											<Button type="button" variant="ghost" onclick={() => (showTransfer = false)}>
+												{m.common_cancel()}
+											</Button>
+										</div>
+									</form>
+								</div>
+							{/if}
+						</Card.Content>
+					</Card.Root>
+				</PageSection>
+			</div>
 		{/if}
 
 		<PageSection title={m.billing_history_title()} hint={m.billing_history_hint()}>

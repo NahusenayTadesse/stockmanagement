@@ -23,34 +23,44 @@
 	<PageHeader title={m.stock_docs_title()} description={m.stock_docs_intro()}>
 		{#snippet actions()}
 			{#if data.canDraft}
-				<DialogComp bind:open title={m.stock_docs_new()} variant="default" IconComp={Plus}>
-					<form method="POST" action="?/create" use:enhance id="create" class="flex flex-col gap-4">
-						<Errors allErrors={$allErrors} />
-						<DocumentHeaderFields
-							{form}
-							{errors}
-							locations={data.locations}
-							destinations={data.destinations}
-							suppliers={data.suppliers}
-							supplierForm={data.supplierForm}
-							customers={data.customers}
-							customerForm={data.customerForm}
-						/>
-						<Button type="submit" form="create">
-							{#if $delayed}<LoadingBtn
-									name={m.stock_creating()}
-								/>{:else}{m.stock_create_draft()}{/if}
-						</Button>
-					</form>
-				</DialogComp>
+				<span class="inline-flex" data-tour="documents-new">
+					<DialogComp bind:open title={m.stock_docs_new()} variant="default" IconComp={Plus}>
+						<form
+							method="POST"
+							action="?/create"
+							use:enhance
+							id="create"
+							class="flex flex-col gap-4"
+						>
+							<Errors allErrors={$allErrors} />
+							<DocumentHeaderFields
+								{form}
+								{errors}
+								locations={data.locations}
+								destinations={data.destinations}
+								suppliers={data.suppliers}
+								supplierForm={data.supplierForm}
+								customers={data.customers}
+								customerForm={data.customerForm}
+							/>
+							<Button type="submit" form="create">
+								{#if $delayed}<LoadingBtn
+										name={m.stock_creating()}
+									/>{:else}{m.stock_create_draft()}{/if}
+							</Button>
+						</form>
+					</DialogComp>
+				</span>
 			{/if}
 		{/snippet}
 	</PageHeader>
 
-	<DataTable
-		data={data.documents}
-		{columns}
-		fileName={m.stock_docs_title()}
-		facetKeys={['type', 'status']}
-	/>
+	<div data-tour="documents-list">
+		<DataTable
+			data={data.documents}
+			{columns}
+			fileName={m.stock_docs_title()}
+			facetKeys={['type', 'status']}
+		/>
+	</div>
 </div>

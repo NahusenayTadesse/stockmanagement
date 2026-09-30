@@ -17,6 +17,8 @@ export const access = createAccess({
 		// Open to everyone in the business: it is where a blocked business lands. Paying and the
 		// payment history need `subscription.manage`, checked on the page.
 		{ prefix: '/dashboard/subscription', permission: null },
+		// The help: every article, for everyone. What an article's screen needs is checked there.
+		{ prefix: '/dashboard/help', permission: null },
 		{ prefix: '/dashboard/admin-panel/users', permission: 'users.manage' },
 		{ prefix: '/dashboard/admin-panel/roles', permission: 'roles.manage' },
 		{ prefix: '/dashboard/admin-panel/business', permission: 'business.manage' },
