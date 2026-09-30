@@ -6,7 +6,7 @@ import { customType, int, mysqlTable, timestamp, varchar, index } from 'drizzle-
  * constraints: `db:push` exits 1 with no message at "check constraints fetching". Same storage,
  * no constraint, and the value still goes in and comes out as an object.
  */
-const jsonText = customType<{ data: unknown; driverData: string | null }>({
+export const jsonText = customType<{ data: unknown; driverData: string | null }>({
 	dataType: () => 'longtext',
 	toDriver: (value) => (value === null || value === undefined ? null : JSON.stringify(value)),
 	fromDriver: (value) => (value === null ? null : JSON.parse(value))

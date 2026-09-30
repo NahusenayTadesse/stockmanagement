@@ -7,20 +7,36 @@ import { auth } from '$lib/server/auth';
 import { db } from '$lib/server/db';
 import { organization, user } from '$lib/server/db/schema';
 import { createOrganization } from '$lib/server/seedPermissions';
+import {
+	packageOnSale,
+	packagesOnSale,
+	startSubscription
+} from '$lib/server/billing/subscriptions';
 import { registerSchema } from '$lib/schemas/auth';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
-import { invalidForm } from '$lib/server/actions';
+import { invalidForm, refuseForm } from '$lib/server/actions';
 
 export const load: PageServerLoad = async (event) => {
-	if (event.locals.user) redirect(302, '/dashboard');
-	return { form: await superValidate(zod4(registerSchema)) };
+	if (event.locals.user) redirect(302, event.locals.siteAdmin ? '/admin' : '/dashboard');
+
+	const packages = await packagesOnSale();
+	// The package the visitor clicked on the pricing page, else the one marked most popular.
+	const wanted = event.url.searchParams.get('package');
+	const chosen =
+		packages.find((p) => p.slug === wanted) ?? packages.find((p) => p.isFeatured) ?? packages[0];
+
+	return {
+		packages,
+		form: await superValidate({ packageId: chosen?.id }, zod4(registerSchema), { errors: false })
+	};
 };
 
 export const actions: Actions = {
 	/**
-	 * A new business and its owner, together. The owner gets the organization's owner role, which
-	 * holds every permission; everyone else is added by them from the Users screen.
+	 * A new business, its owner and its subscription, together. The owner gets the organization's
+	 * owner role, which holds every permission; everyone else is added by them from the Users
+	 * screen. The business starts on the chosen package's free trial and can work at once.
 	 *
 	 * The organization is made first, in a transaction, because the user row needs its id and role.
 	 * If creating the account then fails, the organization is removed again rather than left
@@ -30,7 +46,10 @@ export const actions: Actions = {
 		const form = await superValidate(event.request, zod4(registerSchema));
 		if (!form.valid) return invalidForm(form);
 
-		const { business, tin, phone, name, email, password } = form.data;
+		const { packageId, business, tin, phone, name, email, password } = form.data;
+
+		const pkg = await packageOnSale(packageId);
+		if (!pkg) return refuseForm(form, m.billing_package_gone(), { field: 'packageId' });
 
 		const [taken] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
 		if (taken) {
@@ -42,9 +61,11 @@ export const actions: Actions = {
 			);
 		}
 
-		const created = await db.transaction((tx) =>
-			createOrganization(tx, { name: business, tin, phone })
-		);
+		const created = await db.transaction(async (tx) => {
+			const org = await createOrganization(tx, { name: business, tin, phone });
+			await startSubscription(tx, org.orgId, pkg.id);
+			return org;
+		});
 
 		try {
 			// Through better-auth so the password is hashed the one way the system knows. Signs the
@@ -62,13 +83,17 @@ export const actions: Actions = {
 			});
 		} catch (err) {
 			console.error('registration failed', err);
+			// Its subscription goes with it: `org_id` cascades.
 			await db.delete(organization).where(eq(organization.id, created.orgId));
 			return message(form, { type: 'error', text: m.admin_register_failed() }, { status: 500 });
 		}
 
 		redirect(
 			'/dashboard',
-			{ type: 'success', message: m.admin_register_welcome({ business }) },
+			{
+				type: 'success',
+				message: m.billing_register_welcome({ business, days: pkg.trialDays, package: pkg.name })
+			},
 			event.cookies
 		);
 	}

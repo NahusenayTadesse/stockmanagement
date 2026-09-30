@@ -14,6 +14,9 @@ export const access = createAccess({
 		{ prefix: '/dashboard', permission: null, exact: true },
 		{ prefix: '/dashboard/files/', permission: null },
 		{ prefix: '/dashboard/change-password', permission: null },
+		// Open to everyone in the business: it is where a blocked business lands. Paying and the
+		// payment history need `subscription.manage`, checked on the page.
+		{ prefix: '/dashboard/subscription', permission: null },
 		{ prefix: '/dashboard/admin-panel/users', permission: 'users.manage' },
 		{ prefix: '/dashboard/admin-panel/roles', permission: 'roles.manage' },
 		{ prefix: '/dashboard/admin-panel/business', permission: 'business.manage' },
@@ -33,4 +36,16 @@ export const access = createAccess({
 		{ prefix: '/dashboard/reports', permission: 'reports.view' },
 		{ prefix: '/dashboard/transactions', permission: 'transactions.view' }
 	]
+});
+
+/**
+ * The site admin (`/admin`): Digital Construct's own console over every business's subscription.
+ * Not a permission a business can grant — `hooks.server.ts` opens it to users flagged
+ * `siteAdmin` and to nobody else — so it is kept apart from the rules above, which are what
+ * `seedPermissions` turns into grantable permissions.
+ */
+export const SITE_ADMIN = 'site.admin';
+export const adminAccess = createAccess({
+	root: '/admin',
+	rules: [{ prefix: '/admin', permission: SITE_ADMIN }]
 });

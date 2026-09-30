@@ -14,3 +14,4 @@ export * from './sales';
 export * from './control';
 export * from './sms';
 export * from './audit';
+export * from './platform';

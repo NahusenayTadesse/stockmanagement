@@ -101,3 +101,27 @@ export const LANDED_COST_METHODS = ['value', 'quantity', 'weight'] as const;
 
 /** What happened to a text message. `dry_run`: logged but not sent (`SMS_DRY_RUN=true`). */
 export const SMS_STATUSES = ['sent', 'failed', 'skipped', 'dry_run'] as const;
+
+// ── The platform: packages, subscriptions and what businesses pay Digital Construct ──
+
+/** How often a package is paid for, in months. */
+export const BILLING_PERIODS = [1, 3, 6, 12] as const;
+/**
+ * How a subscription payment was made: online through Chapa, by bank transfer with an uploaded
+ * receipt, or recorded by a site admin (cash, a cheque, a courtesy).
+ */
+export const SUBSCRIPTION_PAYMENT_METHODS = ['chapa', 'bank', 'manual'] as const;
+/**
+ * `pending`: started (Chapa) or waiting for the receipt to be checked (bank). `paid`: confirmed,
+ * and the subscription was extended. `failed`: Chapa said no. `rejected`: a site admin turned the
+ * receipt down. `cancelled`: replaced by a later attempt.
+ */
+export const SUBSCRIPTION_PAYMENT_STATUSES = [
+	'pending',
+	'paid',
+	'failed',
+	'rejected',
+	'cancelled'
+] as const;
+/** A message from the contact page: not yet looked at, or dealt with. */
+export const CONTACT_STATUSES = ['new', 'handled'] as const;

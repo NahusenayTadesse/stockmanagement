@@ -1,3 +1,5 @@
-# allow crawling everything by default
+# The public site is for everyone; what is behind a sign-in is not worth a crawler's time.
 User-agent: *
-Disallow:
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /api

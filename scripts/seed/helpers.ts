@@ -51,6 +51,7 @@ import {
 	stockDocumentLine,
 	stockMovement,
 	stockReservation,
+	subscriptionPayment,
 	supplier,
 	transactionAttachment,
 	transactions,
@@ -139,7 +140,12 @@ export async function removeBusiness(tx: Tx, ownerEmail: string) {
 			.select({ logo: organization.logo })
 			.from(organization)
 			.where(eq(organization.id, orgId));
-		for (const name of [...files.map((f) => f.fileName), org?.logo]) {
+		// So do the receipts it uploaded for its subscription; their rows go with the business.
+		const receipts = await tx
+			.select({ fileName: subscriptionPayment.receiptFile })
+			.from(subscriptionPayment)
+			.where(eq(subscriptionPayment.orgId, orgId));
+		for (const name of [...files, ...receipts].map((f) => f.fileName).concat(org?.logo ?? null)) {
 			if (name) fs.rmSync(path.join(FILES_DIR, name), { force: true });
 		}
 
@@ -792,13 +798,13 @@ export async function setLotStatus(
 // ── Money ────────────────────────────────────────────────────────────────────────────────────
 
 /** Where the kit stores uploads; the seed writes its sample files there directly. */
-const FILES_DIR = process.env.FILES_DIR ?? '.tempFiles';
+export const FILES_DIR = process.env.FILES_DIR ?? '.tempFiles';
 
 /**
  * A one-page PDF with a few lines of text, standing in for a transfer confirmation or receipt.
  * Marked as a sample on its face, so it can never pass for a real bank document.
  */
-function samplePdf(title: string, lines: string[]): Buffer {
+export function samplePdf(title: string, lines: string[]): Buffer {
 	const esc = (t: string) => t.replace(/[\\()]/g, (c) => `\\${c}`).replace(/[^\x20-\x7e]/g, '-');
 	const text = [
 		'BT /F1 18 Tf 50 780 Td (' + esc(title) + ') Tj ET',

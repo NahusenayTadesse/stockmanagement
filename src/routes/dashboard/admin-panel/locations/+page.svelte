@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import SettingsLookup from '../SettingsLookup.svelte';
+	import SettingsLookup from '$lib/components/SettingsLookup.svelte';
 	import { LOCATION_KINDS } from '$lib/format';
 	import { add, edit } from './schema';
 

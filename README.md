@@ -14,8 +14,13 @@ BETTER_AUTH_SECRET="…32+ random characters…"
 
 npm install
 npm run db:migrate  # create the tables
-npm run dev         # open /register to create a business and its owner
+npm run dev         # / is the public site; /register creates a business and its owner
 ```
+
+Optional, all in `.env.example`: `CHAPA_SECRET_KEY` and `CHAPA_WEBHOOK_SECRET` (online payment of
+subscriptions), `SITE_ADMIN_EMAIL` and `SITE_ADMIN_PASSWORD` (the site admin's account, made on
+the first request after a boot), `SITE_CONTACT_EMAIL` (where contact messages and notices of
+uploaded receipts are forwarded).
 
 ### Changing the schema
 
@@ -36,6 +41,13 @@ limit: give long foreign keys an explicit short name with `foreignKey({ name, �
 npm run db:seed -- --yes           # adds a hardware store and a tech store, if missing
 npm run db:seed -- --yes --fresh   # rebuilds both
 ```
+
+The seed also makes the platform's own data — the four default packages, the site admin
+(`SITE_ADMIN_EMAIL`, else `admin@digitalconstruct.io`, password `SITE_ADMIN_PASSWORD`, else
+`Secret123!`), two demo bank accounts — and gives each demo business a subscription in a
+different state: the hardware store paid up, the tech store three days late with a transfer
+receipt waiting to be checked, and a third business, Kolfe Spare Parts, blocked after an unpaid
+trial. Subscriptions are dated from the day the seed runs and are reset on every run.
 
 Two businesses with branches, staff on every role (password `Secret123!` — the script prints
 the logins) and a few months of receipts, transfers, sales, write-offs and drafts, purchase
@@ -111,6 +123,40 @@ in over `http://127.0.0.1:3020` silently fails. Test signed-in routes through th
 
 ## How it fits together
 
+- **The public site** (`src/routes/(site)`): home, packages and pricing, about, contact and
+  register, under one layout with the Digital Construct lockup. The company's details and the
+  product's name are in `src/lib/site.ts`; the copy is in `messages/{en,am}/site.json`. The brand
+  colours — navy `#071046` and green `#73c227`, sampled from the logo — override the kit's theme in
+  `src/routes/layout.css` for the whole product, dashboard included; on a dark page green becomes
+  the colour of actions. Headings on the site use Saira Condensed (`.display-1`–`.display-3`).
+  `static/brand/` holds the logo cut out for light and dark grounds.
+- **Packages and subscriptions** (`src/lib/billing.ts`, `src/lib/server/billing/`). A `package`
+  opens the whole application; packages differ in users, branches and how often they are paid
+  (`billing_months`). Every business has one `subscription`: its package and `paid_until`, the
+  last day covered. Its state is never stored — `subscriptionState()` reads it off the row and
+  the day: `trial`, `active`, `due` (late, inside the 7 days of grace), `blocked` (the trial ended
+  unpaid, or the grace ran out), `suspended` (closed by the site admin), `complimentary`.
+  Registering starts the chosen package's free trial and the registrant becomes the owner.
+- **The gate** (`handleSubscription` in `hooks.server.ts`). A blocked or suspended business keeps
+  its sign-in and its data; every request under `/dashboard` is turned to
+  `/dashboard/subscription` (a page view is redirected, a form action or endpoint answers 402).
+  The layout shows a line above every page when a trial or a period is about to end or a payment
+  is late. Package limits are checked where a user or branch is added (`seatRefusal`).
+- **Paying** (`/dashboard/subscription`, `subscription.manage` — owners by default). Online
+  through Chapa (`billing/chapa.ts`, ported from fixtec: the attempt is recorded, the owner goes
+  to Chapa's checkout, and the payment counts only after `verify` is asked server to server —
+  from the webhook `/api/chapa/webhook`, the callback `/api/chapa/callback`, or the owner landing
+  back on the page), or by bank transfer with an uploaded receipt that a site admin confirms or
+  rejects with a reason. Every route ends in `applyPayment()`, which claims the payment with a
+  conditional UPDATE so it counts once, moves the business to the package paid for, and extends
+  `paid_until` from the day after it ends (from today, if it had lapsed).
+- **The site admin** (`/admin`, users flagged `site_admin`; anyone else gets a 404 from
+  `handleSiteAdmin`). Overview, every business with its subscription (change package or end date,
+  complimentary, record a payment taken by hand, suspend and resume), payments and receipts to
+  check, packages, the bank accounts shown to payers, and messages from the contact page. The
+  site admin's account lives in its own business, "Digital Construct", whose subscription is
+  complimentary.
+
 - **Tenancy.** `organization` is the tenant. Every business table has `org_id`; `locals.orgId`
   comes from the signed-in user's row and every query filters by it. Simple lists use
   `orgCrud` (`src/lib/server/tenant.ts`), which is the kit's `childCrud` with the organization as
@@ -119,7 +165,7 @@ in over `http://127.0.0.1:3020` silently fails. Test signed-in routes through th
   per-user special permissions replace the role's. Each business gets an **Owner** role holding
   every permission (a super admin). You can only grant permissions you hold, and a business can
   never lose its last active owner.
-- **Accounts.** `/register` creates a business with its owner. Staff are added from
+- **Accounts.** `/register` creates a business with its owner and its subscription. Staff are added from
   Admin panel → Users. better-auth's public sign-up and admin endpoints are closed in
   `hooks.server.ts`; the admin plugin's HTTP API acts on every user across businesses.
 - **Items** have capability flags (lots, expiry, serials, leasable, controlled…) instead of a
@@ -401,7 +447,9 @@ in over `http://127.0.0.1:3020` silently fails. Test signed-in routes through th
     arguments, never by spreading it: its header is a getter, read in the viewer's language.
   - Pages use the kit's `PageHeader`, `PageSection`, `Notice`, `ConfirmAction`, `SingleTable`;
     the app's own shared components are in `src/lib/components` (filters, `DatePresets`,
-    `PostButton`, `StatCard`, `StackedText`).
+    `PostButton`, `StatCard`, `StackedText`, `TopBar` for both signed-in layouts,
+    `SettingsLookup` for a lookup list with its header, `PackagePicker`, `ReceiptLink`, and the
+    public site's `site/BrandLogo`, `site/PriceList`, `site/BinCard`).
   - Words and figures: `src/lib/format.ts` (labels, `qty`, `signedAmount`, `ethiopianDay`,
     `printedDay`), `src/lib/money.ts` (`cents`, `round4`).
   - Server actions answer through `src/lib/server/actions.ts` (`attempt`, `attemptForm`,

@@ -153,6 +153,12 @@ export const user = mysqlTable(
 		/** Business state and the sign-in gate. Distinct from `deletedAt`: a deactivated user comes back. */
 		isActive: boolean('is_active').default(true).notNull(),
 
+		/**
+		 * Digital Construct's own staff: may open the site admin (`/admin`), which sees every
+		 * business's subscription. Set by the platform seed only; no screen grants it.
+		 */
+		siteAdmin: boolean('site_admin').default(false).notNull(),
+
 		// better-auth admin plugin columns. See the note above: nothing in the app reads `role`.
 		role: varchar('role', { length: 64 }),
 		banned: boolean('banned').default(false),

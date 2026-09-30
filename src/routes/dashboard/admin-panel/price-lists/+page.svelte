@@ -2,7 +2,7 @@
 	import PageSection from '@nahu/admin-kit/components/PageSection.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
-	import SettingsLookup from '../SettingsLookup.svelte';
+	import SettingsLookup from '$lib/components/SettingsLookup.svelte';
 	import { add, edit } from './schema';
 
 	let { data } = $props();

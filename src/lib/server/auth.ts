@@ -69,7 +69,9 @@ export const auth = betterAuth({
 			orgId: { type: 'number', required: true, input: true },
 			roleId: { type: 'number', required: true, input: true },
 			branchId: { type: 'number', required: false, input: true },
-			isActive: { type: 'boolean', required: false, input: false, defaultValue: true }
+			isActive: { type: 'boolean', required: false, input: false, defaultValue: true },
+			// Never from input: only the platform seed makes a site admin.
+			siteAdmin: { type: 'boolean', required: false, input: false, defaultValue: false }
 		}
 	},
 

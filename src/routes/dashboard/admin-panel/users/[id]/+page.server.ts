@@ -32,6 +32,7 @@ import { editUserSchema, resetPasswordSchema } from '$lib/schemas/users';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
 import { invalidForm, refuseAction, refuseForm } from '$lib/server/actions';
+import { seatRefusal } from '$lib/server/billing/subscriptions';
 
 /** The user, if they belong to the viewer's business; with their role. */
 async function member(orgId: number, id: string) {
@@ -157,6 +158,12 @@ export const actions: Actions = {
 			if ((await activeOwnerCount(orgId, person.id)) === 0) {
 				return refuse(target.isOwner ? 'status' : 'role', m.admin_users_only_active_owner(), 409);
 			}
+		}
+
+		// Switching an account back on takes one of the package's places again.
+		if (status && !person.status) {
+			const noSeat = await seatRefusal(orgId, 'user');
+			if (noSeat) return refuse('status', noSeat, 409);
 		}
 
 		if (branchId) {

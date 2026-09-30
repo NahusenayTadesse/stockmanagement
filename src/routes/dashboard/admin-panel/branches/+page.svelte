@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import SettingsLookup from '../SettingsLookup.svelte';
+	import SettingsLookup from '$lib/components/SettingsLookup.svelte';
 	import { add, edit } from './schema';
 
 	let { data } = $props();

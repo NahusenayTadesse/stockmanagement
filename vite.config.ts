@@ -56,8 +56,10 @@ export default defineConfig({
 			'read-excel-file'
 		],
 		/* CommonJS packages inlined above are pre-bundled to ESM so the dev
-		   server evaluates them the way the production build does. */
-		optimizeDeps: { include: ['nodemailer', 'bwip-js', 'qrcode', 'read-excel-file'] }
+		   server evaluates them the way the production build does. The Excel
+		   reader is named by the entry the app imports: the package exports no
+		   root, and naming the bare package fails the dev server at start-up. */
+		optimizeDeps: { include: ['nodemailer', 'bwip-js', 'qrcode', 'read-excel-file/node'] }
 	},
 	test: {
 		expect: { requireAssertions: true },

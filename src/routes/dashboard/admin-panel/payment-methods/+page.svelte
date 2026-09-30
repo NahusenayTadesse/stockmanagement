@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import SettingsLookup from '../SettingsLookup.svelte';
+	import SettingsLookup from '$lib/components/SettingsLookup.svelte';
 	import { PAYMENT_KIND_CHOICES } from '$lib/schemas/transactions';
 	import { add, edit } from './schema';
 

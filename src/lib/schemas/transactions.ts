@@ -15,7 +15,7 @@ export const ATTACHMENT_TYPES = [
 ];
 
 /** A screenshot of a transfer or a PDF receipt. */
-const attachment = z
+export const attachment = z
 	.instanceof(File, { error: () => m.sales_file_choose() })
 	.refine((f) => f.size > 0, { error: () => m.sales_file_empty() })
 	.refine((f) => f.size <= MAX_ATTACHMENT_BYTES, { error: () => m.sales_file_too_big() })

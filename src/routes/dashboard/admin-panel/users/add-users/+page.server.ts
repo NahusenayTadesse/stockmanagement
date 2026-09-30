@@ -14,6 +14,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { and, inArray } from 'drizzle-orm';
 import { m } from '$lib/paraglide/messages.js';
 import { invalidForm, refuseForm } from '$lib/server/actions';
+import { seatRefusal } from '$lib/server/billing/subscriptions';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const orgId = orgIdOf(locals);
@@ -42,6 +43,10 @@ export const actions: Actions = {
 		if (!form.valid) return invalidForm(form);
 
 		const { name, email, password, role, branchId, branchIds } = form.data;
+
+		// The package says how many people the business may have.
+		const noSeat = await seatRefusal(orgId, 'user');
+		if (noSeat) return refuseForm(form, noSeat, { status: 409 });
 
 		const target = await orgRole(orgId, role);
 		if (!target) {

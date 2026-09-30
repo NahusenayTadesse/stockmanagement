@@ -32,6 +32,7 @@ import PackageX from '@lucide/svelte/icons/package-x';
 import ChartLine from '@lucide/svelte/icons/chart-line';
 import ScanSearch from '@lucide/svelte/icons/scan-search';
 import MessageSquare from '@lucide/svelte/icons/message-square';
+import CreditCard from '@lucide/svelte/icons/credit-card';
 import type { Component } from 'svelte';
 import { m } from '$lib/paraglide/messages.js';
 import type { IconProps } from '@lucide/svelte';
@@ -323,6 +324,13 @@ export const SETTINGS_SECTIONS: {
 				},
 				url: '/dashboard/admin-panel/sms',
 				icon: MessageSquare
+			},
+			{
+				get title() {
+					return m.billing_title();
+				},
+				url: '/dashboard/subscription',
+				icon: CreditCard
 			}
 		]
 	},
@@ -452,6 +460,57 @@ export const SETTINGS_SECTIONS: {
 		]
 	}
 ];
+
+/** The site admin's menu (`/admin`): Digital Construct's view over every business. */
+export const ADMIN_NAVIGATION: NavItem[] = [
+	{
+		get title() {
+			return m.platform_nav_overview();
+		},
+		url: '/admin',
+		icon: LayoutDashboard
+	},
+	{
+		get title() {
+			return m.platform_nav_businesses();
+		},
+		url: '/admin/businesses',
+		icon: Building2
+	},
+	{
+		get title() {
+			return m.platform_nav_payments();
+		},
+		url: '/admin/payments',
+		icon: Banknote
+	},
+	{
+		get title() {
+			return m.platform_nav_packages();
+		},
+		url: '/admin/packages',
+		icon: Package
+	},
+	{
+		get title() {
+			return m.platform_nav_bank_accounts();
+		},
+		url: '/admin/bank-accounts',
+		icon: Wallet
+	},
+	{
+		get title() {
+			return m.platform_nav_messages();
+		},
+		url: '/admin/messages',
+		icon: MessageSquare
+	}
+];
+
+/** Where the site admin's records live. */
+export const ADMIN_ENTITIES: Record<string, string> = {
+	business: '/admin/businesses'
+};
 
 /** Where each kind of record's page lives, so table cells can link to it. */
 export const ENTITIES: Record<string, string> = {

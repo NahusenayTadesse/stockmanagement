@@ -41,7 +41,8 @@ const CODE_ONLY_PERMISSIONS = [
 	'requisitions.request',
 	'requisitions.approve',
 	'approvals.decide',
-	'sms.send'
+	'sms.send',
+	'subscription.manage'
 ] as const;
 
 /** Wording for the permission checklist on the role and user screens. */
@@ -82,7 +83,9 @@ export const DESCRIPTIONS: Record<string, string> = {
 	'approvals.decide':
 		'Approve or reject large adjustments, write-offs, count differences and purchase orders',
 	'data.import': 'Import items, suppliers, customers and opening stock from a spreadsheet',
-	'sms.send': 'Text customers and suppliers: credit reminders, proformas, purchase orders and notes'
+	'sms.send':
+		'Text customers and suppliers: credit reminders, proformas, purchase orders and notes',
+	'subscription.manage': "See the business's package and payments, and pay for the subscription"
 };
 
 /** Every permission the system recognises, in a stable order. */

@@ -2,6 +2,7 @@
  * Money: recording it, checking it, listing it. Every query is filtered by the business first.
  */
 
+import { ownsReceipt } from '$lib/server/billing/payments';
 import { and, asc, desc, eq, gte, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { m } from '$lib/paraglide/messages.js';
 import { WriteRefused } from '@nahu/admin-kit/server/childCrud';
@@ -419,7 +420,8 @@ export async function addAttachment(
 }
 
 /**
- * Whether a stored file belongs to this business: a transaction attachment, or its logo. The file
+ * Whether a stored file belongs to this business: a transaction attachment, its logo, or a
+ * receipt for its subscription. The file
  * route asks before serving anything.
  */
 export async function ownsFile(orgId: number, fileName: string, reader: Writer = db) {
@@ -428,6 +430,8 @@ export async function ownsFile(orgId: number, fileName: string, reader: Writer =
 		.from(organization)
 		.where(and(eq(organization.id, orgId), eq(organization.logo, fileName)));
 	if (logo) return true;
+	// The transfer receipt it uploaded when paying for its subscription.
+	if (await ownsReceipt(orgId, fileName, reader)) return true;
 
 	const [row] = await reader
 		.select({ id: transactionAttachment.id })

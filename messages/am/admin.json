@@ -583,5 +583,6 @@
 	"admin_fd_col_status": "የመጨረሻ ፍተሻ",
 	"admin_fd_col_checked": "የተፈተሸበት",
 	"admin_fd_col_z": "የመጨረሻ Z ሪፖርት",
-	"admin_sms_col_error": "ስህተት"
+	"admin_sms_col_error": "ስህተት",
+	"admin_perm_subscription_manage": "የድርጅቱን ፓኬጅ እና ክፍያዎች ማየት፣ እና ለአገልግሎቱ መክፈል"
 }

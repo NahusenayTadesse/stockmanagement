@@ -8,6 +8,11 @@ export const loginSchema = z.object({
 export type LoginSchema = typeof loginSchema;
 
 export const registerSchema = z.object({
+	/** The package the business starts its trial on (`package.id`). */
+	packageId: z
+		.number({ error: () => m.billing_choose_package() })
+		.int()
+		.positive({ error: () => m.billing_choose_package() }),
 	business: z
 		.string()
 		.trim()

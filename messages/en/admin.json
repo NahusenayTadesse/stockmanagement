@@ -583,5 +583,6 @@
 	"admin_fd_col_status": "Last check",
 	"admin_fd_col_checked": "Checked",
 	"admin_fd_col_z": "Last Z report",
-	"admin_sms_col_error": "Error"
+	"admin_sms_col_error": "Error",
+	"admin_perm_subscription_manage": "See the business's package and payments, and pay for the subscription"
 }

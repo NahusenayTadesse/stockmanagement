@@ -1,10 +1,109 @@
+/*
+ * Saira Condensed: the display face of the public site, chosen for the squared, condensed letters
+ * of the Digital Construct wordmark. Noto Sans Ethiopic: Amharic, for every screen — without it a
+ * machine with no Ethiopic font shows boxes. First in the file: an @import after any rule is
+ * ignored.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@400..700&family=Saira+Condensed:wght@500;600;700&display=swap');
 @import '@nahu/admin-kit/styles/theme.css';
 
 /*
+ * Digital Construct's colours over the kit's theme, for the whole product: the public site, the
+ * sign-in screens, the site admin and each business's dashboard. Sampled from the logo
+ * (`static/digital-construct-logo.png`): the navy of the letters, the green of the corner block.
+ *
+ * On a light page navy is the colour of actions and green is the mark beside them; green on white
+ * is too pale to read, so text that must be green uses the darker `--brand-green-ink`. On a dark
+ * page the roles swap: the page is navy and green is what you press.
+ */
+:root {
+	--brand-navy: #071046;
+	--brand-green: #73c227;
+	--brand-green-ink: #3d7a0a;
+
+	--background: #f5f6fa;
+	--foreground: #071046;
+	--card: #ffffff;
+	--card-foreground: #071046;
+	--popover: #ffffff;
+	--popover-foreground: #071046;
+
+	--primary: #071046;
+	--primary-foreground: #ffffff;
+
+	--secondary: #eceef6;
+	--secondary-foreground: #071046;
+	--muted: #eceef6;
+	--muted-foreground: #565c80;
+	--accent: #e8f4da;
+	--accent-foreground: #071046;
+
+	--border: #dadde9;
+	--input: #c9cde0;
+	--ring: #5fa81b;
+
+	--chart-1: #2a38a6;
+	--chart-2: #5fa81b;
+
+	--sidebar: #ffffff;
+	--sidebar-foreground: #121a52;
+	--sidebar-primary: #071046;
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-accent: #eceef6;
+	--sidebar-accent-foreground: #071046;
+	--sidebar-border: #dadde9;
+	--sidebar-ring: #5fa81b;
+}
+
+.dark {
+	--brand-green-ink: #8fd64a;
+
+	--background: #040824;
+	--foreground: #eceef8;
+	--card: #0a1140;
+	--card-foreground: #eceef8;
+	--popover: #0a1140;
+	--popover-foreground: #eceef8;
+
+	--primary: #73c227;
+	--primary-foreground: #071046;
+
+	--secondary: #131b57;
+	--secondary-foreground: #eceef8;
+	--muted: #131b57;
+	--muted-foreground: #a6accf;
+	--accent: #18226b;
+	--accent-foreground: #eceef8;
+
+	--border: rgb(255 255 255 / 0.11);
+	--input: rgb(255 255 255 / 0.17);
+	--ring: #73c227;
+
+	--chart-1: #7f8cf0;
+	--chart-2: #73c227;
+
+	--sidebar: #070d38;
+	--sidebar-foreground: #e4e7f6;
+	--sidebar-primary: #73c227;
+	--sidebar-primary-foreground: #071046;
+	--sidebar-accent: #18226b;
+	--sidebar-accent-foreground: #eceef8;
+	--sidebar-border: rgb(255 255 255 / 0.11);
+	--sidebar-ring: #73c227;
+}
+
+@theme inline {
+	--color-brand-navy: var(--brand-navy);
+	--color-brand-green: var(--brand-green);
+	--color-brand-green-ink: var(--brand-green-ink);
+	--font-display: 'Saira Condensed', 'Noto Sans Ethiopic', 'Inter', ui-sans-serif, sans-serif;
+}
+
+/*
  * Amharic. Ge'ez script needs an Ethiopic font, and the Latin one the theme uses has none, so the
- * browser falls back to whatever it finds. Name the good ones first: Noto Sans Ethiopic (Android,
- * most Linux), Nyala (Windows), Kefa (macOS/iOS), Abyssinica SIL. Latin text in an Amharic page
- * (SKUs, numbers, ETB) still takes the theme's font, which comes first.
+ * browser falls back to whatever it finds. Name the good ones first: Noto Sans Ethiopic (loaded
+ * above; also on Android and most Linux), Nyala (Windows), Kefa (macOS/iOS), Abyssinica SIL. Latin
+ * text in an Amharic page (SKUs, numbers, ETB) still takes the theme's font, which comes first.
  */
 :root:lang(am) {
 	font-family:
@@ -14,4 +113,96 @@
 :lang(am) body {
 	/* Ge'ez glyphs sit taller than Latin; a little more room keeps lines from touching. */
 	line-height: 1.6;
+}
+
+/*
+ * The public site's headings. The kit's theme sizes `h1`–`h3` for a working screen with plain
+ * (unlayered) rules, which Tailwind's utilities cannot override; these are plain rules too, and a
+ * class outranks an element. Condensed, heavy and tight: the wordmark's voice.
+ */
+.display-1,
+.display-2,
+.display-3 {
+	font-family: var(--font-display);
+	font-weight: 700;
+	letter-spacing: 0;
+	text-wrap: balance;
+}
+.display-1 {
+	font-size: clamp(2.6rem, 1.4rem + 5.2vw, 5rem);
+	line-height: 0.98;
+}
+.display-2 {
+	font-size: clamp(2rem, 1.4rem + 2.6vw, 3.25rem);
+	line-height: 1.04;
+}
+.display-3 {
+	font-size: clamp(1.4rem, 1.2rem + 0.8vw, 1.75rem);
+	font-weight: 600;
+	line-height: 1.15;
+}
+/* Ge'ez has no condensed cut: the same sizes would run a third wider and taller. */
+:lang(am) .display-1 {
+	font-size: clamp(2rem, 1.2rem + 3.4vw, 3.5rem);
+	line-height: 1.2;
+}
+:lang(am) .display-2 {
+	font-size: clamp(1.6rem, 1.2rem + 1.8vw, 2.4rem);
+	line-height: 1.25;
+}
+:lang(am) .display-3 {
+	font-size: clamp(1.2rem, 1.1rem + 0.5vw, 1.45rem);
+	line-height: 1.35;
+}
+
+/*
+ * The public site's shared pieces, used by every page under `routes/(site)`: the page's measure,
+ * the paragraph under a heading, the list whose bullet is the mark's green block, and the square
+ * number of a step in a sequence.
+ */
+.site-wrap {
+	width: 100%;
+	max-width: 72rem;
+	margin-inline: auto;
+	padding-inline: 1rem;
+}
+@media (min-width: 40rem) {
+	.site-wrap {
+		padding-inline: 1.5rem;
+	}
+}
+.site-section {
+	padding-block: clamp(3.5rem, 8vw, 6rem);
+}
+.site-lede {
+	max-width: 38rem;
+	font-size: 1.125rem;
+	line-height: 1.6;
+	color: var(--muted-foreground);
+}
+.site-square {
+	position: relative;
+	padding-left: 1.4rem;
+	line-height: 1.5;
+}
+.site-square::before {
+	content: '';
+	position: absolute;
+	top: 0.45em;
+	left: 0;
+	width: 0.6rem;
+	height: 0.6rem;
+	background: var(--brand-green);
+}
+.site-number {
+	display: grid;
+	width: 2.5rem;
+	height: 2.5rem;
+	margin-bottom: 1rem;
+	place-items: center;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	font-family: var(--font-display);
+	font-size: 1.4rem;
+	font-weight: 700;
 }

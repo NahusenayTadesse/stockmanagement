@@ -12,7 +12,10 @@
 			"./messages/{locale}/sales.json",
 			"./messages/{locale}/purchasing.json",
 			"./messages/{locale}/admin.json",
-			"./messages/{locale}/reports.json"
+			"./messages/{locale}/reports.json",
+			"./messages/{locale}/site.json",
+			"./messages/{locale}/billing.json",
+			"./messages/{locale}/platform.json"
 		]
 	},
 	"baseLocale": "en",

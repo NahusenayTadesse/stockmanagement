@@ -5,7 +5,7 @@
 	import { enhance } from '$app/forms';
 	import Activity from '@lucide/svelte/icons/activity';
 	import FileClock from '@lucide/svelte/icons/file-clock';
-	import SettingsLookup from '../SettingsLookup.svelte';
+	import SettingsLookup from '$lib/components/SettingsLookup.svelte';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import DataTable from '@nahu/admin-kit/components/Table/data-table.svelte';
 	import { renderSnippet } from '@nahu/admin-kit/components/ui/data-table/index.js';

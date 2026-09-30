@@ -21,6 +21,9 @@ export const load = async ({ locals, url }) => {
 		permList: locals.permList,
 		isSuperAdmin: locals.isSuperAdmin,
 		user: { id: locals.user.id, name: locals.user.name, email: locals.user.email },
-		organization: org
+		organization: org,
+		// For the banner: a trial running out, a payment due. Set by the gate in `hooks.server.ts`.
+		subscription: locals.subscription,
+		siteAdmin: locals.siteAdmin
 	};
 };

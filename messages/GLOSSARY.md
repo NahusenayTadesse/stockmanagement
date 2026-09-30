@@ -7,7 +7,8 @@ says, not a coined term nobody recognises.
 
 ## Conventions
 
-- Message files: `messages/{en,am}/<area>.json`. Keys are `<area>_<snake_case>`, e.g.
+- Message files: `messages/{en,am}/<area>.json` (areas: common, kit, stock, sales, purchasing,
+  admin, reports, site, billing, platform). Keys are `<area>_<snake_case>`, e.g.
   `stock_post_confirm`. Placeholders are `{name}` and must be the same in both languages.
 - Use a message from `common` (`common_save`, `common_cancel`…) rather than repeating one.
 - Keep codes and units as they are: SKU, TIN, VAT, TOT, FS No., IRN, GRN, ETB, kg, pcs, document
@@ -146,6 +147,18 @@ says, not a coined term nobody recognises.
 | Import                                | አስገባ (Import)                         |
 | Label (sticker)                       | መለያ                                   |
 | SMS                                   | አጭር የጽሑፍ መልዕክት (SMS)                  |
+| Package (subscription)                | ፓኬጅ                                   |
+| Subscription (the page)               | ፓኬጅ እና ክፍያ                            |
+| Subscription (the time paid for)      | የአገልግሎት ጊዜ                            |
+| Free trial                            | ነፃ ሙከራ                                |
+| Payment due / late                    | ክፍያ ይጠበቃል / ክፍያው ዘግይቷል                |
+| Blocked / suspended                   | ታግዷል / በአስተዳዳሪ ታግዷል                   |
+| Bank transfer                         | የባንክ ዝውውር                             |
+| Site admin                            | የሳይት አስተዳደር                           |
+| Pricing / about us / contact us       | ዋጋ / ስለ እኛ / ያግኙን                     |
+
+A subscription package is "ፓኬጅ", never "ጥቅል": that word is already a pack of goods and a kit.
+Package names and descriptions are data the site admin types, so they are not translated.
 
 "Cancel" as in _don't do this_ is "ተው"; as in _cancel this draft_ it is "ሰርዝ". "Delete" (remove a
 row) is "አጥፋ".
