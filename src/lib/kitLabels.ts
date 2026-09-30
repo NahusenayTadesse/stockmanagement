@@ -215,45 +215,7 @@ function buildKitLabels(locale: Locale): KitLabels {
 		pwGenerating: m.kit_pw_generating({}, o),
 		pwGenerateFirst: m.kit_pw_generate_first({}, o),
 		pwCopied: m.kit_pw_copied({}, o),
-		pwCopyFailed: m.kit_pw_copy_failed({}, o),
-		qbTitle: m.kit_qb_title({}, o),
-		qbDescription: m.kit_qb_description({}, o),
-		qbSearchRows: m.kit_qb_search_rows({}, o),
-		qbResults: (count) =>
-			count === 1
-				? m.kit_qb_results_one({ count: count.toLocaleString() }, o)
-				: m.kit_qb_results({ count: count.toLocaleString() }, o),
-		qbHide: m.kit_qb_hide({}, o),
-		qbClearAll: m.kit_qb_clear_all({}, o),
-		qbSearch: m.kit_qb_search({}, o),
-		qbPageSize: m.kit_qb_page_size({}, o),
-		qbPerPage: (count) => m.kit_qb_per_page({ count }, o),
-		qbDateRange: m.kit_qb_date_range({}, o),
-		qbNoFilterUi: m.kit_qb_no_filter_ui({}, o),
-		fmTitle: m.kit_fm_title({}, o),
-		fmDescription: m.kit_fm_description({}, o),
-		fmFilters: m.kit_fm_filters({}, o),
-		fmActive: (count) => m.kit_fm_active({ count }, o),
-		fmReset: m.kit_fm_reset({}, o),
-		fmResetDone: m.kit_fm_reset_done({}, o),
-		fmAll: (what) => m.kit_fm_all({ what }, o),
-		fmSelected: (count) => m.kit_fm_selected({ count }, o),
-		fmShowing: m.kit_fm_showing({}, o),
-		fmOf: m.kit_fm_of({}, o),
-		fmRecords: m.kit_fm_records({}, o),
-		fmChartType: m.kit_fm_chart_type({}, o),
-		fmHighlighted: (count) =>
-			count > 1 ? m.kit_fm_highlighted({ count }, o) : m.kit_fm_highlighted_one({ count }, o),
-		fmItems: (label, count) => m.kit_fm_items({ label, count }, o),
-		fmClickBar: m.kit_fm_click_bar({}, o),
-		fmClickSegment: m.kit_fm_click_segment({}, o),
-		fmSearch: (what) => m.kit_fm_search({ what }, o),
-		fmActiveFilters: (count) =>
-			count > 1 ? m.kit_fm_active_filters({ count }, o) : m.kit_fm_active_filters_one({ count }, o),
-		fmDistribution: (what, records) =>
-			records !== 1
-				? m.kit_fm_distribution({ what, records }, o)
-				: m.kit_fm_distribution_one({ what, records }, o)
+		pwCopyFailed: m.kit_pw_copy_failed({}, o)
 	};
 }
 
@@ -273,13 +235,11 @@ function buildServerLabels(locale: Locale): ServerLabels {
 		lookupNoneSelected: (label) => m.kit_srv_lookup_none_selected({ label }, o),
 		lookupNotFound: (label) => m.kit_srv_lookup_not_found({ label }, o),
 		lookupDeleted: (label) => m.kit_srv_lookup_deleted({ label }, o),
-		lookupCouldNotDelete: (label, reason) =>
-			m.kit_srv_lookup_could_not_delete({ label, reason }, o),
-		unknownError: m.kit_srv_unknown_error({}, o),
 		noFile: m.kit_srv_no_file({}, o),
 		fileTooLarge: (megabytes) => m.kit_srv_file_too_large({ megabytes }, o),
 		fileTypeRefused: m.kit_srv_file_type_refused({}, o),
 		noPermission: m.kit_srv_no_permission({}, o),
+		signInRequired: m.kit_srv_sign_in_required({}, o),
 		superAdminOnly: m.kit_srv_super_admin_only({}, o),
 		notFound: m.kit_srv_not_found({}, o)
 	};
