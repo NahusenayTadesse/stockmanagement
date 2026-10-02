@@ -4,6 +4,7 @@ import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { adminKit } from '@nahu/admin-kit/vite';
 
 export default defineConfig({
 	plugins: [
@@ -29,7 +30,10 @@ export default defineConfig({
 			// The language lives in a cookie (the switcher sets it), else the browser's preference.
 			// No /am/ URLs: every link and bookmark works in both languages.
 			strategy: ['cookie', 'preferredLanguage', 'baseLocale']
-		})
+		}),
+
+		// Lets Vite 8's dependency scan read the kit's components (see the kit's src/lib/vite.ts).
+		adminKit()
 	],
 	/**
 	 * What the server bundle must carry itself.
