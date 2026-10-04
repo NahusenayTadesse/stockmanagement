@@ -41,6 +41,11 @@ export function kitServerLabels(): ServerLabels {
 function buildKitLabels(locale: Locale): KitLabels {
 	const o = { locale };
 	return {
+		checklistSearch: m.kit_checklist_search({}, o),
+		checklistSearchAria: m.kit_checklist_search_aria({}, o),
+		selectAllShown: (count) => m.kit_select_all_shown({ count }, o),
+		checklistChosen: (count) => m.kit_checklist_chosen({ count }, o),
+		checklistNoMatch: m.kit_checklist_no_match({}, o),
 		tableSearch: m.kit_table_search({}, o),
 		tableSearchServer: m.kit_table_search_server({}, o),
 		tableColumns: m.kit_table_columns({}, o),

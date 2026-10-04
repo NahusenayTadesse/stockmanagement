@@ -43,11 +43,11 @@ export async function planningSection(orgId: number, it: Item, locals: App.Local
 		hasPermission(locals, 'items.manage') ? locationOptions(orgId, scope) : Promise.resolve([]),
 		reservationsOfItem(orgId, it.id, localToday())
 	]);
-	const names = new Map((await locationOptions(orgId)).map((l) => [l.value, l.name]));
+	const names = new Map((await locationOptions(orgId, scope)).map((l) => [l.value, l.name]));
 	return {
 		rules: rules.filter((r) => inScope(scope, r.branchId)),
 		ruleLocations: locations,
-		held: held.map((h) => ({
+		held: held.filter((h) => names.has(h.locationId)).map((h) => ({
 			...h,
 			location: names.get(h.locationId) ?? '—',
 			for: h.quoteId
@@ -114,6 +114,9 @@ export const planningActions = {
 
 	deleteRule: async (event: RequestEvent) => {
 		const { orgId, it, data } = await ruleTarget(event);
+		const allowed = await locationOptions(orgId, await branchScope(event.locals));
+		const [rule] = await db.select().from(reorderRule).where(and(eq(reorderRule.id, Number(data.get('id'))), eq(reorderRule.orgId, orgId)));
+		if (!rule || !allowed.some((l) => l.value === rule.locationId)) throw new WriteRefused('id', m.admin_scope_not_found());
 		await db
 			.delete(reorderRule)
 			.where(

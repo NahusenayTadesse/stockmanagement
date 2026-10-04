@@ -22,7 +22,8 @@ let applied = new Set();
 try {
 	const [rows] = await connection.query('SELECT hash FROM `__drizzle_migrations`');
 	applied = new Set(rows.map((row) => String(row.hash)));
-} catch {
+} catch (error) {
+	if (error.code !== 'ER_NO_SUCH_TABLE') { await connection.end(); throw error; }
 	console.log('   (no __drizzle_migrations table — nothing has been applied)');
 }
 
@@ -39,3 +40,5 @@ for (const entry of journal.entries) {
 
 console.log(`   ${pending} pending`);
 await connection.end();
+
+if (process.argv.includes('--check') && pending) process.exitCode = 1;

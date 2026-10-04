@@ -3,7 +3,9 @@ import type { SubscriptionSummary } from '$lib/server/billing/subscriptions';
 
 declare global {
 	namespace App {
+		interface Error { requestId?: string; }
 		interface Locals {
+			requestId: string;
 			user?: User | null;
 			session?: Session | null;
 			/** The viewer's business, from their user row. See `$lib/server/tenant`. */

@@ -1,3 +1,4 @@
+import { scopeWhere, type Scope } from '$lib/server/scope';
 /**
  * Purchase orders: what was ordered, what has arrived, what is still due. Deliveries are ordinary
  * goods receipts pointing back at the order; everything here is worked out from them.
@@ -163,7 +164,8 @@ export async function onOrderByItem(
 	orgId: number,
 	reader: Writer = db,
 	/** Only orders to be delivered here. */
-	locationId: number | null = null
+	locationId: number | null = null,
+	scope: Scope = null
 ): Promise<Map<number, number>> {
 	const rows = await reader
 		.select({
@@ -180,6 +182,7 @@ export async function onOrderByItem(
 			and(
 				eq(purchaseOrderLine.orgId, orgId),
 				isNull(purchaseOrderLine.deletedAt),
+				scopeWhere(scope, purchaseOrder.branchId),
 				inArray(purchaseOrder.status, ['ordered', 'partially_received']),
 				locationId ? eq(purchaseOrder.locationId, locationId) : undefined
 			)
@@ -379,8 +382,13 @@ export const COVER_DAYS = 30;
 export async function reorderSuggestions(
 	orgId: number,
 	reader: Writer = db,
-	options: { locationId?: number | null; today?: string; days?: number } = {}
+	options: { locationId?: number | null; today?: string; days?: number; scope?: Scope } = {}
 ) {
+	const scope = options.scope ?? null;
+	if (scope?.length === 0) return [];
+	const permittedLocations = await reader.select({ id: location.id }).from(location).where(and(eq(location.orgId, orgId), scopeWhere(scope, location.branchId)));
+	const allowed = new Set(permittedLocations.map((l) => l.id));
+	if (options.locationId && !allowed.has(options.locationId)) throw new StockError(m.admin_scope_not_found());
 	const locationId = options.locationId ?? null;
 	const today = options.today ?? localToday();
 	const days = options.days ?? 90;
@@ -423,9 +431,11 @@ export async function reorderSuggestions(
 				quantity: sql<number>`SUM(${stockBalance.quantity})`
 			})
 			.from(stockBalance)
+			.innerJoin(location, eq(location.id, stockBalance.locationId))
 			.where(
 				and(
 					eq(stockBalance.orgId, orgId),
+					scopeWhere(scope, location.branchId),
 					locationId ? eq(stockBalance.locationId, locationId) : undefined
 				)
 			)
@@ -437,9 +447,11 @@ export async function reorderSuggestions(
 				first: sql<string>`MIN(${stockMovement.docDate})`
 			})
 			.from(stockMovement)
+			.innerJoin(location, eq(location.id, stockMovement.locationId))
 			.where(
 				and(
 					eq(stockMovement.orgId, orgId),
+					scopeWhere(scope, location.branchId),
 					locationId ? eq(stockMovement.locationId, locationId) : undefined
 				)
 			)
@@ -450,7 +462,7 @@ export async function reorderSuggestions(
 					.from(reorderRule)
 					.where(and(eq(reorderRule.orgId, orgId), eq(reorderRule.locationId, locationId)))
 			: Promise.resolve([]),
-		onOrderByItem(orgId, reader, locationId),
+		onOrderByItem(orgId, reader, locationId, scope),
 		reservedByLocation(orgId, today, reader)
 	]);
 
@@ -458,7 +470,7 @@ export async function reorderSuggestions(
 		let sum = 0;
 		for (const [key, q] of held) {
 			const [loc, it] = key.split(':').map(Number);
-			if (it === itemId && (!locationId || loc === locationId)) sum += q;
+			if (allowed.has(loc) && it === itemId && (!locationId || loc === locationId)) sum += q;
 		}
 		return round4(sum);
 	};

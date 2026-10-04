@@ -9,6 +9,7 @@ import { unitOptions } from '$lib/server/options';
 import { checkBarcode, checkUnit, requireOrgItem } from '$lib/server/items';
 import { productActions, productSection } from './product';
 import { planningActions, planningSection } from './planning';
+import { branchScope } from '$lib/server/scope';
 import { binCard, onHandRows } from '$lib/server/stock/queries';
 import { barcodeAdd, barcodeEdit, unitAdd, unitEdit } from '$lib/schemas/items';
 import type { PageServerLoad, RequestEvent } from './$types';
@@ -43,14 +44,15 @@ const owner = async (event: RequestEvent) =>
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const orgId = orgIdOf(locals);
+	const scope = await branchScope(locals);
 	const it = await requireOrgItem(orgId, Number(params.id));
 
 	const [unitList, unitSection, barcodeSection, stock, card, [cat], [base]] = await Promise.all([
 		unitOptions(orgId),
 		units.load(it.id),
 		barcodes.load(it.id),
-		onHandRows(orgId, { itemId: it.id }),
-		binCard(orgId, it.id),
+		onHandRows(orgId, { itemId: it.id, branchIds: scope }),
+		binCard(orgId, it.id, undefined, scope),
 		it.categoryId
 			? db.select({ name: category.name }).from(category).where(eq(category.id, it.categoryId))
 			: Promise.resolve([undefined]),

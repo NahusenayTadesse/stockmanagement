@@ -17,9 +17,7 @@
 # and are deliberately not touched here — a deploy script that rewrites .env is
 # a deploy script that can take the site down with a typo in a secret.
 #
-# Run `npm run db:migrate:remote` (a dry run) first: this script does not check
-# for pending migrations, and /health answers 200 even when every page 500s on
-# a missing column.
+# Pending migrations are checked before shipping; readiness verifies schema compatibility.
 set -euo pipefail
 
 HOST="${DEPLOY_HOST:-digital}"
@@ -84,6 +82,9 @@ fi
 say "Verifying the bundle is self-contained"
 run npm run verify:build
 
+say "Checking schema compatibility before replacing the running build"
+run npm run db:migrate:remote -- --check
+
 # ---------------------------------------------------------------- back up
 TS="$(date +%Y%m%d-%H%M%S)"
 say "Backing up the running build as build.bak.$TS"
@@ -143,7 +144,7 @@ fi
 say "Waiting for it to come back"
 for i in $(seq 1 20); do
 	sleep 2
-	if ssh "$HOST" "curl -sf --max-time 5 http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"status":"ok"'; then
+	if ssh "$HOST" "curl -sf --max-time 5 http://127.0.0.1:$PORT/health/ready" 2>/dev/null | grep -q '"status":"ok"'; then
 		echo "   healthy after $((i * 2))s"
 		HEALTHY=1
 		break
@@ -165,12 +166,18 @@ fi
 ORIGIN="$(ssh "$HOST" "grep -E '^ORIGIN=' '$APP/.env' | cut -d= -f2- | tr -d '\"'" 2>/dev/null || true)"
 if [ -n "$ORIGIN" ]; then
 	say "Checking the public surface over $ORIGIN"
-	for path in / /login /health; do
+	for path in / /login /health /health/ready; do
 		code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$ORIGIN$path" || echo 000)"
 		printf '   %-10s %s\n' "$path" "$code"
+		[ "$code" = 200 ] || exit 1
 	done
 	echo
-	echo "   Signed-in routes are not checked here — sign in at $ORIGIN to confirm those."
+	if [ -n "${DEPLOY_SMOKE_EMAIL:-}" ] && [ -n "${DEPLOY_SMOKE_PASSWORD:-}" ]; then
+		SMOKE_ORIGIN="$ORIGIN" node scripts/smoke.mjs
+	else
+		echo "   Authenticated smoke check not configured: set DEPLOY_SMOKE_EMAIL and DEPLOY_SMOKE_PASSWORD." >&2
+		exit 1
+	fi
 fi
 
 say "Deployed"

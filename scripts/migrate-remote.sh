@@ -27,9 +27,11 @@ SOCKET="$HOME/.ssh/ctl-migrate-$$"
 PORT="${TUNNEL_PORT:-13308}"
 
 APPLY=0
+CHECK=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--apply) APPLY=1 ;;
+	--check) CHECK=1 ;;
 	*)
 		echo "unknown option: $1" >&2
 		exit 2
@@ -57,7 +59,11 @@ DB_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv
 export DATABASE_URL="mysql://$DB_USER:$DB_ENC@127.0.0.1:$PORT/$DB_NAME"
 
 say "What the server has now"
-node scripts/migration-status.mjs
+if [ "$CHECK" = 1 ]; then
+	node scripts/migration-status.mjs --check
+else
+	node scripts/migration-status.mjs
+fi
 
 if [ "$APPLY" != 1 ]; then
 	say "Dry run — nothing was changed"

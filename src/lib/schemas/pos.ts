@@ -3,6 +3,7 @@ import { m } from '$lib/paraglide/messages.js';
 
 /** What the till sends when a sale is completed. */
 export const checkoutPayload = z.object({
+	requestKey: z.uuid(),
 	customerId: z.number().int().positive().nullable().default(null),
 	note: z.string().trim().max(255).nullable().default(null),
 	/** Text the receipt to this number (a walk-in who asked for it). Empty: none. */

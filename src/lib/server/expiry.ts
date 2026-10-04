@@ -25,6 +25,8 @@ import {
 import { StockError, type Tx } from '$lib/server/stock/post';
 import { loadGrant } from '$lib/server/permissions';
 import { sendMail } from '$lib/server/mail';
+import { scopeWhere, inScope, type Scope } from '$lib/server/scope';
+import { userBranch } from '$lib/server/db/schema';
 import { daysBetween } from '$lib/server/days';
 
 export type ExpiryBand = 'expired' | 'soon' | 'later';
@@ -45,7 +47,8 @@ const pendingDraft = sql<number | null>`(
 export async function expiryWatch(
 	orgId: number,
 	today: string,
-	reader: Pick<typeof db, 'select'> = db
+	reader: Pick<typeof db, 'select'> = db,
+	scope: Scope = null
 ) {
 	const rows = await reader
 		.select({
@@ -77,6 +80,7 @@ export async function expiryWatch(
 		.where(
 			and(
 				eq(stockBalance.orgId, orgId),
+				scopeWhere(scope, location.branchId),
 				gt(stockBalance.quantity, 0),
 				sql`${lot.expiryDate} IS NOT NULL`,
 				sql`${lot.expiryDate} <= DATE_ADD(${today}, INTERVAL COALESCE(${category.expiryWarningDays}, 90) DAY)`
@@ -114,6 +118,7 @@ export async function draftFollowUp(
 		picks: { lotId: number; locationId: number }[];
 		date: string;
 		userId?: string;
+		scope?: Scope;
 	}
 ): Promise<number[]> {
 	if (!input.picks.length) throw new StockError(m.stock_err_tick_lot());
@@ -147,6 +152,7 @@ export async function draftFollowUp(
 	const chosen = balances.filter((b) =>
 		input.picks.some((p) => p.lotId === b.lotId && p.locationId === b.locationId)
 	);
+	if (chosen.some((b) => !inScope(input.scope ?? null, b.branchId))) throw new StockError(m.admin_scope_not_found());
 	if (!chosen.length) throw new StockError(m.stock_err_no_stock_left());
 
 	const serial = chosen.find((b) => b.trackSerials);
@@ -180,7 +186,7 @@ export async function draftFollowUp(
 
 		if (input.action === 'quarantine') {
 			if (locationKind === 'quarantine') continue; // already where it should be
-			const target = quarantines.find((q) => q.branchId === branchId) ?? quarantines[0] ?? null;
+			const target = quarantines.find((q) => q.branchId === branchId) ?? null;
 			if (!target) {
 				throw new StockError(m.stock_err_no_quarantine());
 			}
@@ -289,12 +295,8 @@ export async function sendExpiryDigests(today: string, origin: string) {
 
 	let sent = 0;
 	for (const org of orgs) {
-		const content = digestContent(
-			org.name,
-			await expiryWatch(org.id, today),
-			`${origin}/dashboard/stock/expiry`
-		);
-		if (!content.urgent) continue;
+		const rows = await expiryWatch(org.id, today);
+		if (!rows.length) continue;
 
 		const people = await db
 			.select({ id: user.id, email: user.email })
@@ -303,6 +305,10 @@ export async function sendExpiryDigests(today: string, origin: string) {
 		for (const p of people) {
 			const grant = await loadGrant(p.id);
 			if (!grant.permList.includes('stock.post')) continue;
+			const branches = await db.select({ id: userBranch.branchId }).from(userBranch).where(and(eq(userBranch.orgId, org.id), eq(userBranch.userId, p.id)));
+			const scope = grant.permList.includes('branches.all') || !branches.length ? null : branches.map((b) => b.id);
+			const content = digestContent(org.name, rows.filter((r) => inScope(scope, r.branchId)), `${origin}/dashboard/stock/expiry`);
+			if (!content.urgent) continue;
 			if (await sendMail(p.email, content, org.name)) sent++;
 		}
 	}

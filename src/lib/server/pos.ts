@@ -13,6 +13,7 @@ import {
 	location,
 	paymentMethod,
 	posCart,
+	posCheckout,
 	posShift,
 	stockDocument,
 	stockDocumentLine,
@@ -452,4 +453,33 @@ export async function takeCart(tx: Tx, orgId: number, id: number) {
 	if (!row) return null;
 	await tx.delete(posCart).where(eq(posCart.id, row.id));
 	return { ...row, cart: JSON.parse(row.cart) as unknown };
+}
+
+
+export type CheckoutResult = Awaited<ReturnType<typeof checkout>>;
+
+/** An upsert serializes concurrent requests with the same unique key until their sale commits. */
+export async function checkoutOnce(
+	tx: Tx,
+	input: Parameters<typeof checkout>[1],
+	requestKey: string,
+	payloadHash: string
+): Promise<{ sale: CheckoutResult; replayed: boolean }> {
+	await tx.insert(posCheckout).values({ orgId: input.orgId, requestKey, userId: input.userId, payloadHash })
+		.onDuplicateKeyUpdate({ set: { requestKey: sql`${posCheckout.requestKey}` } });
+	const [request] = await tx.select().from(posCheckout)
+		.where(and(eq(posCheckout.orgId, input.orgId), eq(posCheckout.requestKey, requestKey))).for('update');
+	if (request.userId !== input.userId || request.payloadHash !== payloadHash) {
+		throw new StockError(m.sales_checkout_changed());
+	}
+	if (request.result) return { sale: JSON.parse(request.result) as CheckoutResult, replayed: true };
+	const sale = await checkout(tx, input);
+	await tx.update(posCheckout).set({ result: JSON.stringify(sale) }).where(eq(posCheckout.id, request.id));
+	return { sale, replayed: false };
+}
+
+export async function checkoutResult(orgId: number, userId: string, requestKey: string, reader: Reader = db) {
+	const [request] = await reader.select({ result: posCheckout.result }).from(posCheckout)
+		.where(and(eq(posCheckout.orgId, orgId), eq(posCheckout.userId, userId), eq(posCheckout.requestKey, requestKey)));
+	return request?.result ? JSON.parse(request.result) as CheckoutResult : null;
 }

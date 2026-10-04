@@ -206,3 +206,14 @@
 	font-size: 1.4rem;
 	font-weight: 700;
 }
+
+
+/* Keep operational controls readable, including keyboard focus and reduced-motion use. */
+:where(a, button, input, select, textarea):focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 3px;
+}
+:where(td, th) { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

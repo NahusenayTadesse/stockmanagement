@@ -6,7 +6,7 @@ import { orgIdOf } from '$lib/server/tenant';
 import { locationOptions } from '$lib/server/options';
 import { ordersFromReorder, reorderSuggestions } from '$lib/server/purchasing';
 import { StockError } from '$lib/server/stock/post';
-import { branchScope, inScope } from '$lib/server/scope';
+import { branchScope, viewScope, inScope } from '$lib/server/scope';
 import { location } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { m } from '$lib/paraglide/messages.js';
@@ -19,10 +19,11 @@ import type { Actions, PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const orgId = orgIdOf(locals);
-	const locations = await locationOptions(orgId, await branchScope(locals));
+	const scope = await viewScope(locals, url);
+	const locations = await locationOptions(orgId, scope);
 	const wanted = Number(url.searchParams.get('location')) || null;
 	const locationId = locations.some((l) => l.value === wanted) ? wanted : null;
-	const items = await reorderSuggestions(orgId, db, { locationId });
+	const items = await reorderSuggestions(orgId, db, { locationId, scope });
 	return {
 		items,
 		locations,

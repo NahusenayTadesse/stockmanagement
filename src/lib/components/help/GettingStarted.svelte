@@ -23,15 +23,17 @@
 		items: [m.help_guide_items, m.help_guide_items_text],
 		suppliers: [m.help_guide_suppliers, m.help_guide_suppliers_text],
 		stock: [m.help_guide_stock, m.help_guide_stock_text],
-		sale: [m.help_guide_sale, m.help_guide_sale_text],
+		sale: [() => guide.sells ? m.help_guide_sale() : m.help_guide_issue(), () => guide.sells ? m.help_guide_sale_text() : m.help_guide_issue_text()],
 		staff: [m.help_guide_staff, m.help_guide_staff_text],
 		subscription: [m.help_guide_subscription, m.help_guide_subscription_text]
 	} as const;
 
-	const total = $derived(guide.steps.length);
-	const allDone = $derived(guide.completed === total);
+	const visibleSteps = $derived(guide.steps.filter((s) => { const tour = tourById(s.tour); return tour && kit.canOpen(tour.path); }));
+	const completed = $derived(visibleSteps.filter((s) => s.done).length);
+	const total = $derived(visibleSteps.length);
+	const allDone = $derived(completed === total);
 	/** The first step still to do: the one the guide leads with. */
-	const nextId = $derived(guide.steps.find((s) => !s.done)?.id);
+	const nextId = $derived(visibleSteps.find((s) => !s.done)?.id);
 </script>
 
 <section class="guide" data-tour="getting-started" aria-labelledby="guide-title">
@@ -61,18 +63,19 @@
 			role="progressbar"
 			aria-valuemin={0}
 			aria-valuemax={total}
-			aria-valuenow={guide.completed}
-			aria-label={m.help_guide_progress({ done: guide.completed, total })}
+			aria-valuenow={completed}
+			aria-label={m.help_guide_progress({ done: completed, total })}
 		>
-			<div class="bar-fill" style:width="{(guide.completed / total) * 100}%"></div>
+			<div class="bar-fill" style:width="{(total ? completed / total : 0) * 100}%"></div>
 		</div>
 		<span class="text-sm font-medium whitespace-nowrap tabular-nums">
-			{m.help_guide_progress({ done: guide.completed, total })}
+			{m.help_guide_progress({ done: completed, total })}
 		</span>
 	</div>
 
+	{#if kit.canOpen('/dashboard/admin-panel/import')}<a class="mt-4 inline-block text-sm underline" href="/dashboard/admin-panel/import">{m.help_import_start()}</a>{/if}
 	<ol class="steps">
-		{#each guide.steps as step, i (step.id)}
+		{#each visibleSteps as step, i (step.id)}
 			{@const tour = tourById(step.tour)}
 			{@const [title, text] = TEXT[step.id]}
 			<li class={['step', step.done && 'done', step.id === nextId && 'next']}>
@@ -86,7 +89,8 @@
 					</p>
 					{#if !step.done}<p class="text-sm text-muted-foreground">{text()}</p>{/if}
 				</div>
-				{#if !step.done && tour && kit.canOpen(tour.path)}
+				{#if !step.done && !step.ready}<p class="text-xs text-muted-foreground">{m.help_prerequisite()}</p>{/if}
+				{#if !step.done && step.ready && tour && kit.canOpen(tour.path)}
 					<Button
 						size="sm"
 						variant={step.id === nextId ? 'default' : 'outline'}

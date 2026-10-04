@@ -90,6 +90,8 @@
 	"admin_home_in_transit_hint": "ወደ ሌላ ቅርንጫፍ የተላኩ፣ ገና ያልተረከቡ",
 	"admin_home_stock_value": "የክምችት ዋጋ",
 	"admin_home_stock_value_hint": "በአማካይ ወጪ ዋጋ",
+	"admin_home_stock_scope": "የክምችት መረጃዎቹ ፈቃድ ያለዎትን ቅርንጫፎች ይሸፍናሉ። የዕቃ ዝርዝሩ ለመላው ድርጅት የጋራ ነው።",
+	"admin_home_preview_count": "ከ{total} ውስጥ {shown} እየታዩ ነው",
 	"admin_home_items_hint": "በዕቃ ዝርዝሩ ውስጥ",
 	"admin_home_expiring": "በቅርቡ የሚያበቁ ሎቶች",
 	"admin_home_expiring_hint": "በማስጠንቀቂያ ጊዜያቸው ውስጥ",
@@ -584,5 +586,10 @@
 	"admin_fd_col_checked": "የተፈተሸበት",
 	"admin_fd_col_z": "የመጨረሻ Z ሪፖርት",
 	"admin_sms_col_error": "ስህተት",
-	"admin_perm_subscription_manage": "የድርጅቱን ፓኬጅ እና ክፍያዎች ማየት፣ እና ለአገልግሎቱ መክፈል"
+	"admin_perm_subscription_manage": "የድርጅቱን ፓኬጅ እና ክፍያዎች ማየት፣ እና ለአገልግሎቱ መክፈል",
+	"admin_attention": "ትኩረት የሚፈልጉ",
+	"admin_quick_actions": "ሥራ ይጀምሩ",
+	"admin_period": "የገንዘብ ጊዜ",
+	"admin_shared_credit": "የደንበኞች ዱቤ መላውን ድርጅት ይሸፍናል።",
+	"admin_stock_now": "ክምችቱ የአሁኑ ነው፤ ጊዜው ለገንዘብ ድምሮች ይሠራል።"
 }

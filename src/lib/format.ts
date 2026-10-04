@@ -9,7 +9,7 @@ export const dayNoon = (day: string) => new Date(`${day}T12:00:00+03:00`);
 export const ethiopianDay = (day: string) => formatEthiopianDate(dayNoon(day));
 
 /** For printed papers: the Ethiopian day, with the Gregorian one in brackets. */
-export const printedDay = (day: string) => `${ethiopianDay(day)} (${day})`;
+export const printedDay = (day: string) => `${ethiopianDay(day)} E.C. (${day} G.C.)`;
 
 const QTY = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
 

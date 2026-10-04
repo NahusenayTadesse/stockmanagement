@@ -3,6 +3,8 @@
  * value from the request.
  */
 import { and, asc, desc, eq, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/mysql-core';
+import { scopeWhere, type Scope } from '$lib/server/scope';
 import { localToday, addLocalDays } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import { qualified } from '$lib/server/db/sql';
@@ -84,7 +86,7 @@ export const itemOnHand = sql<number>`(
  * Lots with stock, and how much of each is left. Expired ones included — they are the ones that
  * need doing something about.
  */
-export async function lotRows(orgId: number) {
+export async function lotRows(orgId: number, scope: Scope = null) {
 	return db
 		.select({
 			id: lot.id,
@@ -104,107 +106,155 @@ export async function lotRows(orgId: number) {
 		.innerJoin(uom, eq(uom.id, item.baseUomId))
 		.leftJoin(category, eq(category.id, item.categoryId))
 		.leftJoin(stockBalance, eq(stockBalance.lotId, lot.id))
-		.where(eq(lot.orgId, orgId))
+		.leftJoin(location, eq(location.id, stockBalance.locationId))
+		.where(and(eq(lot.orgId, orgId), scopeWhere(scope, location.branchId)))
 		.groupBy(lot.id)
 		.orderBy(sql`${lot.expiryDate} IS NULL`, asc(lot.expiryDate));
 }
 
-/** The numbers on the dashboard. */
-export async function dashboardStats(orgId: number) {
+/**
+ * Dashboard stock is limited to the viewer's branches. The catalog itself is shared by the
+ * organization. Count full result sets independently of the bounded lists shown on the page.
+ */
+export async function dashboardStats(
+	orgId: number,
+	scope: Scope,
+	reader: Pick<typeof db, 'select'> = db,
+	preview = { limit: 50, offset: 0 }
+) {
 	const today = localToday();
+	const fromLoc = alias(location, 'dashboard_from');
+	const toLoc = alias(location, 'dashboard_to');
+	const documentWhere = and(
+		eq(stockDocument.orgId, orgId),
+		isNull(stockDocument.deletedAt),
+		scopeWhere(scope, stockDocument.branchId, fromLoc.branchId, toLoc.branchId)
+	);
 
-	const [[value], [items], [drafts], expiring, lowStock, recent] = await Promise.all([
-		db
-			.select({ total: sql<number>`COALESCE(SUM(${stockBalance.quantity} * ${item.avgCost}), 0)` })
-			.from(stockBalance)
-			.innerJoin(item, eq(item.id, stockBalance.itemId))
-			.where(eq(stockBalance.orgId, orgId)),
-		db
-			.select({ total: sql<number>`COUNT(*)` })
-			.from(item)
-			.where(and(eq(item.orgId, orgId), isNull(item.deletedAt))),
-		db
-			.select({ total: sql<number>`COUNT(*)` })
-			.from(stockDocument)
-			.where(and(eq(stockDocument.orgId, orgId), eq(stockDocument.status, 'draft'))),
-
-		// Lots with stock whose expiry falls inside their category's warning window, or has passed.
-		db
-			.select({
-				lotId: lot.id,
-				lotNumber: lot.lotNumber,
-				expiryDate: lot.expiryDate,
-				itemId: item.id,
-				item: item.name,
-				unit: uom.symbol,
-				warningDays: sql<number>`COALESCE(${category.expiryWarningDays}, 90)`,
-				onHand: sql<number>`SUM(${stockBalance.quantity})`,
-				value: sql<number>`ROUND(SUM(${stockBalance.quantity}) * ${item.avgCost}, 2)`
-			})
-			.from(lot)
-			.innerJoin(item, eq(item.id, lot.itemId))
-			.innerJoin(uom, eq(uom.id, item.baseUomId))
-			.leftJoin(category, eq(category.id, item.categoryId))
-			.innerJoin(stockBalance, and(eq(stockBalance.lotId, lot.id), gt(stockBalance.quantity, 0)))
-			.where(
-				and(
-					eq(lot.orgId, orgId),
-					sql`${lot.expiryDate} <= DATE_ADD(${today}, INTERVAL COALESCE(${category.expiryWarningDays}, 90) DAY)`
-				)
+	// Group before counting so a lot split over several permitted locations counts once.
+	const expiryRows = reader
+		.select({
+			lotId: sql<number>`${lot.id}`.as('lot_id'),
+			lotNumber: lot.lotNumber,
+			expiryDate: lot.expiryDate,
+			itemId: sql<number>`${item.id}`.as('item_id'),
+			item: item.name,
+			unit: uom.symbol,
+			warningDays: sql<number>`COALESCE(${category.expiryWarningDays}, 90)`.as('warning_days'),
+			onHand: sql<number>`SUM(${stockBalance.quantity})`.as('on_hand'),
+			value: sql<number>`ROUND(SUM(${stockBalance.quantity}) * ${item.avgCost}, 2)`.as('value')
+		})
+		.from(lot)
+		.innerJoin(item, eq(item.id, lot.itemId))
+		.innerJoin(uom, eq(uom.id, item.baseUomId))
+		.leftJoin(category, eq(category.id, item.categoryId))
+		.innerJoin(stockBalance, and(eq(stockBalance.lotId, lot.id), gt(stockBalance.quantity, 0)))
+		.innerJoin(location, eq(location.id, stockBalance.locationId))
+		.where(
+			and(
+				eq(lot.orgId, orgId),
+				scopeWhere(scope, location.branchId),
+				sql`${lot.expiryDate} <= DATE_ADD(${today}, INTERVAL COALESCE(${category.expiryWarningDays}, 90) DAY)`
 			)
-			.groupBy(lot.id)
-			.orderBy(asc(lot.expiryDate))
-			.limit(50),
+		)
+		.groupBy(lot.id)
+		.as('dashboard_expiry');
 
-		db
-			.select({
-				id: item.id,
-				sku: item.sku,
-				name: item.name,
-				unit: uom.symbol,
-				reorderLevel: item.reorderLevel,
-				onHand: itemOnHand
-			})
-			.from(item)
-			.innerJoin(uom, eq(uom.id, item.baseUomId))
-			.where(
-				and(
-					eq(item.orgId, orgId),
-					isNull(item.deletedAt),
-					eq(item.isActive, true),
-					eq(item.stockTracked, true),
-					sql`${item.reorderLevel} IS NOT NULL`,
-					lte(itemOnHand, item.reorderLevel)
-				)
-			)
-			.orderBy(asc(item.name))
-			.limit(50),
+	const onHand = sql<number>`(
+		SELECT COALESCE(SUM(${stockBalance.quantity}), 0)
+		FROM ${stockBalance}
+		INNER JOIN ${location} ON ${location.id} = ${stockBalance.locationId}
+		WHERE ${stockBalance.orgId} = ${orgId}
+			AND ${stockBalance.itemId} = ${qualified(item, item.id)}
+			AND ${scopeWhere(scope, location.branchId) ?? sql`TRUE`}
+	)`;
+	const lowStockWhere = and(
+		eq(item.orgId, orgId),
+		isNull(item.deletedAt),
+		eq(item.isActive, true),
+		eq(item.stockTracked, true),
+		sql`${item.reorderLevel} IS NOT NULL`,
+		lte(onHand, item.reorderLevel),
+		// An explicitly empty scope means no stock access, not zero stock for every item.
+		scope !== null && scope.length === 0 ? sql`FALSE` : undefined
+	);
 
-		db
-			.select({
-				id: stockDocument.id,
-				number: stockDocument.number,
-				type: stockDocument.type,
-				status: stockDocument.status,
-				docDate: stockDocument.docDate,
-				party: stockDocument.party
-			})
-			.from(stockDocument)
-			.where(eq(stockDocument.orgId, orgId))
-			.orderBy(desc(stockDocument.id))
-			.limit(8)
-	]);
-
-	const expired = expiring.filter((l) => l.expiryDate! < today);
+	const [[value], [items], [drafts], [expiryTotals], expiring, [lowTotal], lowStock, recent] =
+		await Promise.all([
+			reader
+				.select({
+					total: sql<number>`COALESCE(SUM(${stockBalance.quantity} * ${item.avgCost}), 0)`
+				})
+				.from(stockBalance)
+				.innerJoin(item, eq(item.id, stockBalance.itemId))
+				.innerJoin(location, eq(location.id, stockBalance.locationId))
+				.where(and(eq(stockBalance.orgId, orgId), scopeWhere(scope, location.branchId))),
+			reader
+				.select({ total: sql<number>`COUNT(*)` })
+				.from(item)
+				.where(and(eq(item.orgId, orgId), isNull(item.deletedAt))),
+			reader
+				.select({ total: sql<number>`COUNT(*)` })
+				.from(stockDocument)
+				.leftJoin(fromLoc, eq(fromLoc.id, stockDocument.fromLocationId))
+				.leftJoin(toLoc, eq(toLoc.id, stockDocument.toLocationId))
+				.where(and(documentWhere, eq(stockDocument.status, 'draft'))),
+			reader
+				.select({
+					expired: sql<number>`COALESCE(SUM(${expiryRows.expiryDate} < ${today}), 0)`,
+					soon: sql<number>`COALESCE(SUM(${expiryRows.expiryDate} >= ${today}), 0)`,
+					expiredValue: sql<number>`COALESCE(SUM(CASE WHEN ${expiryRows.expiryDate} < ${today} THEN ${expiryRows.value} ELSE 0 END), 0)`
+				})
+				.from(expiryRows),
+			reader
+				.select()
+				.from(expiryRows)
+				.orderBy(asc(expiryRows.expiryDate), asc(expiryRows.lotId))
+				.limit(preview.limit).offset(preview.offset),
+			reader
+				.select({ total: sql<number>`COUNT(*)` })
+				.from(item)
+				.where(lowStockWhere),
+			reader
+				.select({
+					id: item.id,
+					sku: item.sku,
+					name: item.name,
+					unit: uom.symbol,
+					reorderLevel: item.reorderLevel,
+					onHand
+				})
+				.from(item)
+				.innerJoin(uom, eq(uom.id, item.baseUomId))
+				.where(lowStockWhere)
+				.orderBy(asc(item.name), asc(item.id))
+				.limit(preview.limit).offset(preview.offset),
+			reader
+				.select({
+					id: stockDocument.id,
+					number: stockDocument.number,
+					type: stockDocument.type,
+					status: stockDocument.status,
+					docDate: stockDocument.docDate,
+					party: stockDocument.party
+				})
+				.from(stockDocument)
+				.leftJoin(fromLoc, eq(fromLoc.id, stockDocument.fromLocationId))
+				.leftJoin(toLoc, eq(toLoc.id, stockDocument.toLocationId))
+				.where(documentWhere)
+				.orderBy(desc(stockDocument.id))
+				.limit(8)
+		]);
 
 	return {
 		stockValue: Number(value.total),
 		itemCount: Number(items.total),
 		draftCount: Number(drafts.total),
-		expiredValue: expired.reduce((sum, l) => sum + Number(l.value), 0),
+		expiredValue: Number(expiryTotals.expiredValue),
 		expiring: expiring.map((l) => ({ ...l, expired: l.expiryDate! < today })),
-		expiringSoonCount: expiring.length - expired.length,
-		expiredCount: expired.length,
+		expiringSoonCount: Number(expiryTotals.soon),
+		expiredCount: Number(expiryTotals.expired),
+		lowStockCount: Number(lowTotal.total),
 		lowStock,
 		recent,
 		// For "expires within" wording on the page.
@@ -216,7 +266,7 @@ export async function dashboardStats(orgId: number) {
  * The bin card: every movement of one item, oldest first, with the balance after each. The
  * running balance is computed over *all* locations here; `locationId` narrows it to one.
  */
-export async function binCard(orgId: number, itemId: number, locationId?: number) {
+export async function binCard(orgId: number, itemId: number, locationId?: number, scope: Scope = null) {
 	const rows = await db
 		.select({
 			id: stockMovement.id,
@@ -240,6 +290,7 @@ export async function binCard(orgId: number, itemId: number, locationId?: number
 			and(
 				eq(stockMovement.orgId, orgId),
 				eq(stockMovement.itemId, itemId),
+				scopeWhere(scope, location.branchId),
 				locationId ? eq(stockMovement.locationId, locationId) : undefined
 			)
 		)

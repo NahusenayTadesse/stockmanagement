@@ -221,5 +221,10 @@
 	"kit_gallery_count_one": "1 ምስል ለመጫን ዝግጁ ነው",
 	"kit_gallery_count": "{count} ምስሎች ለመጫን ዝግጁ ናቸው",
 	"kit_youtube_play": "አጫውት፦ {title}",
-	"kit_youtube_watch": "በYouTube ይመልከቱ"
+	"kit_youtube_watch": "በYouTube ይመልከቱ",
+	"kit_checklist_search": "ፈልግ…",
+	"kit_checklist_search_aria": "ዝርዝሩን ፈልግ",
+	"kit_select_all_shown": "የሚታዩትን {count} ሁሉ ምረጥ",
+	"kit_checklist_chosen": "{count} ተመርጠዋል",
+	"kit_checklist_no_match": "የሚዛመድ አልተገኘም።"
 }

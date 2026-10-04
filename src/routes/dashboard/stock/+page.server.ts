@@ -3,13 +3,13 @@ import { localToday } from '@nahu/admin-kit/time';
 import { orgIdOf } from '$lib/server/tenant';
 import { onHandRows } from '$lib/server/stock/queries';
 import { reservedByLocation } from '$lib/server/reservations';
-import { branchScope } from '$lib/server/scope';
+import { viewScope } from '$lib/server/scope';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const orgId = orgIdOf(locals);
 	const [rows, held] = await Promise.all([
-		onHandRows(orgId, { branchIds: await branchScope(locals) }),
+		onHandRows(orgId, { branchIds: await viewScope(locals, url) }),
 		reservedByLocation(orgId, localToday())
 	]);
 

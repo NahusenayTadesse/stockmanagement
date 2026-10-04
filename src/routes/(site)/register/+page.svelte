@@ -7,6 +7,7 @@
 	import { createForm } from '@nahu/admin-kit/forms/createForm';
 	import { registerSchema } from '$lib/schemas/auth';
 	import PackagePicker from '$lib/components/PackagePicker.svelte';
+	import { priceText } from '$lib/billing';
 	import { pageTitle } from '$lib/site';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -118,6 +119,7 @@
 			</div>
 		</fieldset>
 
+		{#if chosen}<div class="rounded-lg border bg-muted p-4 text-sm"><p class="font-semibold">{m.site_signup_summary({ package: chosen.name, amount: priceText(chosen.price), months: chosen.billingMonths, days: chosen.trialDays })}</p><p class="mt-2">{m.site_faq_trial_a()}</p><p class="mt-2">{m.site_payment_expectation()}</p><a class="mt-2 inline-block underline" href="/support">{m.site_support()}</a></div>{/if}
 		<div class="flex flex-wrap items-center gap-x-6 gap-y-3">
 			<Button type="submit" size="lg">
 				{#if $delayed}<LoadingBtn

@@ -3,6 +3,7 @@ import {
 	datetime,
 	decimal,
 	index,
+	uniqueIndex,
 	int,
 	mysqlEnum,
 	mysqlTable,
@@ -170,3 +171,14 @@ export const posCart = mysqlTable('pos_cart', {
 	cart: text('cart').notNull(),
 	createdAt: timestamp('created_at').defaultNow().notNull()
 });
+
+/** Durable checkout identity: committed with the sale so a lost response is safe to retry. */
+export const posCheckout = mysqlTable('pos_checkout', {
+	id: int('id').autoincrement().primaryKey(),
+	orgId: orgRef(),
+	requestKey: varchar('request_key', { length: 36 }).notNull(),
+	userId: varchar('user_id', { length: 255 }).notNull().references(() => user.id, { onDelete: 'restrict' }),
+	payloadHash: varchar('payload_hash', { length: 64 }).notNull(),
+	result: text('result'),
+	createdAt: timestamp('created_at').defaultNow().notNull()
+}, (table) => [uniqueIndex('pos_checkout_request_idx').on(table.orgId, table.requestKey)]);

@@ -163,5 +163,16 @@
 	"common_to": "To",
 	"common_show": "Show",
 	"common_any": "Any",
-	"nav_help": "Help"
+	"nav_help": "Help",
+	"common_method": "Payment method",
+	"common_amount": "Amount",
+	"common_request_failed": "Something went wrong. Please retry or contact support with the reference below.",
+	"common_reference_id": "Support reference",
+	"common_all_branches": "All permitted branches",
+	"common_breadcrumbs": "You are here",
+	"common_view_all": "View all",
+	"common_apply": "Apply",
+	"common_previous_page": "Previous page",
+	"common_next_page": "Next page",
+	"common_calendar_hint": "Dates: Ethiopian calendar (E.C.). Gregorian dates are shown as G.C."
 }

@@ -7,11 +7,13 @@ import { m } from '$lib/paraglide/messages.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Who owes what, and for how long: receivables by age. */
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const today = localToday();
 	const all = await creditSummary(orgIdOf(locals), today);
 	const rows = all
 		.filter((c) => c.balance !== 0 || c.open.length)
+		.filter((c) => url.searchParams.get('overdue') !== '1' || c.overdue > 0)
+		.filter((c) => url.searchParams.get('overLimit') !== '1' || c.overLimit)
 		.map(({ open, buckets, ...c }) => ({ ...c, ...buckets, openSales: open.length }))
 		.sort((a, b) => b.overdue - a.overdue || b.balance - a.balance);
 

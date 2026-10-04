@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
-	import BinCard from '$lib/components/site/BinCard.svelte';
+	import ProductPreview from '$lib/components/site/ProductPreview.svelte';
 	import PriceList from '$lib/components/site/PriceList.svelte';
 	import { pageTitle } from '$lib/site';
 	import { m } from '$lib/paraglide/messages.js';
@@ -132,9 +132,10 @@
 		<div class="hero-copy">
 			<h1 class="display-1">{m.site_hero_title()}</h1>
 			<p class="site-lede">{m.site_hero_lede()}</p>
+			<p class="text-sm font-medium text-brand-green-ink">{m.site_local_short()}</p>
 			<div class="flex flex-wrap gap-3">
 				<Button href={resolve('/register')} size="lg">{m.site_cta_trial()}</Button>
-				<Button href={resolve('/pricing')} size="lg" variant="outline">{m.site_cta_prices()}</Button
+				<Button href="/demo" size="lg" variant="outline">{m.site_demo()}</Button
 				>
 			</div>
 			{#if trialDays}
@@ -143,7 +144,7 @@
 		</div>
 		<div class="hero-art">
 			<span class="blocks" aria-hidden="true"><i></i><i></i><i></i></span>
-			<BinCard />
+			<ProductPreview />
 		</div>
 	</div>
 </section>
@@ -165,7 +166,9 @@
 		<p class="site-lede mt-4">{m.site_feat_intro()}</p>
 	</div>
 
-	<div class="mt-12">
+	<ul class="mt-8 grid gap-5 sm:grid-cols-3"><li class="site-square">{m.site_outcome_stock()}</li><li class="site-square">{m.site_outcome_sales()}</li><li class="site-square">{m.site_outcome_control()}</li></ul>
+	<details class="mt-8"><summary class="cursor-pointer py-3 font-semibold">{m.site_feature_details()}</summary>
+	<div class="mt-6">
 		{#each features as group (group.id)}
 			<article class="feature">
 				<div>
@@ -180,6 +183,7 @@
 			</article>
 		{/each}
 	</div>
+	</details>
 </section>
 
 <section class="bg-brand-navy text-white">

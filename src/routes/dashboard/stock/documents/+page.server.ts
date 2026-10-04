@@ -18,7 +18,7 @@ import {
 	user
 } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
-import { branchScope, scopeWhere } from '$lib/server/scope';
+import { branchScope, viewScope, scopeWhere } from '$lib/server/scope';
 import { locationOptions, supplierOptions } from '$lib/server/options';
 import { supplierSchema } from '$lib/schemas/suppliers';
 import { customerPicker, headerValues } from '$lib/server/stock/documents';
@@ -29,9 +29,9 @@ import type { Actions, PageServerLoad } from './$types';
 const fromLoc = alias(location, 'from_loc');
 const toLoc = alias(location, 'to_loc');
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const orgId = orgIdOf(locals);
-	const scope = await branchScope(locals);
+	const scope = await viewScope(locals, url);
 	const [documents, locations, destinations, form] = await Promise.all([
 		db
 			.select({
@@ -70,6 +70,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				and(
 					eq(stockDocument.orgId, orgId),
 					isNull(stockDocument.deletedAt),
+					url.searchParams.get('status') === 'draft' ? eq(stockDocument.status, 'draft') : undefined,
 					// The viewer's branches: documents numbered there, or moving stock in or out of them.
 					scopeWhere(scope, stockDocument.branchId, fromLoc.branchId, toLoc.branchId)
 				)

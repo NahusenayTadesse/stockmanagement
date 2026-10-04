@@ -221,5 +221,10 @@
 	"kit_gallery_count_one": "1 image ready to upload",
 	"kit_gallery_count": "{count} images ready to upload",
 	"kit_youtube_play": "Play: {title}",
-	"kit_youtube_watch": "Watch on YouTube"
+	"kit_youtube_watch": "Watch on YouTube",
+	"kit_checklist_search": "Search…",
+	"kit_checklist_search_aria": "Search the list",
+	"kit_select_all_shown": "Select all {count} shown",
+	"kit_checklist_chosen": "{count} chosen",
+	"kit_checklist_no_match": "Nothing matches."
 }

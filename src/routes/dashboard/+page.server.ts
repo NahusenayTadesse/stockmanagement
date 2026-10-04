@@ -1,3 +1,4 @@
+import { branchOptions } from '$lib/server/options';
 import { fail } from '@sveltejs/kit';
 import { redirect } from 'sveltekit-flash-message/server';
 import { auth } from '$lib/server/auth';
@@ -15,7 +16,7 @@ import { alias } from 'drizzle-orm/mysql-core';
 import { db } from '$lib/server/db';
 import { location, stockDocument } from '$lib/server/db/schema';
 import { pendingApprovals } from '$lib/server/approvals';
-import { branchScope, scopeWhere } from '$lib/server/scope';
+import { branchScope, viewScope, inScope, scopeWhere } from '$lib/server/scope';
 import type { Actions, PageServerLoad } from './$types';
 import { m } from '$lib/paraglide/messages.js';
 
@@ -40,13 +41,19 @@ async function inTransitCount(orgId: number, scope: number[] | null) {
 	return Number(row?.n ?? 0);
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const orgId = orgIdOf(locals);
+	const scope = await viewScope(locals, url);
+	const authorized = await branchScope(locals);
+	const branches = (await branchOptions(orgId)).filter((b) => inScope(authorized, b.value));
+	const selectedBranch = Number(url.searchParams.get('branch')) || 0;
+	const periods = datePresets(localToday());
+	const period = periods.find((p) => p.key === url.searchParams.get('period')) ?? periods.find((p) => p.key === 'month')!;
 
 	// This Ethiopian month's money, for whoever may see transactions.
 	let money = null;
 	if (hasPermission(locals, 'transactions.view')) {
-		const month = datePresets(localToday()).find((p) => p.key === 'month')!;
+		const month = period;
 		money = {
 			from: month.from,
 			to: month.to,
@@ -57,14 +64,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 				status: '',
 				purpose: '',
 				methodId: 0,
-				branchId: 0,
+				branchId: selectedBranch,
 				q: ''
 			}))
 		};
 	}
 
 	// The home page is open to every signed-in user; the stock figures are not.
-	const stats = hasPermission(locals, 'stock.view') ? await dashboardStats(orgId) : null;
+	const stats = hasPermission(locals, 'stock.view') ? await dashboardStats(orgId, scope) : null;
 	// Credit (ዱቤ): what customers owe, for a business that sells and a viewer who sees customers.
 	let credit = null;
 	if (hasPermission(locals, 'customers.view') && (await sellsToCustomers(orgId))) {
@@ -79,13 +86,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// What is waiting on someone: approvals, and stock on the road between branches.
 	const attention = {
 		approvals: hasPermission(locals, 'approvals.view') ? await pendingApprovals(orgId) : 0,
-		inTransit: hasPermission(locals, 'stock.view')
-			? await inTransitCount(orgId, await branchScope(locals))
-			: 0
+		inTransit: hasPermission(locals, 'stock.view') ? await inTransitCount(orgId, scope) : 0
 	};
 	// The getting-started guide, for whoever runs the business, until it is put away.
 	const guide = hasPermission(locals, GUIDE_PERMISSION) ? await gettingStarted(orgId) : null;
-	return { stats, money, credit, attention, guide };
+	return { stats, money, credit, attention, guide, branches, selectedBranch, period: period.key, periods };
 };
 
 export const actions: Actions = {

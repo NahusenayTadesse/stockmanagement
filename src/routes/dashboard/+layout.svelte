@@ -10,6 +10,7 @@
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import KitProvider from '@nahu/admin-kit/components/KitProvider.svelte';
 	import AppSidebar from '$lib/components/AppSidebar.svelte';
+	import WorkContext from '$lib/components/WorkContext.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import HelpButton from '$lib/components/help/HelpButton.svelte';
 	import TourRunner from '$lib/components/help/TourRunner.svelte';
@@ -67,6 +68,7 @@
 	permList={data.permList}
 	isSuperAdmin={data.isSuperAdmin}
 >
+	<a href="#dashboard-content" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-primary focus:p-3 focus:text-primary-foreground">{m.site_skip_to_content()}</a>
 	<Sidebar.Provider>
 		<AppSidebar
 			name={data.organization?.name ?? m.common_dashboard()}
@@ -92,7 +94,8 @@
 				{/snippet}
 			</TopBar>
 			<!-- Room at the bottom, so the help button never sits on a table's last row. -->
-			<div class="p-2 pt-4 pb-20">
+			<div id="dashboard-content" tabindex="-1" class="p-2 pt-4 pb-20">
+				<WorkContext name={data.organization?.name ?? ''} userId={data.user.id} />
 				{#if billing}
 					<Notice tone={billing.tone} class="mb-4">
 						{billing.text}
@@ -104,6 +107,7 @@
 					</Notice>
 				{/if}
 				{@render children()}
+				<p class="mt-8 text-xs text-muted-foreground">{m.common_calendar_hint()}</p>
 			</div>
 		</main>
 	</Sidebar.Provider>

@@ -2,8 +2,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-	import X from '@lucide/svelte/icons/x';
+		import X from '@lucide/svelte/icons/x';
 	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import { say } from '$lib/help/content';
 	import { tourById, type TourStep } from '$lib/help/tours';
@@ -25,6 +24,7 @@
 	const onItsPage = $derived(Boolean(tour) && page.url.pathname.replace(/\/+$/, '') === tour!.path);
 
 	let index = $state(0);
+	let previousFocus: HTMLElement | null = null;
 	/** The steps still to show, with the ones whose optional target is missing taken out. */
 	let steps = $state<TourStep[]>([]);
 	let target = $state<HTMLElement | null>(null);
@@ -89,6 +89,7 @@
 			steps = [];
 			return;
 		}
+		previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		const all = tour.steps;
 		// Optional steps whose target never appears are dropped, so "2 of 3" counts what is shown.
 		(async () => {
@@ -108,8 +109,11 @@
 		box = null;
 		// Back to the tour's own page without `?tour=`. Tours are only ever started with that one
 		// parameter, so there is nothing else in the address to keep.
+		previousFocus?.focus();
+		const nextUrl = new URL(page.url);
+		nextUrl.searchParams.delete('tour');
 		if (tour)
-			goto(resolve(tour.path as '/dashboard'), {
+			goto(nextUrl.pathname + nextUrl.search, {
 				replaceState: true,
 				noScroll: true,
 				keepFocus: true

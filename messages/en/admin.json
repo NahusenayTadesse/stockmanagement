@@ -90,6 +90,8 @@
 	"admin_home_in_transit_hint": "Sent to another branch, not yet received",
 	"admin_home_stock_value": "Stock value",
 	"admin_home_stock_value_hint": "At average cost",
+	"admin_home_stock_scope": "Stock figures cover your permitted branches. The item catalogue is shared across the business.",
+	"admin_home_preview_count": "Showing {shown} of {total}",
 	"admin_home_items_hint": "In the catalogue",
 	"admin_home_expiring": "Lots expiring soon",
 	"admin_home_expiring_hint": "Inside their warning window",
@@ -584,5 +586,10 @@
 	"admin_fd_col_checked": "Checked",
 	"admin_fd_col_z": "Last Z report",
 	"admin_sms_col_error": "Error",
-	"admin_perm_subscription_manage": "See the business's package and payments, and pay for the subscription"
+	"admin_perm_subscription_manage": "See the business's package and payments, and pay for the subscription",
+	"admin_attention": "Needs attention",
+	"admin_quick_actions": "Start a task",
+	"admin_period": "Money period",
+	"admin_shared_credit": "Customer credit covers the whole business.",
+	"admin_stock_now": "Stock is current; the period applies to money totals."
 }

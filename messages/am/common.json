@@ -163,5 +163,16 @@
 	"common_to": "እስከ",
 	"common_show": "አሳይ",
 	"common_any": "ማንኛውም",
-	"nav_help": "እገዛ"
+	"nav_help": "እገዛ",
+	"common_method": "የክፍያ ዘዴ",
+	"common_amount": "መጠን",
+	"common_request_failed": "ችግር ተፈጥሯል። እንደገና ይሞክሩ ወይም ከታች ባለው ማጣቀሻ ድጋፍ ያግኙ።",
+	"common_reference_id": "የድጋፍ ማጣቀሻ",
+	"common_all_branches": "ፈቃድ ያለዎት ሁሉም ቅርንጫፎች",
+	"common_breadcrumbs": "ያሉበት ገጽ",
+	"common_view_all": "ሁሉንም ይመልከቱ",
+	"common_apply": "ተግብር",
+	"common_previous_page": "ያለፈው ገጽ",
+	"common_next_page": "ቀጣዩ ገጽ",
+	"common_calendar_hint": "ቀኖች፦ የኢትዮጵያ ዘመን አቆጣጠር (ዓ.ም.)። የጎርጎርዮሳዊ ቀኖች በG.C. ይታያሉ።"
 }

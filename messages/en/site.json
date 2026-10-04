@@ -208,5 +208,21 @@
 	"site_contact_sent": "Thank you. We have your message and will get back to you.",
 	"site_contact_too_many": "Too many messages from here in a short time. Please try again later, or call us.",
 	"site_v_subject": "Say what it is about",
-	"site_v_message": "Write a few words"
+	"site_v_message": "Write a few words",
+	"site_demo": "Explore the product",
+	"site_demo_title": "A working day, at a glance",
+	"site_demo_note": "Read-only preview · fictional sample data",
+	"site_demo_stock": "Know what is available",
+	"site_demo_sell": "See what a sale records",
+	"site_outcome_stock": "Catch shortages and expiry before they interrupt work.",
+	"site_outcome_sales": "Record a sale, payment and stock movement together.",
+	"site_outcome_control": "Follow purchases and transfers through to completion.",
+	"site_feature_details": "Explore all capabilities",
+	"site_local_short": "English & Amharic · Ethiopian & Gregorian date inputs · ETB",
+	"site_signup_summary": "{package}: {amount} every {months} month(s), after a {days}-day trial.",
+	"site_payment_expectation": "Bank-transfer receipts are reviewed manually. Payment is confirmed only after approval; contact support if you need an update.",
+	"site_support": "Support & your data",
+	"site_support_intro": "Get help with setup, subscription payments, exports or account closure.",
+	"site_support_data": "Tables and reports offer exports. For a complete business-data export or an account-closure request, contact Digital Construct from the business owner’s registered email. Confirm retention and deletion arrangements with support before closing your account.",
+	"site_support_reference": "Include the page, approximate time, and support reference if shown. Never send your password or payment credentials."
 }

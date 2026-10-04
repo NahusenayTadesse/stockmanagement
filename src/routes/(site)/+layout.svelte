@@ -8,7 +8,7 @@
 	import DarkMode from '@nahu/admin-kit/components/shell/DarkMode.svelte';
 	import LanguageSwitch from '$lib/components/LanguageSwitch.svelte';
 	import BrandLogo from '$lib/components/site/BrandLogo.svelte';
-	import { SITE, telNumber } from '$lib/site';
+	import { SITE, telNumber, pageTitle } from '$lib/site';
 	import { m } from '$lib/paraglide/messages.js';
 
 	/**
@@ -32,6 +32,17 @@
 	const home = $derived(data.viewer?.siteAdmin ? resolve('/admin') : resolve('/dashboard'));
 </script>
 
+<svelte:head>
+	<link rel="canonical" href={data.canonical} />
+	<meta property="og:type" content="website" />
+	<meta property="og:site_name" content={SITE.product} />
+	<meta property="og:title" content={pageTitle(links.find((link) => current(link.path))?.label)} />
+	<meta property="og:description" content={m.site_hero_lede()} />
+	<meta property="og:url" content={data.canonical} />
+	<meta property="og:image" content={`${data.origin}/brand/product-preview.png`} />
+	<meta property="og:image:alt" content={m.site_demo_note()} />
+	<meta name="twitter:card" content="summary_large_image" />
+</svelte:head>
 <div class="flex min-h-dvh flex-col">
 	<a
 		href="#content"
@@ -132,6 +143,8 @@
 				<ul class="footer-list">
 					<li><a href={resolve('/about')}>{m.site_nav_about()}</a></li>
 					<li><a href={resolve('/contact')}>{m.site_nav_contact()}</a></li>
+					<li><a href="/support">{m.site_support()}</a></li>
+					<li><a href="/demo">{m.site_demo()}</a></li>
 					<li>
 						<a href={SITE.websiteUrl} target="_blank" rel="noopener external">{SITE.website}</a>
 					</li>

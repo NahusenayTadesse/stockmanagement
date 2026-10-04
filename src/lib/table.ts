@@ -11,9 +11,11 @@ import { renderComponent } from '@nahu/admin-kit/components/ui/data-table/index.
 import DataTableSort from '@nahu/admin-kit/components/Table/data-table-sort.svelte';
 import Statuses from '@nahu/admin-kit/components/Table/statuses.svelte';
 import BigText from '@nahu/admin-kit/components/Table/bigText.svelte';
-import { ethiopianDate, ethiopianDateTime } from '@nahu/admin-kit/tableCells';
+import { ethiopianDateTime } from '@nahu/admin-kit/tableCells';
 import DataTableLinks from '@nahu/admin-kit/components/Table/data-table-links.svelte';
 import { formatETB } from '@nahu/admin-kit/global';
+import NameCell from '$lib/components/NameCell.svelte';
+import CalendarDate from '$lib/components/CalendarDate.svelte';
 import StackedText from '$lib/components/StackedText.svelte';
 import { DOCUMENT_STATUS_BADGE, DOCUMENT_STATUS_LABELS, qty } from '$lib/format';
 import { m } from '$lib/paraglide/messages.js';
@@ -43,8 +45,9 @@ export function textColumn<Row>(key: keyof Row & string, label: Label): ColumnDe
  * entry cannot stretch the table.
  */
 export function longText<Row>(max?: number) {
-	return (info: CellContext<Row, unknown>) =>
-		renderComponent(BigText, { text: info.getValue() as string | null, max });
+	return (info: CellContext<Row, unknown>) => max === NAME_LENGTH
+		? renderComponent(NameCell, { text: info.getValue() as string | null })
+		: renderComponent(BigText, { text: info.getValue() as string | null, max });
 }
 
 /** Names typed in freely (a party, a buyer, a department): long enough that most show whole. */
@@ -52,7 +55,7 @@ export const NAME_LENGTH = 24;
 
 /** A day, on the Ethiopian calendar like every date the app shows. */
 export function dateCell<Row>(info: CellContext<Row, unknown>) {
-	return ethiopianDate(info.getValue());
+	return renderComponent(CalendarDate, { value: info.getValue() });
 }
 
 /** A moment (created, decided, sent), on the Ethiopian calendar with the time in Addis Ababa. */

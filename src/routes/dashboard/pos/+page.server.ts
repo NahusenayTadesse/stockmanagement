@@ -1,3 +1,6 @@
+import { availabilityAt } from '$lib/server/stock/availability';
+import { createHash } from 'node:crypto';
+import { requireBranch, locationBranches } from '$lib/server/scope';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permissions';
 import { localToday } from '@nahu/admin-kit/time';
@@ -21,7 +24,7 @@ import { branchScope } from '$lib/server/scope';
 import { kitsAvailable } from '$lib/server/items';
 import { sellsToCustomers } from '$lib/server/customers';
 import { priceTable } from '$lib/server/pricing';
-import { checkout, currentShift, heldCarts, holdCart, openShift, takeCart } from '$lib/server/pos';
+import { checkout, checkoutOnce, checkoutResult, currentShift, heldCarts, holdCart, openShift, takeCart } from '$lib/server/pos';
 import { afterSale } from '$lib/server/afterSale';
 import { attempt, refusal } from '$lib/server/actions';
 import { checkoutPayload } from '$lib/schemas/pos';
@@ -87,10 +90,12 @@ async function catalogue(orgId: number, locationId: number) {
 					.where(and(eq(barcode.orgId, orgId), isNull(barcode.deletedAt)))
 			])
 		: [[], []];
+	const availability = await availabilityAt(orgId, locationId, localToday());
 	const kits = await kitsAvailable(
 		orgId,
 		items.filter((i) => i.isKit).map((i) => i.id),
-		locationId
+		locationId,
+		new Map([...availability].map(([id, value]) => [id, value.sellable]))
 	);
 	return items.map((i) => ({
 		...i,
@@ -101,8 +106,10 @@ async function catalogue(orgId: number, locationId: number) {
 				? null
 				: (kits.get(i.id) ?? 0)
 			: i.stockTracked
-				? Number(i.onHand)
+				? (availability.get(i.id)?.sellable ?? 0)
 				: null,
+		physical: availability.get(i.id)?.onHand ?? 0,
+		reserved: availability.get(i.id)?.reserved ?? 0,
 		units: [
 			{ uomId: i.baseUomId, unit: i.unit, factor: 1 },
 			...units
@@ -129,6 +136,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		};
 	}
 
+	await requireBranch(locals, shift.branchId);
 	const [items, [org], methods, lists, sells, held] = await Promise.all([
 		catalogue(orgId, shift.locationId),
 		db
@@ -167,9 +175,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const priceTables: Record<string, Record<string, number | null>> = {
 		list: Object.fromEntries(await priceTable(orgId, ids, null))
 	};
-	for (const l of lists) {
+	await Promise.all(lists.map(async (l) => {
 		priceTables[l.id] = Object.fromEntries(await priceTable(orgId, ids, l.id));
-	}
+	}));
 
 	const customers = sells
 		? await db
@@ -186,6 +194,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		: null;
 
 	return {
+		orgId,
 		shift,
 		items,
 		priceTables,
@@ -206,9 +215,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+	status: async (event) => {
+		requirePermission(event.locals, 'pos.use');
+		const key = String((await event.request.formData()).get('requestKey') ?? '');
+		const sale = await checkoutResult(orgIdOf(event.locals), event.locals.user!.id, key);
+		return sale ? { sale: { ...sale, notes: [m.sales_checkout_recovered()], notesFailed: false } } : { notFound: true };
+	},
 	openShift: async (event) => {
 		requirePermission(event.locals, 'pos.use');
 		const data = await event.request.formData();
+		const branches = await locationBranches(orgIdOf(event.locals), [Number(data.get('locationId'))]);
+		await requireBranch(event.locals, branches.get(Number(data.get('locationId'))));
 		const opened = await attempt(
 			event,
 			async () => {
@@ -248,10 +265,12 @@ export const actions: Actions = {
 			.from(organization)
 			.where(eq(organization.id, orgId));
 
+		await requireBranch(event.locals, shift.branchId);
 		let sale!: Awaited<ReturnType<typeof checkout>>;
+		let replayed = false;
 		const posted = await attempt(event, async () => {
-			sale = await db.transaction((tx) =>
-				checkout(tx, {
+			const answer = await db.transaction((tx) =>
+				checkoutOnce(tx, {
 					orgId,
 					userId,
 					shiftId: shift.id,
@@ -263,12 +282,14 @@ export const actions: Actions = {
 					allowOverLimit: hasPermission(event.locals, 'customers.credit'),
 					allowDiscount: hasPermission(event.locals, 'sales.discount'),
 					maxDiscountPercent: org.maxDiscountPercent
-				})
+				}, payload.requestKey, createHash('sha256').update(JSON.stringify(payload)).digest('hex'))
 			);
+			sale = answer.sale;
+			replayed = answer.replayed;
 			return null;
 		});
 		if (!('done' in posted)) return posted;
-		const { notes, failed } = await afterSale(orgId, sale.documentId, {
+		const { notes, failed } = replayed ? { notes: [m.sales_checkout_recovered()], failed: false } : await afterSale(orgId, sale.documentId, {
 			smsTo: payload.smsTo,
 			userId
 		});

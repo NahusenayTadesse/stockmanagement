@@ -11,7 +11,7 @@ import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { MySqlColumn } from 'drizzle-orm/mysql-core';
 import { hasPermission } from '@nahu/admin-kit/server/permissions';
 import { db } from '$lib/server/db';
-import { location, userBranch } from '$lib/server/db/schema';
+import { branch, location, userBranch } from '$lib/server/db/schema';
 import { m } from '$lib/paraglide/messages.js';
 
 /** Null: every branch. Otherwise the branch ids this user works in. */
@@ -65,4 +65,16 @@ export async function locationBranches(orgId: number, ids: (number | null | unde
 		.from(location)
 		.where(and(eq(location.orgId, orgId), inArray(location.id, wanted)));
 	return new Map(rows.map((r) => [r.id, r.branchId]));
+}
+
+/** A viewing filter may narrow, but never widen, the employee's authorized branches. */
+export async function viewScope(locals: App.Locals, url: URL): Promise<Scope> {
+	const scope = await branchScope(locals);
+	const value = url.searchParams.get('branch');
+	if (!value || value === '0') return scope;
+	const id = Number(value);
+	if (!Number.isSafeInteger(id) || id <= 0 || !inScope(scope, id)) error(404, m.admin_scope_not_found());
+	const [found] = await db.select({ id: branch.id }).from(branch).where(and(eq(branch.id, id), eq(branch.orgId, locals.orgId!)));
+	if (!found) error(404, m.admin_scope_not_found());
+	return [id];
 }

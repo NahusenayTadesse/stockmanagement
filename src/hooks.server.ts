@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { requestMetric } from '$lib/server/telemetry';
+import type { HandleServerError } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { building } from '$app/environment';
 import { env } from '$env/dynamic/private';
@@ -161,7 +164,26 @@ const handleSubscription: Handle = async ({ event, resolve }) => {
 	error(402, m.billing_blocked_action());
 };
 
+const handleObservability: Handle = async ({ event, resolve }) => {
+	const started = performance.now();
+	event.locals.requestId = randomUUID();
+	const response = await resolve(event);
+	response.headers.set('x-request-id', event.locals.requestId);
+	if (event.url.pathname.startsWith('/dashboard') || event.url.pathname.startsWith('/admin')) response.headers.set('x-robots-tag', 'noindex, nofollow');
+	if (env.APP_METRICS === 'true' || response.status >= 500) {
+		const action = [...event.url.searchParams.keys()].find((key) => /^\/[a-zA-Z]+$/.test(key)) ?? null;
+		console.log(JSON.stringify(requestMetric({ requestId: event.locals.requestId, route: event.route.id, method: event.request.method, status: response.status, durationMs: performance.now() - started, action })));
+	}
+	return response;
+};
+
+export const handleError: HandleServerError = ({ event, status }) => {
+	console.error(JSON.stringify({ event: 'server_error', requestId: event.locals.requestId, route: event.route.id, status }));
+	return { message: m.common_request_failed(), requestId: event.locals.requestId };
+};
+
 export const handle: Handle = sequence(
+	handleObservability,
 	handleParaglide,
 	handleClosedEndpoints,
 	handleBetterAuth,

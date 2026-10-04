@@ -65,5 +65,9 @@
 	"help_guide_staff": "Invite your staff",
 	"help_guide_staff_text": "Each on the role that fits their job.",
 	"help_guide_subscription": "Choose how to pay",
-	"help_guide_subscription_text": "Pay for your package before the free trial ends."
+	"help_guide_subscription_text": "Pay for your package before the free trial ends.",
+	"help_guide_issue": "Issue stock",
+	"help_guide_issue_text": "Record the first issue to a department or recipient.",
+	"help_import_start": "Already have a spreadsheet? Preview an import.",
+	"help_prerequisite": "Add items and receive stock before this step."
 }

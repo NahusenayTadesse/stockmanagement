@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { useKit } from '@nahu/admin-kit/context';
+	import { Button } from '@nahu/admin-kit/components/ui/button/index.js';
 	import type { ColumnDef } from '@tanstack/table-core';
 	import { m } from '$lib/paraglide/messages.js';
 	import { resolve } from '$app/paths';
@@ -17,6 +19,25 @@
 	let { data } = $props();
 
 	const stats = $derived(data.stats);
+	const kit = useKit();
+	const stockHref = (key: string) => {
+		const paths: Record<string, string> = { value: '/dashboard/stock', items: '/dashboard/items', low: '/dashboard/stock/low', expired: '/dashboard/stock/expiry?status=expired', expiring: '/dashboard/stock/expiry?status=soon', drafts: '/dashboard/stock/documents?status=draft' };
+		const path = paths[key] ?? '/dashboard/stock';
+		return `${path}${path.includes('?') ? '&' : '?'}branch=${data.selectedBranch}`;
+	};
+	const quickActions = $derived([
+		{ path: '/dashboard/pos', title: m.nav_pos() },
+		{ path: '/dashboard/stock/documents', title: m.common_doc_receipt() },
+		{ path: '/dashboard/stock/transfers', title: m.common_doc_transfer() },
+		{ path: '/dashboard/stock/counts', title: m.nav_counts() }
+	].filter((action) => kit.canOpen(action.path)));
+	const work = $derived([
+		...(stats?.expiredCount ? [{ path: stockHref('expired'), title: m.admin_home_expired(), count: stats.expiredCount }] : []),
+		...(data.attention.approvals ? [{ path: '/dashboard/approvals', title: m.admin_home_approvals(), count: data.attention.approvals }] : []),
+		...(stats?.lowStockCount ? [{ path: stockHref('low'), title: m.admin_home_low(), count: stats.lowStockCount }] : []),
+		...(data.credit?.overdue ? [{ path: '/dashboard/customers/credit?overdue=1', title: m.admin_home_overdue(), count: null }] : []),
+		...(data.attention.inTransit ? [{ path: '/dashboard/stock/transfers', title: m.admin_home_in_transit(), count: data.attention.inTransit }] : [])
+	]);
 
 	type Stats = NonNullable<typeof stats>;
 	const expiringColumns: ColumnDef<Stats['expiring'][number]>[] = [
@@ -149,35 +170,6 @@
 			: []
 	);
 
-	const attentionTiles = $derived<Stat[]>([
-		...(data.attention.approvals
-			? [
-					{
-						key: 'approvals',
-						label: m.admin_home_approvals(),
-						value: data.attention.approvals,
-						format: 'count' as const,
-						group: 'attention',
-						hint: m.admin_home_approvals_hint(),
-						tone: 'warning' as const
-					}
-				]
-			: []),
-		...(data.attention.inTransit
-			? [
-					{
-						key: 'transit',
-						label: m.admin_home_in_transit(),
-						value: data.attention.inTransit,
-						format: 'count' as const,
-						group: 'attention',
-						hint: m.admin_home_in_transit_hint(),
-						tone: 'neutral' as const
-					}
-				]
-			: [])
-	]);
-
 	const tiles = $derived<Stat[]>(
 		stats
 			? [
@@ -219,10 +211,10 @@
 					{
 						key: 'low',
 						label: m.admin_home_low(),
-						value: stats.lowStock.length,
+						value: stats.lowStockCount,
 						format: 'count',
 						group: 'stock',
-						tone: stats.lowStock.length ? 'warning' : 'neutral'
+						tone: stats.lowStockCount ? 'warning' : 'neutral'
 					},
 					{
 						key: 'drafts',
@@ -240,13 +232,23 @@
 <div class="flex flex-col gap-6">
 	<PageHeader title={data.organization?.name ?? ''} tabTitle={m.common_dashboard()} />
 
+	<form method="GET" class="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
+		<label class="flex flex-col gap-1 text-sm">{m.common_branch()}
+			<select name="branch" value={data.selectedBranch} class="h-10 rounded border bg-background px-2"><option value={0}>{m.common_all_branches()}</option>{#each data.branches as b (b.value)}<option value={b.value}>{b.name}</option>{/each}</select>
+		</label>
+		{#if data.money}<label class="flex flex-col gap-1 text-sm">{m.admin_period()}<select name="period" value={data.period} class="h-10 rounded border bg-background px-2">{#each data.periods as p (p.key)}<option value={p.key}>{p.label}</option>{/each}</select></label>{/if}
+		<Button type="submit">{m.common_apply()}</Button>
+		<p class="text-sm text-muted-foreground">{m.admin_stock_now()}</p>
+	</form>
+	{#if quickActions.length}<nav aria-label={m.admin_quick_actions()} class="flex flex-wrap gap-2">{#each quickActions as action (action.path)}<Button variant="outline" href={action.path}>{action.title}</Button>{/each}</nav>{/if}
+	{#if work.length}<section class="rounded-lg border bg-card p-4" aria-labelledby="attention-title"><h2 id="attention-title">{m.admin_attention()}</h2><ul class="mt-3 grid gap-2 sm:grid-cols-2">{#each work as task (task.path)}<li><a class="flex items-center justify-between gap-2 rounded border p-3 hover:bg-accent" href={task.path}><span>{task.title}</span>{#if task.count !== null}<strong>{task.count}</strong>{/if}</a></li>{/each}</ul></section>{/if}
 	{#if data.guide}<GettingStarted guide={data.guide} />{/if}
 
 	{#if data.money}
 		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 			{#each moneyTiles as stat (stat.key)}
 				<a
-					href="{resolve('/dashboard/transactions')}?from={data.money.from}&to={data.money.to}"
+					href="{resolve('/dashboard/transactions')}?from={data.money.from}&to={data.money.to}&branch={data.selectedBranch}&direction={stat.key === 'in' ? 'in' : stat.key === 'out' ? 'out' : ''}&status={stat.key === 'unverified' ? 'recorded' : ''}"
 					class="block"
 				>
 					<StatCard {stat} />
@@ -255,23 +257,11 @@
 		</div>
 	{/if}
 
-	{#if attentionTiles.length}
-		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-			{#each attentionTiles as stat (stat.key)}
-				<a
-					href={stat.key === 'approvals'
-						? resolve('/dashboard/approvals')
-						: resolve('/dashboard/stock/transfers')}
-					class="block"><StatCard {stat} /></a
-				>
-			{/each}
-		</div>
-	{/if}
-
 	{#if data.credit && (data.credit.owed > 0 || data.credit.overLimit > 0)}
+		<p class="text-sm text-muted-foreground">{m.admin_shared_credit()}</p>
 		<div class="grid gap-4 sm:grid-cols-3">
 			{#each creditTiles as stat (stat.key)}
-				<a href={resolve('/dashboard/customers/credit')} class="block"><StatCard {stat} /></a>
+				<a href="{resolve('/dashboard/customers/credit')}?overdue={stat.key === 'overdue' ? 1 : 0}&overLimit={stat.key === 'overLimit' ? 1 : 0}" class="block"><StatCard {stat} /></a>
 			{/each}
 		</div>
 	{/if}
@@ -281,9 +271,10 @@
 			{m.admin_home_no_stock_role({ name: data.user.name })}
 		</p>
 	{:else}
+		<p class="text-sm text-muted-foreground">{m.admin_home_stock_scope()}</p>
 		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 			{#each tiles as stat (stat.key)}
-				<StatCard {stat} />
+				{#if kit.canOpen(stockHref(stat.key).split('?')[0])}<a href={stockHref(stat.key)}><StatCard {stat} /></a>{:else}<StatCard {stat} />{/if}
 			{/each}
 		</div>
 
@@ -291,12 +282,19 @@
 			<Card.Root>
 				<Card.Header>
 					<Card.Title>{m.admin_home_expiry()}</Card.Title>
+					<a class="text-sm underline" href="/dashboard/stock/expiry?branch={data.selectedBranch}">{m.common_view_all()}</a>
 					<Card.Description>{m.admin_home_expiry_desc()}</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					{#if stats.expiring.length === 0}
 						<p class="text-muted-foreground">{m.admin_home_nothing_expiring()}</p>
 					{:else}
+						<p class="mb-3 text-sm text-muted-foreground">
+							{m.admin_home_preview_count({
+								shown: stats.expiring.length,
+								total: stats.expiredCount + stats.expiringSoonCount
+							})}
+						</p>
 						<DataTable variant="compact" data={stats.expiring} columns={expiringColumns} />
 					{/if}
 				</Card.Content>
@@ -305,12 +303,19 @@
 			<Card.Root>
 				<Card.Header>
 					<Card.Title>{m.admin_home_reorder()}</Card.Title>
+					<a class="text-sm underline" href={stockHref('low')}>{m.common_view_all()}</a>
 					<Card.Description>{m.admin_home_reorder_desc()}</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					{#if stats.lowStock.length === 0}
 						<p class="text-muted-foreground">{m.admin_home_nothing_reorder()}</p>
 					{:else}
+						<p class="mb-3 text-sm text-muted-foreground">
+							{m.admin_home_preview_count({
+								shown: stats.lowStock.length,
+								total: stats.lowStockCount
+							})}
+						</p>
 						<DataTable variant="compact" data={stats.lowStock} columns={lowStockColumns} />
 					{/if}
 				</Card.Content>

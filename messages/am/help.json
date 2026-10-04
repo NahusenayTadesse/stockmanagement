@@ -65,5 +65,9 @@
 	"help_guide_staff": "ሠራተኞችዎን ይጋብዙ",
 	"help_guide_staff_text": "እያንዳንዱን ከሥራው ጋር በሚስማማ ሚና።",
 	"help_guide_subscription": "እንዴት እንደሚከፍሉ ይምረጡ",
-	"help_guide_subscription_text": "ነፃ ሙከራው ከማብቃቱ በፊት ለፓኬጅዎ ይክፈሉ።"
+	"help_guide_subscription_text": "ነፃ ሙከራው ከማብቃቱ በፊት ለፓኬጅዎ ይክፈሉ።",
+	"help_guide_issue": "ክምችት አውጣ",
+	"help_guide_issue_text": "ለክፍል ወይም ለተቀባይ የመጀመሪያውን የክምችት ወጪ ይመዝግቡ።",
+	"help_import_start": "ቀድሞ የተዘጋጀ ሰንጠረዥ አለዎት? የማስገባት ቅድመ እይታ ይመልከቱ።",
+	"help_prerequisite": "ከዚህ ደረጃ በፊት ዕቃዎችን ያክሉ እና ክምችት ይቀበሉ።"
 }

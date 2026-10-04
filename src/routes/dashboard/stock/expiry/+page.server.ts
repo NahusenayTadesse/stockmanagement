@@ -6,17 +6,18 @@ import { hasPermission, requirePermission } from '@nahu/admin-kit/server/permiss
 import { localToday } from '@nahu/admin-kit/time';
 import { db } from '$lib/server/db';
 import { organization } from '$lib/server/db/schema';
+import { branchScope, viewScope } from '$lib/server/scope';
 import { orgIdOf } from '$lib/server/tenant';
 import { digestContent, draftFollowUp, expiryWatch, type FollowUp } from '$lib/server/expiry';
 import { sendMail } from '$lib/server/mail';
 import { attempt } from '$lib/server/actions';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const today = localToday();
 	return {
 		today,
-		rows: await expiryWatch(orgIdOf(locals), today),
+		rows: (await expiryWatch(orgIdOf(locals), today, db, await viewScope(locals, url))).filter((r) => url.searchParams.get('status') === 'expired' ? r.band === 'expired' : url.searchParams.get('status') === 'soon' ? r.band !== 'expired' : true),
 		canDraft: hasPermission(locals, 'stock.draft')
 	};
 };
@@ -36,6 +37,7 @@ export const actions: Actions = {
 			.filter(([lotId, locationId]) => Number.isInteger(lotId) && Number.isInteger(locationId))
 			.map(([lotId, locationId]) => ({ lotId, locationId }));
 
+		const scope = await branchScope(event.locals);
 		let ids = null as number[] | null;
 		const answer = await attempt(event, async () => {
 			ids = await db.transaction((tx) =>
@@ -43,6 +45,7 @@ export const actions: Actions = {
 					orgId,
 					action,
 					picks,
+					scope,
 					date: localToday(),
 					userId: event.locals.user?.id
 				})
@@ -78,7 +81,7 @@ export const actions: Actions = {
 			.where(eq(organization.id, orgId));
 		const content = digestContent(
 			org.name,
-			await expiryWatch(orgId, localToday()),
+			await expiryWatch(orgId, localToday(), db, await branchScope(event.locals)),
 			`${event.url.origin}/dashboard/stock/expiry`
 		);
 		const sent = await sendMail(email, content, org.name);

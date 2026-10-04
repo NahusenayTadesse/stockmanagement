@@ -7,6 +7,7 @@ import { idSchema } from '@nahu/admin-kit/server/crud';
 import { db } from '$lib/server/db';
 import { lot } from '$lib/server/db/schema';
 import { orgIdOf } from '$lib/server/tenant';
+import { branchScope } from '$lib/server/scope';
 import { lotRows } from '$lib/server/stock/queries';
 import { lotEdit } from '$lib/schemas/stock';
 import { invalidForm } from '$lib/server/actions';
@@ -14,7 +15,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const [rows, addForm, editForm, deleteForm] = await Promise.all([
-		lotRows(orgIdOf(locals)),
+		lotRows(orgIdOf(locals), await branchScope(locals)),
 		superValidate(zod4(lotEdit)),
 		superValidate(zod4(lotEdit)),
 		superValidate(zod4(idSchema))

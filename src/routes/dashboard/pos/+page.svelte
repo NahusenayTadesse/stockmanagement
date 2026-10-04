@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
+	import { readPosDraft, draftKey, type PosDraft } from '$lib/posDraft';
 	import { enhance } from '$app/forms';
 	import PageHeader from '@nahu/admin-kit/components/PageHeader.svelte';
 	import { resolve } from '$app/paths';
@@ -49,6 +52,54 @@
 	/** A walk-in who wants the receipt by SMS gives a number. */
 	let smsTo = $state('');
 	let nextKey = 1;
+	let requestKey = $state('');
+	let pendingPayload = $state<string | null>(null);
+	let recovery = $state<PosDraft | null>(null);
+	let ready = $state(false);
+	let storageFailed = $state(false);
+	let notice = $state('');
+	let mobileCart = $state(false);
+	let visibleCount = $state(60);
+	const storageKey = $derived(data.shift && data.orgId ? draftKey(data.orgId, data.user.id, data.shift.id) : null);
+
+	onMount(() => {
+		requestKey = crypto.randomUUID();
+		try { recovery = storageKey ? readPosDraft(sessionStorage.getItem(storageKey)) : null; }
+		catch { storageFailed = true; }
+		ready = true;
+	});
+
+	$effect(() => {
+		if (!ready || !storageKey || recovery) return;
+		try {
+			if (result || (!cart.length && !pendingPayload)) sessionStorage.removeItem(storageKey);
+			else sessionStorage.setItem(storageKey, JSON.stringify({ version: 1, savedAt: Date.now(), requestKey, pendingPayload, cart, customerId, note, smsTo, payments }));
+		} catch { storageFailed = true; }
+	});
+
+	beforeNavigate(({ cancel }) => {
+		if ((pendingPayload || (cart.length && storageFailed)) && !result && !confirm(m.sales_leave_cart())) cancel();
+	});
+
+	function restoreCart() {
+		if (!recovery) return;
+		const saved = recovery;
+		requestKey = saved.requestKey;
+		pendingPayload = saved.pendingPayload;
+		cart = saved.cart.filter((l) => byId.get(l.itemId)?.units.some((u) => u.uomId === l.uomId)).map((l) => ({ ...l, key: nextKey++ }));
+		customerId = data.customers?.some((c) => c.value === saved.customerId) ? saved.customerId : 0;
+		note = saved.note;
+		smsTo = saved.smsTo;
+		payments = saved.payments;
+		recovery = null;
+		notice = pendingPayload ? m.sales_checkout_uncertain() : m.sales_restore_review();
+		payOpen = Boolean(pendingPayload);
+	}
+
+	function discardCart() {
+		if (recovery?.pendingPayload || pendingPayload) { restoreCart(); return; }
+		if (confirm(m.sales_confirm_clear())) { recovery = null; newSale(); }
+	}
 
 	const customer = $derived(data.customers?.find((c) => c.value === customerId) ?? null);
 	const priceKey = $derived(customer?.priceListId ? String(customer.priceListId) : 'list');
@@ -82,6 +133,7 @@
 			});
 		}
 		result = null;
+		notice = m.sales_scan_added({ name: nameOf(it) });
 	}
 
 	function setUnit(l: Line, uomId: number) {
@@ -127,8 +179,14 @@
 		tot: sum('tot'),
 		gross: sum('gross')
 	});
+	const stockProblems = $derived([...new Set(cart.map((l) => l.itemId))].flatMap((id) => {
+		const it = byId.get(id);
+		if (!it || it.onHand === null) return [];
+		const needed = cart.filter((l) => l.itemId === id).reduce((sum, l) => sum + (it.trackSerials ? serialList(l).length : l.quantity) * (it.units.find((u) => u.uomId === l.uomId)?.factor ?? 1), 0);
+		return needed > it.onHand + 0.00001 ? [m.sales_cart_stock({ name: nameOf(it), quantity: it.onHand })] : [];
+	}));
 	const problems = $derived(
-		rows.flatMap((r) => [
+		[...stockProblems, ...rows.flatMap((r) => [
 			...(r.it.trackSerials && r.qty === 0
 				? [m.sales_pos_problem_serials({ name: nameOf(r.it) })]
 				: []),
@@ -144,7 +202,7 @@
 			...(r.line.unitPrice === 0 && !data.canDiscount
 				? [m.sales_pos_problem_no_price({ name: nameOf(r.it) })]
 				: [])
-		])
+		])]
 	);
 
 	// ── Finding items ───────────────────────────────────────────────────────────────────────
@@ -154,7 +212,7 @@
 	const categories = $derived(
 		[...new Set(items.map((i) => i.category).filter(Boolean))].sort() as string[]
 	);
-	const shown = $derived.by(() => {
+	const matches = $derived.by(() => {
 		const q = search.trim().toLowerCase();
 		return items
 			.filter((i) => !category || i.category === category)
@@ -163,9 +221,11 @@
 					!q ||
 					`${i.name} ${i.nameAm ?? ''} ${i.sku}`.toLowerCase().includes(q) ||
 					i.barcodes.some((b) => b.code.toLowerCase() === q)
-			)
-			.slice(0, 60);
+			);
 	});
+
+	const shown = $derived(matches.slice(0, visibleCount));
+	$effect(() => { void search; void category; visibleCount = 60; });
 
 	/** Enter in the search box: a scanned barcode or typed code adds at once. */
 	function onSearchKey(e: KeyboardEvent) {
@@ -179,7 +239,8 @@
 		}
 		const bySku = items.find((i) => i.sku.toLowerCase() === q);
 		if (bySku) return (add(bySku), (search = ''));
-		if (shown.length === 1) return (add(shown[0]), (search = ''));
+		if (matches.length === 1) return (add(matches[0]), (search = ''));
+		notice = m.sales_scan_missing();
 	}
 
 	// ── Paying ──────────────────────────────────────────────────────────────────────────────
@@ -202,10 +263,12 @@
 	const paid = $derived(Math.round(payments.reduce((s, p) => s + (p.amount || 0), 0) * 100) / 100);
 	const change = $derived(Math.max(0, Math.round((paid - totals.gross) * 100) / 100));
 	const remaining = $derived(Math.max(0, Math.round((totals.gross - paid) * 100) / 100));
+	const cashChangeValid = $derived(change === 0 || payments.some((p) => methodKind(p.methodId) === 'cash' && p.amount >= change));
 	const methodKind = (id: number) => data.methods?.find((m) => m.id === id)?.kind;
 
 	function openPay() {
-		if (!cart.length || problems.length) return;
+		if (pendingPayload) { payOpen = true; return; }
+		if (!cart.length || problems.length || recovery) return;
 		payments = [{ methodId: cashMethod?.id ?? 0, amount: totals.gross, reference: '' }];
 		payOpen = true;
 	}
@@ -222,6 +285,7 @@
 
 	const payload = $derived(
 		JSON.stringify({
+			requestKey,
 			customerId: customerId || null,
 			note: note || null,
 			smsTo: smsTo.trim() || null,
@@ -241,6 +305,10 @@
 	);
 
 	function newSale() {
+		requestKey = crypto.randomUUID();
+		 pendingPayload = null;
+		payments = [];
+		notice = '';
 		cart = [];
 		customerId = 0;
 		note = '';
@@ -277,7 +345,7 @@
 			tabTitle={m.sales_pos_title()}
 			description={m.sales_pos_open_intro()}
 		/>
-		{#if form?.refused}<p class="text-sm text-destructive">{form.refused}</p>{/if}
+		{#if form?.refused}<p role="alert" class="text-sm text-destructive">{form.refused}</p>{/if}
 		<form
 			method="POST"
 			action="?/openShift"
@@ -302,6 +370,18 @@
 	</div>
 {:else}
 	<div class="flex flex-col gap-3">
+		{#if recovery}
+			<div class="rounded-lg border bg-card p-4" role="status">
+				<p>{m.sales_draft_notice()}</p>
+				<div class="mt-2 flex flex-wrap gap-2"><Button onclick={restoreCart}>{m.sales_restore_cart()}</Button>{#if !recovery.pendingPayload}<Button variant="outline" onclick={discardCart}>{m.sales_discard_cart()}</Button>{/if}</div>
+			</div>
+		{/if}
+		{#if storageFailed}<p role="status">{m.sales_draft_unavailable()}</p>{/if}
+		<p role="status" aria-live="polite" class="text-sm text-muted-foreground">{notice}</p>
+		<div class="sticky top-16 z-30 flex gap-2 rounded-lg border bg-background p-2 lg:hidden">
+			<Button variant={mobileCart ? 'outline' : 'default'} onclick={() => mobileCart = false}>{m.sales_catalog()}</Button>
+			<Button variant={mobileCart ? 'default' : 'outline'} onclick={() => mobileCart = true}>{m.sales_cart({ count: cart.length })} · {formatETB(totals.gross)}</Button>
+		</div>
 		<div class="flex flex-wrap items-center justify-between gap-2 text-sm" data-tour="pos-shift">
 			<p class="text-muted-foreground">
 				{m.sales_pos_till_at()} <strong class="text-foreground">{data.shift.location}</strong> · {m.sales_pos_shift_opened(
@@ -322,22 +402,22 @@
 			</div>
 		</div>
 
-		<div class="grid gap-4 lg:grid-cols-[1fr_440px]">
+		<div inert={Boolean(pendingPayload) || Boolean(recovery)} class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
 			<!-- Items -->
-			<section class="flex min-w-0 flex-col gap-3">
+			<section class="min-w-0 flex-col gap-3 {mobileCart ? 'hidden lg:flex' : 'flex'}">
 				<div class="relative">
 					<ScanBarcode class="absolute top-2.5 left-3 size-5 text-muted-foreground" />
 					<Input
 						bind:ref={searchBox}
 						bind:value={search}
 						onkeydown={onSearchKey}
-						placeholder={m.sales_pos_search_placeholder()}
+						aria-label={m.sales_pos_search_placeholder()} placeholder={m.sales_pos_search_placeholder()}
 						class="h-10 pl-10 text-base"
 						autofocus
 					/>
 				</div>
 				{#if categories.length > 1}
-					<div class="flex flex-wrap gap-1">
+					<div class="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
 						<Button
 							size="sm"
 							variant={category ? 'outline' : 'default'}
@@ -358,6 +438,7 @@
 						<button
 							type="button"
 							onclick={() => add(it)}
+							title={m.sales_stock_breakdown({ physical: it.physical, reserved: it.reserved, available: it.onHand ?? 0 })}
 							disabled={it.onHand !== null && it.onHand <= 0}
 							class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition hover:border-primary hover:shadow-sm disabled:opacity-40"
 						>
@@ -383,10 +464,12 @@
 						</p>
 					{/each}
 				</div>
+				<p class="text-sm text-muted-foreground">{m.admin_home_preview_count({ shown: shown.length, total: matches.length })}</p>
+				{#if shown.length < matches.length}<Button variant="outline" onclick={() => visibleCount += 60}>{m.sales_show_more()}</Button>{/if}
 			</section>
 
 			<!-- Cart -->
-			<section class="flex flex-col gap-3 rounded-lg border p-3 lg:sticky lg:top-20 lg:self-start">
+			<section class="flex-col gap-3 rounded-lg border p-3 lg:sticky lg:top-20 lg:self-start {mobileCart ? 'flex' : 'hidden lg:flex'}">
 				{#if data.customers}
 					<label class="flex flex-col gap-1 text-sm">
 						{m.sales_pos_customer_optional()}
@@ -512,7 +595,7 @@
 				<div class="grid grid-cols-[auto_auto_1fr] gap-2">
 					<Button
 						variant="outline"
-						onclick={newSale}
+						onclick={discardCart}
 						disabled={!cart.length}
 						aria-label={m.sales_pos_clear_cart()}><X /></Button
 					>
@@ -550,14 +633,14 @@
 						{m.sales_pos_pay({ amount: formatETB(totals.gross) })}
 					</Button>
 				</div>
-				<Input bind:value={note} placeholder={m.sales_pos_note_placeholder()} class="h-8 text-sm" />
+				<Input bind:value={note} aria-label={m.sales_pos_note_placeholder()} placeholder={m.sales_pos_note_placeholder()} class="h-8 text-sm" />
 			</section>
 		</div>
 	</div>
 
 	<!-- Payment -->
 	<Dialog.Root bind:open={payOpen}>
-		<Dialog.Content class="sm:max-w-lg">
+		<Dialog.Content class="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
 			<Dialog.Header>
 				<Dialog.Title
 					>{result
@@ -602,22 +685,27 @@
 					method="POST"
 					action="?/checkout"
 					class="flex flex-col gap-3"
-					use:enhance={() => {
+					use:enhance={({ formData }) => {
+						pendingPayload ??= payload;
+						formData.set('payload', pendingPayload);
 						paying = true;
 						tendered = paid;
 						return async ({ result: r, update }) => {
 							paying = false;
 							if (r.type === 'success' && r.data?.sale) {
 								result = r.data.sale as typeof result;
-							}
+								pendingPayload = null;
+							} else if (r.type === 'failure' && r.status < 500) { pendingPayload = null; requestKey = crypto.randomUUID(); }
+							else { notice = m.sales_checkout_uncertain(); return; }
 							await update({ reset: false });
 						};
 					}}
 				>
 					<input type="hidden" name="payload" value={payload} />
+					<fieldset disabled={paying || Boolean(pendingPayload)} class="contents">
 					{#each payments as p, i (i)}
 						<div class="grid grid-cols-[1fr_120px_auto] items-center gap-2">
-							<select bind:value={p.methodId} class="h-10 rounded-md border bg-background px-2">
+							<select aria-label={m.common_method()} bind:value={p.methodId} class="h-10 rounded-md border bg-background px-2">
 								{#each data.methods ?? [] as method (method.id)}
 									<option value={method.id}>{method.name}</option>
 								{/each}
@@ -626,7 +714,7 @@
 								type="number"
 								min="0"
 								step="0.01"
-								bind:value={p.amount}
+								aria-label={m.common_amount()} bind:value={p.amount}
 								class="h-10 text-right"
 							/>
 							<Button
@@ -639,7 +727,7 @@
 							{#if methodKind(p.methodId) !== 'cash'}
 								<Input
 									bind:value={p.reference}
-									placeholder={m.sales_reference_placeholder()}
+									aria-label={m.sales_reference_placeholder()} placeholder={m.sales_reference_placeholder()}
 									class="col-span-3 h-9"
 								/>
 							{/if}
@@ -676,11 +764,13 @@
 						<Input
 							bind:value={smsTo}
 							type="tel"
-							placeholder={m.sales_pos_sms_placeholder()}
+							aria-label={m.sales_pos_sms_placeholder()} placeholder={m.sales_pos_sms_placeholder()}
 							class="h-9"
 						/>
 					{/if}
 
+					</fieldset>
+					<p class="text-sm text-muted-foreground">{m.sales_cash_change_hint()}</p>
 					<dl class="grid grid-cols-2 gap-1 text-sm">
 						<dt>{m.sales_paid()}</dt>
 						<dd class="text-right">{formatETB(paid)}</dd>
@@ -700,14 +790,21 @@
 							{m.sales_pos_collect_rest()}
 						</p>
 					{/if}
-					{#if form?.refused}<p class="text-sm text-destructive">{form.refused}</p>{/if}
+					{#if form?.refused}<p role="alert" class="text-sm text-destructive">{form.refused}</p>{/if}
 					<Button
 						type="submit"
 						size="lg"
-						disabled={paying || (remaining > 0 && !customerId)}
+						disabled={paying || !ready || (!pendingPayload && (!cashChangeValid || (remaining > 0 && !customerId)))}
 						class="text-base">{paying ? m.sales_pos_completing() : m.sales_pos_complete()}</Button
 					>
 				</form>
+				{#if pendingPayload}
+					<p role="alert" class="mt-3 text-sm">{m.sales_checkout_uncertain()}</p>
+					<form method="POST" action="?/status" use:enhance={() => async ({ result: r }) => {
+						if (r.type === 'success' && r.data?.sale) { result = r.data.sale as typeof result; pendingPayload = null; }
+						else notice = m.sales_checkout_not_found();
+					}}><input type="hidden" name="requestKey" value={requestKey} /><Button type="submit" variant="outline">{m.sales_check_status()}</Button></form>
+				{/if}
 			{/if}
 		</Dialog.Content>
 	</Dialog.Root>
@@ -716,7 +813,7 @@
 	<Dialog.Root bind:open={heldOpen}>
 		<Dialog.Content class="sm:max-w-md">
 			<Dialog.Header><Dialog.Title>{m.sales_pos_held_carts()}</Dialog.Title></Dialog.Header>
-			<Input bind:value={holdLabel} placeholder={m.sales_pos_hold_name_placeholder()} />
+			<Input bind:value={holdLabel} aria-label={m.sales_pos_hold_name_placeholder()} placeholder={m.sales_pos_hold_name_placeholder()} />
 			<ul class="flex flex-col divide-y">
 				{#each data.held ?? [] as h (h.id)}
 					<li class="flex items-center justify-between gap-2 py-2 text-sm">

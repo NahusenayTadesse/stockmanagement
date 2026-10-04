@@ -43,7 +43,8 @@ export async function gettingStarted(orgId: number, reader: Reader = db) {
 		.select({
 			address: organization.address,
 			logo: organization.logo,
-			hiddenAt: organization.guideHiddenAt
+			hiddenAt: organization.guideHiddenAt,
+			sells: organization.sellsToCustomers
 		})
 		.from(organization)
 		.where(eq(organization.id, orgId));
@@ -74,7 +75,7 @@ export async function gettingStarted(orgId: number, reader: Reader = db) {
 						eq(stockDocument.orgId, orgId),
 						eq(stockDocument.type, 'issue'),
 						eq(stockDocument.status, 'posted'),
-						isNotNull(stockDocumentLine.unitPrice)
+						org.sells ? isNotNull(stockDocumentLine.unitPrice) : undefined
 					)
 				)
 		),
@@ -110,8 +111,8 @@ export async function gettingStarted(orgId: number, reader: Reader = db) {
 		subscription: paid
 	};
 
-	const steps = GUIDE_STEPS.map((s) => ({ ...s, done: done[s.id] }));
-	return { steps, completed: steps.filter((s) => s.done).length };
+	const steps = GUIDE_STEPS.map((s) => ({ ...s, tour: s.id === 'sale' && !org.sells ? 'documents' : s.tour, done: done[s.id], ready: !['stock', 'sale'].includes(s.id) || (items && (s.id !== 'sale' || stock)) }));
+	return { sells: org.sells, steps, completed: steps.filter((s) => s.done).length };
 }
 export type GettingStarted = NonNullable<Awaited<ReturnType<typeof gettingStarted>>>;
 

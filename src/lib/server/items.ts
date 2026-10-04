@@ -297,7 +297,7 @@ export async function kitComponents(orgId: number, kitId: number, locationId?: n
 }
 
 /** How many of each kit the stock on hand could make, for the till. */
-export async function kitsAvailable(orgId: number, kitIds: number[], locationId?: number) {
+export async function kitsAvailable(orgId: number, kitIds: number[], locationId?: number, available?: Map<number, number>) {
 	const out = new Map<number, number>();
 	if (!kitIds.length) return out;
 	const rows = await db
@@ -319,7 +319,7 @@ export async function kitsAvailable(orgId: number, kitIds: number[], locationId?
 			)
 		);
 	const ids = [...new Set(rows.map((r) => r.componentItemId))];
-	const [factors, onHand] = await Promise.all([packFactors(ids), onHandOf(orgId, ids, locationId)]);
+	const [factors, onHand] = await Promise.all([packFactors(ids), available ?? onHandOf(orgId, ids, locationId)]);
 	for (const kitId of kitIds) {
 		const parts = rows.filter((r) => r.kitItemId === kitId && r.stockTracked);
 		const all = rows.filter((r) => r.kitItemId === kitId);
